@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Smart Market Bot",
+    "slug": "Mobile_Robot",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/images/logocute.png",
+    "scheme": "mobilerobot",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/logocute.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/logocute.png",
+        "backgroundImage": "./assets/images/logocute.png",
+        "monochromeImage": "./assets/images/logocute.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.truongduyyyy.mobilerobot"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/logocute.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "android": {
+            "image": "./assets/images/logocute.png",
+            "imageWidth": 76
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
