@@ -962,6 +962,20 @@ async function pollRobotLivePose() {
             if (r) {
                 robotLiveStatus = r.status || 'UNKNOWN';
                 document.getElementById('robotStatus').textContent = robotLiveStatus;
+
+                // --- TỰ ĐỘNG PHÁT HIỆN IP CỦA ROBOT (AUTO IP DISCOVERY) ---
+                if (r.ipAddress && r.ipAddress !== ROBOT_IP && r.ipAddress !== "0.0.0.0" && r.ipAddress.trim() !== "") {
+                    console.log(`[AutoIP] Phát hiện IP mới từ Backend: ${r.ipAddress} (IP cũ: ${ROBOT_IP})`);
+                    ROBOT_IP = r.ipAddress;
+                    localStorage.setItem('smb_robot_ip', r.ipAddress);
+                    
+                    // Kích hoạt kết nối lại WebSocket đến IP mới
+                    if (robotWs) {
+                        robotWs.close();
+                    } else {
+                        connectRobotWs();
+                    }
+                }
             }
         }
         
@@ -990,6 +1004,19 @@ function connectRobotWs() {
             isRobotWsConnected = true;
             console.log('[RobotWS] Connected to robot WebSocket (port 81) directly.');
             updateWsStatusBadge(true);
+        };
+        
+        robotWs.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'log') {
+                    appendSerialLog(`[WS-Direct] ${data.message}`);
+                } else if (data.msg) {
+                    appendSerialLog(`[WS-Direct] ${data.msg}`);
+                }
+            } catch (e) {
+                appendSerialLog(`[WS-Direct] ${event.data}`);
+            }
         };
         
         robotWs.onclose = () => {
@@ -1168,7 +1195,139 @@ if (btnSettings && settingsModal) {
         }
         hideSettings();
         alert('Cấu hình đã lưu thành công! Đang kết nối thử lại...');
+        
+        // Reconnect SignalR if host changed
+        if (signalrConnection) {
+            signalrConnection.stop().then(() => connectSignalR());
+        }
     });
 }
+
+// --- SERIAL LOGS CONSOLE LOGIC ---
+let autoScrollLogs = true;
+
+function appendSerialLog(message) {
+    const container = document.getElementById('serialLogsContainer');
+    if (!container) return;
+
+    const initMsg = container.querySelector('.italic');
+    if (initMsg) {
+        container.innerHTML = '';
+    }
+
+    const logLine = document.createElement('div');
+    logLine.className = 'border-b border-slate-900/10 pb-0.5 whitespace-pre-wrap';
+
+    const timeStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+
+    let colorClass = 'text-slate-300';
+    if (message.includes('[ERROR]') || message.includes('Lỗi') || message.includes('fail') || message.includes('FAIL')) {
+        colorClass = 'text-rose-400 font-semibold';
+    } else if (message.includes('[WARNING]') || message.includes('Cảnh báo') || message.includes('WARNING')) {
+        colorClass = 'text-amber-400';
+    } else if (message.includes('[INFO]') || message.includes('[BOOT]') || message.includes('===') || message.includes('booting')) {
+        colorClass = 'text-blue-400';
+    } else if (message.includes('[WS-Direct]')) {
+        colorClass = 'text-teal-400';
+    } else if (message.includes('[BE-MQTT]')) {
+        colorClass = 'text-indigo-400';
+    } else if (message.includes('success') || message.includes('SUCCESS') || message.includes('OK')) {
+        colorClass = 'text-emerald-400';
+    }
+
+    logLine.innerHTML = `<span class="text-slate-500 select-none mr-2">[${timeStr}]</span><span class="${colorClass}">${escapeHtml(message)}</span>`;
+    container.appendChild(logLine);
+
+    while (container.childNodes.length > 200) {
+        container.removeChild(container.firstChild);
+    }
+
+    if (autoScrollLogs) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+document.getElementById('btnClearLogs')?.addEventListener('click', () => {
+    const container = document.getElementById('serialLogsContainer');
+    if (container) {
+        container.innerHTML = '<div class="text-slate-500 italic">[Hệ thống] Đã xóa log. Đang đợi dữ liệu mới...</div>';
+    }
+});
+
+document.getElementById('btnToggleAutoScroll')?.addEventListener('click', (e) => {
+    autoScrollLogs = !autoScrollLogs;
+    e.target.textContent = `Auto-Scroll: ${autoScrollLogs ? 'ON' : 'OFF'}`;
+    if (autoScrollLogs) {
+        e.target.className = "text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded transition-all";
+        const container = document.getElementById('serialLogsContainer');
+        if (container) container.scrollTop = container.scrollHeight;
+    } else {
+        e.target.className = "text-[10px] bg-slate-700 text-slate-400 border border-slate-600 px-2 py-0.5 rounded transition-all";
+    }
+});
+
+// --- SIGNALR CONNECTION FOR REMOTE MONITORING ---
+let signalrConnection = null;
+
+function connectSignalR() {
+    if (typeof signalR === 'undefined') {
+        console.warn('[SignalR] Library not loaded. Remote logs disabled.');
+        return;
+    }
+    
+    let hubUrl = `${BASE_URL}/hubs/robot`;
+    
+    signalrConnection = new signalR.HubConnectionBuilder()
+        .withUrl(hubUrl)
+        .withAutomaticReconnect()
+        .build();
+
+    signalrConnection.on("robotLog", (robotCode, message) => {
+        const currentRobotCode = document.getElementById('inpRobotCode')?.value.trim() || 'RB001';
+        if (robotCode === currentRobotCode) {
+            appendSerialLog(`[BE-MQTT] ${message}`);
+        }
+    });
+
+    signalrConnection.on("telemetry", (telemetry) => {
+        const currentRobotCode = document.getElementById('inpRobotCode')?.value.trim() || 'RB001';
+        if (telemetry.robotCode === currentRobotCode) {
+            robotLiveX = telemetry.xCoord;
+            robotLiveY = telemetry.yCoord;
+            if (telemetry.battery !== null && telemetry.battery !== undefined) {
+                document.getElementById('robotStatus').textContent = `${telemetry.status} (${telemetry.battery}%)`;
+            } else {
+                document.getElementById('robotStatus').textContent = telemetry.status;
+            }
+            if (telemetry.xCoord !== null) document.getElementById('robotX').textContent = telemetry.xCoord.toFixed(2) + 'm';
+            if (telemetry.yCoord !== null) document.getElementById('robotY').textContent = telemetry.yCoord.toFixed(2) + 'm';
+            draw();
+        }
+    });
+
+    signalrConnection.start()
+        .then(() => {
+            console.log('[SignalR] Connected to Backend successfully.');
+            const robotCode = document.getElementById('inpRobotCode')?.value.trim() || 'RB001';
+            signalrConnection.invoke("JoinRobotGroup", robotCode)
+                .catch(err => console.error('[SignalR] Join Group failed:', err));
+        })
+        .catch(err => {
+            console.warn('[SignalR] Connection failed, retrying in 5s...', err);
+            setTimeout(connectSignalR, 5000);
+        });
+}
+
+// Start SignalR
+setTimeout(connectSignalR, 1000);
 
 
