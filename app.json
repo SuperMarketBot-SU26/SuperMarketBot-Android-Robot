@@ -3,7 +3,7 @@
     "name": "Smart Market Bot",
     "slug": "Mobile_Robot",
     "version": "1.0.0",
-    "orientation": "landscape",
+    "orientation": "portrait",
     "icon": "./assets/images/logocute.png",
     "scheme": "mobilerobot",
     "userInterfaceStyle": "automatic",
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F3FAF6",
         "foregroundImage": "./assets/images/logocute.png",
         "backgroundImage": "./assets/images/logocute.png",
         "monochromeImage": "./assets/images/logocute.png"
@@ -29,10 +29,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F3FAF6",
           "android": {
             "image": "./assets/images/logocute.png",
-            "imageWidth": 76
+            "imageWidth": 120
           }
         }
       ]

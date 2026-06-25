@@ -49,7 +49,11 @@ export function useRobotVoice() {
   const stop = async () => {
     isSpeakingGlobal = false;
     setIsSpeaking(false);
-    Speech.stop();
+    try {
+      Speech.stop();
+    } catch (e) {
+      console.warn('Error stopping local TTS speech:', e);
+    }
     try {
       // Dừng và giải phóng bộ nhớ của âm thanh đang phát toàn cục
       if (globalActiveSound) {
@@ -106,9 +110,9 @@ export function useRobotVoice() {
       if (json.error === 0 && json.async) {
         const audioUrl = json.async;
 
-        // Chờ file âm thanh được FPT.AI tạo xong (tối đa 10 lần, cách nhau 300ms)
+        // Chờ file âm thanh được FPT.AI tạo xong (tối đa 30 lần, cách nhau 500ms -> tối đa 15s)
         let isReady = false;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 30; i++) {
           try {
             const check = await fetch(audioUrl, { method: 'HEAD' });
             if (currentId !== globalRequestCounter) return;
@@ -119,7 +123,7 @@ export function useRobotVoice() {
           } catch (e) {
             // Bỏ qua lỗi kết nối tạm thời khi file đang tạo
           }
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 500));
           if (currentId !== globalRequestCounter) return;
         }
 
@@ -128,11 +132,15 @@ export function useRobotVoice() {
         }
 
         // Cấu hình Audio Mode để phát ra loa ngoài tốt nhất
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          playThroughEarpieceAndroid: false,
-        });
+        try {
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            playThroughEarpieceAndroid: false,
+          });
+        } catch (audioModeError) {
+          console.warn('Audio.setAudioModeAsync failed (safe to ignore on emulator):', audioModeError);
+        }
 
         if (currentId !== globalRequestCounter) return;
 
@@ -157,10 +165,13 @@ export function useRobotVoice() {
           if (status.isLoaded && status.didJustFinish) {
             isSpeakingGlobal = false;
             setIsSpeaking(false);
-            sound.unloadAsync().catch(() => { });
             if (globalActiveSound === sound) {
               globalActiveSound = null;
             }
+            // Giải phóng âm thanh bất đồng bộ ở tick tiếp theo để tránh lỗi truy cập sai luồng (ExoPlayer thread crash)
+            setTimeout(() => {
+              sound.unloadAsync().catch(() => { });
+            }, 100);
           }
         });
       } else {
@@ -175,24 +186,31 @@ export function useRobotVoice() {
   };
 
   const speakFallback = (text: string) => {
-    isSpeakingGlobal = true;
-    Speech.speak(text, {
-      language: 'vi-VN',
-      pitch: 1.1,
-      rate: 0.9,
-      onDone: () => {
-        isSpeakingGlobal = false;
-        setIsSpeaking(false);
-      },
-      onError: () => {
-        isSpeakingGlobal = false;
-        setIsSpeaking(false);
-      },
-      onStopped: () => {
-        isSpeakingGlobal = false;
-        setIsSpeaking(false);
-      },
-    });
+    try {
+      isSpeakingGlobal = true;
+      Speech.speak(text, {
+        language: 'vi-VN',
+        pitch: 1.1,
+        rate: 0.9,
+        onDone: () => {
+          isSpeakingGlobal = false;
+          setIsSpeaking(false);
+        },
+        onError: (err) => {
+          isSpeakingGlobal = false;
+          setIsSpeaking(false);
+          console.warn('Local TTS callback error:', err);
+        },
+        onStopped: () => {
+          isSpeakingGlobal = false;
+          setIsSpeaking(false);
+        },
+      });
+    } catch (localTtsError) {
+      isSpeakingGlobal = false;
+      setIsSpeaking(false);
+      console.warn('Local TTS Speech.speak failed synchronously:', localTtsError);
+    }
   };
 
   // Dọn dẹp âm thanh khi component sử dụng hook này unmount

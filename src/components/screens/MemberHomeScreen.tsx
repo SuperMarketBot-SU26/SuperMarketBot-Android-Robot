@@ -64,7 +64,7 @@ export default function MemberHomeScreen() {
   const AnimatedView = Animated.createAnimatedComponent(View);
 
   return (
-    <View flex={1} backgroundColor="#f9fbf9" paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 30)}>
+    <View flex={1} backgroundColor="#f9fbf9" paddingTop={insets.top} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 0)}>
       <MemberHeader />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24 }}>
@@ -78,8 +78,9 @@ export default function MemberHomeScreen() {
             Hôm nay hệ thống đã chuẩn bị sẵn danh sách thực phẩm tươi sống nhất dành riêng cho gia đình bạn.
           </Text>
         </YStack>
-        {/* QUICK ACTIONS SECTION (4 Cột) */}
-        <XStack gap="$4" marginBottom="$8">
+        {/* QUICK ACTIONS SECTION (Lưới 2x2) */}
+        <YStack gap="$4" marginBottom="$8">
+          <XStack gap="$4">
 
           {/* Card 1: Tìm kiếm */}
           <Pressable
@@ -151,6 +152,9 @@ export default function MemberHomeScreen() {
               </YStack>
             </Card>
           </Pressable>
+
+          </XStack>
+          <XStack gap="$4">
 
           {/* Card 3: Camera */}
           <Pressable
@@ -245,8 +249,8 @@ export default function MemberHomeScreen() {
               </YStack>
             </AnimatedView>
           </Pressable>
-
-        </XStack>
+          </XStack>
+        </YStack>
 
 
         {/* SMART SUGGESTIONS SECTION */}
@@ -255,51 +259,63 @@ export default function MemberHomeScreen() {
           <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả gợi ý</Text>
         </XStack>
 
-        <XStack gap="$4">
+        <YStack gap="$4">
 
           {/* Suggestion 1: Thói quen */}
-          <Card size="$4" borderWidth={1} borderRadius={16} flex={1} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0">
-            <Image src="https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400" height={140} width="100%" />
-            <YStack padding="$4" gap="$2" flex={1} justifyContent="space-between">
-              <YStack gap="$1">
-                <XStack alignItems="center" gap="$1">
-                  <Clock size={12} color="#00A550" />
-                  <Text fontSize={10} fontWeight="bold" color="#00A550">THÓI QUEN MUA SẮM</Text>
-                </XStack>
-                <Text fontSize={15} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Bạn thường mua sữa vào tuần này</Text>
+          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+            <XStack gap="$3">
+              <Image src="https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400" width={100} height={100} borderRadius={12} />
+              <YStack flex={1} gap="$2" justifyContent="space-between">
+                <YStack gap="$1">
+                  <XStack alignItems="center" gap="$1">
+                    <Clock size={12} color="#00A550" />
+                    <Text fontSize={10} fontWeight="bold" color="#00A550">THÓI QUEN MUA SẮM</Text>
+                  </XStack>
+                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Bạn thường mua sữa vào tuần này</Text>
+                </YStack>
+                <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                  Thêm vào danh sách
+                </Button>
               </YStack>
-              <Button size="$3" borderRadius={20} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={12}>Thêm vào danh sách</Button>
-            </YStack>
+            </XStack>
           </Card>
 
           {/* Suggestion 2: Món ăn kèm */}
-          <Card size="$4" borderWidth={1} borderRadius={16} flex={1} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0">
-            <Image src="https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=400" height={140} width="100%" />
-            <YStack padding="$4" gap="$2" flex={1} justifyContent="space-between">
-              <YStack gap="$1">
-                <XStack alignItems="center" gap="$1">
-                  <Utensils size={12} color="#d97706" />
-                  <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý MÓN ĂN KÈM</Text>
-                </XStack>
-                <Text fontSize={15} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Salad ức gà cho tối nay?</Text>
+          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+            <XStack gap="$3">
+              <Image src="https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=400" width={100} height={100} borderRadius={12} />
+              <YStack flex={1} gap="$2" justifyContent="space-between">
+                <YStack gap="$1">
+                  <XStack alignItems="center" gap="$1">
+                    <Utensils size={12} color="#d97706" />
+                    <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý MÓN ĂN KÈM</Text>
+                  </XStack>
+                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Salad ức gà cho tối nay?</Text>
+                </YStack>
+                <Button size="$3" borderRadius={12} backgroundColor="#fffbeb" color="#d97706" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                  Xem công thức
+                </Button>
               </YStack>
-              <Button size="$3" borderRadius={20} backgroundColor="#fffbeb" color="#d97706" fontWeight="bold" fontSize={12}>Xem công thức</Button>
-            </YStack>
+            </XStack>
           </Card>
 
           {/* Suggestion 3: Giá tốt */}
-          <Card size="$4" borderWidth={1} borderRadius={16} flex={1} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0">
-            <Image src="https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400" height={140} width="100%" />
-            <YStack padding="$4" gap="$2" flex={1} justifyContent="space-between">
-              <YStack gap="$1">
-                <XStack alignItems="center" gap="$1">
-                  <TrendingDown size={12} color="#00A550" />
-                  <Text fontSize={10} fontWeight="bold" color="#00A550">GIÁ TỐT HÔM NAY</Text>
-                </XStack>
-                <Text fontSize={15} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Cam Sành đang giảm giá 20%</Text>
+          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+            <XStack gap="$3">
+              <Image src="https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400" width={100} height={100} borderRadius={12} />
+              <YStack flex={1} gap="$2" justifyContent="space-between">
+                <YStack gap="$1">
+                  <XStack alignItems="center" gap="$1">
+                    <TrendingDown size={12} color="#00A550" />
+                    <Text fontSize={10} fontWeight="bold" color="#00A550">GIÁ TỐT HÔM NAY</Text>
+                  </XStack>
+                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Cam Sành đang giảm giá 20%</Text>
+                </YStack>
+                <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                  Mua ngay
+                </Button>
               </YStack>
-              <Button size="$3" borderRadius={20} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={12}>Mua ngay</Button>
-            </YStack>
+            </XStack>
           </Card>
 
           {/* Suggestion 4: AI Phân tích */}
@@ -336,7 +352,7 @@ export default function MemberHomeScreen() {
             </YStack>
           </Card>
 
-        </XStack>
+        </YStack>
 
       </ScrollView>
     </View>

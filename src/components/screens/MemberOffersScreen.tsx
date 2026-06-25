@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Progress } from 'tamagui';
-import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket } from 'lucide-react-native';
+import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
@@ -56,54 +56,56 @@ export default function MemberOffersScreen() {
   }, []);
 
   return (
-    <View flex={1} backgroundColor="#eef4ee" paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 30)}>
+    <View flex={1} backgroundColor="#eef4ee" paddingTop={insets.top} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 0)}>
       {/* HEADER SECTION */}
-      <XStack
+      <YStack
         width="100%"
-        justifyContent="space-between"
-        alignItems="center"
-        paddingHorizontal="$6"
-        paddingVertical="$4"
+        paddingHorizontal="$4"
+        paddingTop="$4"
+        paddingBottom="$4"
         backgroundColor="transparent"
+        gap="$3"
       >
-        <XStack alignItems="center" gap="$4">
-          <Button
-            circular
-            size="$3.5"
-            backgroundColor="white"
-            borderWidth={1}
-            borderColor="#e0e8e0"
-            onPress={() => router.back()}
-            icon={<ArrowLeft size={18} color="#005b2b" />}
-            pressStyle={{ scale: 0.95, backgroundColor: '#f0fdf4' }}
-            style={{ elevation: 2 }}
-          />
-          <YStack gap="$0.5">
-            <Text fontSize={24} fontWeight="bold" color="#005b2b" fontFamily="$heading">
+        <XStack justifyContent="space-between" alignItems="center">
+          <XStack alignItems="center" gap="$3">
+            <Button
+              circular
+              size="$3.5"
+              backgroundColor="white"
+              borderWidth={1}
+              borderColor="#e0e8e0"
+              onPress={() => router.back()}
+              icon={<ArrowLeft size={18} color="#005b2b" />}
+              pressStyle={{ scale: 0.95, backgroundColor: '#f0fdf4' }}
+              style={{ elevation: 2 }}
+            />
+            <Text fontSize={20} fontWeight="bold" color="#005b2b" fontFamily="$heading">
               Ưu đãi dành riêng cho bạn
             </Text>
-            <Text fontSize={13} color="#556b55" fontWeight="500">
-              SmartMarketBot đã chọn lọc những khuyến mãi tốt nhất cho giỏ hàng của bạn.
-            </Text>
-          </YStack>
+          </XStack>
         </XStack>
 
-        {/* Member Level Badge */}
-        <XStack
-          backgroundColor="#fef6e0"
-          paddingHorizontal="$3.5"
-          paddingVertical="$2"
-          borderRadius={20}
-          alignItems="center"
-          gap="$2"
-          borderWidth={1}
-          borderColor="#fde8b7"
-          style={{ elevation: 1 }}
-        >
-          <View width={8} height={8} borderRadius={4} backgroundColor="#d97706" />
-          <Text fontSize={12} color="#d97706" fontWeight="bold">Thành viên Vàng</Text>
+        <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
+          <Text fontSize={13} color="#556b55" fontWeight="500" paddingLeft="$1" flex={1}>
+            SmartMarketBot đã chọn lọc những khuyến mãi tốt nhất cho giỏ hàng của bạn.
+          </Text>
+          {/* Member Level Badge */}
+          <XStack
+            backgroundColor="#fef6e0"
+            paddingHorizontal="$3"
+            paddingVertical="$1.5"
+            borderRadius={20}
+            alignItems="center"
+            gap="$2"
+            borderWidth={1}
+            borderColor="#fde8b7"
+            style={{ elevation: 1 }}
+          >
+            <View width={6} height={6} borderRadius={3} backgroundColor="#d97706" />
+            <Text fontSize={10} color="#d97706" fontWeight="bold">Hạng Vàng</Text>
+          </XStack>
         </XStack>
-      </XStack>
+      </YStack>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 80 }}>
 
@@ -114,83 +116,101 @@ export default function MemberOffersScreen() {
             <Text fontSize={18} fontWeight="bold" color="#005b2b">Voucher của bạn</Text>
           </XStack>
 
-          <XStack gap="$4">
+          <YStack gap="$4">
             {/* Voucher 1 */}
-            <Card flex={1} height={120} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
-              <XStack flex={1}>
-                {/* Left Cut */}
-                <YStack 
-                  width={85} 
-                  backgroundColor="#22c55e" 
-                  justifyContent="center" 
-                  alignItems="center"
-                  borderRightWidth={1.5}
-                  borderRightColor="rgba(255, 255, 255, 0.6)"
-                  borderStyle="dashed"
-                >
-                  <Text fontSize={18} fontWeight="bold" color="white">20k</Text>
-                  <Text fontSize={11} color="white" fontWeight="600">OFF</Text>
-                </YStack>
+            <Card flex={1} borderRadius={16} backgroundColor="white" padding="$4" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}>
+              <XStack gap="$3" alignItems="flex-start">
+                {/* Small colorful badge on the left */}
+                <View width={56} height={56} borderRadius={14} backgroundColor="#f0fdf4" justifyContent="center" alignItems="center" borderWidth={1} borderColor="#dcfce7">
+                  <Text fontSize={18} fontWeight="900" color="#16a34a">20k</Text>
+                  <Text fontSize={10} fontWeight="bold" color="#16a34a">GIẢM</Text>
+                </View>
 
-                {/* Right Content */}
-                <XStack flex={1} paddingHorizontal="$4" paddingVertical="$3" justifyContent="space-between" alignItems="center">
-                  <YStack gap="$0.5" flex={1} marginRight="$2">
-                    <Text fontSize={11} fontWeight="bold" color="#22c55e" letterSpacing={0.5}>GIAM20FRESH</Text>
-                    <Text fontSize={16} fontWeight="bold" color="#111" lineHeight={20}>Giảm 20.000</Text>
-                    <Text fontSize={11} fontWeight="500" color="#666" lineHeight={14}>VNĐ cho đơn từ 200k</Text>
-                    <Text fontSize={9} color="#999" marginTop="$1">HSD: Hạn 2 ngày nữa</Text>
-                  </YStack>
-                  <Button
-                    backgroundColor="#00A550"
-                    size="$2.5"
-                    borderRadius={15}
-                    onPress={() => speak('Voucher 20 nghìn đã được áp dụng vào giỏ hàng của bạn!')}
-                    pressStyle={{ backgroundColor: '#008740' }}
-                  >
-                    <Text color="white" fontSize={11} fontWeight="bold">Dùng ngay</Text>
-                  </Button>
-                </XStack>
+                {/* Info on the right */}
+                <YStack flex={1} gap="$1.5">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <Text fontSize={11} fontWeight="bold" color="#666" backgroundColor="#f1f5f9" paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={6}>
+                      Mã: GIAM20FRESH
+                    </Text>
+                    <XStack alignItems="center" gap="$1">
+                      <Clock size={10} color="#f59e0b" />
+                      <Text fontSize={10} color="#f59e0b" fontWeight="600">Sắp hết hạn</Text>
+                    </XStack>
+                  </XStack>
+                  
+                  <Text fontSize={15} fontWeight="bold" color="#111" numberOfLines={2} lineHeight={20}>
+                    Giảm 20.000đ cho các mặt hàng Thực phẩm Tươi sống (Đơn từ 200k)
+                  </Text>
+                </YStack>
+              </XStack>
+
+              {/* Divider */}
+              <View height={1} marginVertical="$3" overflow="hidden">
+                <View height={2} borderWidth={1} borderColor="#e2e8f0" borderStyle="dashed" marginTop={-1} />
+              </View>
+
+              {/* Footer */}
+              <XStack justifyContent="space-between" alignItems="center">
+                <Text fontSize={11} color="#888" fontWeight="500">HSD: Còn 2 ngày nữa</Text>
+                <Button 
+                  size="$3" 
+                  backgroundColor="#16a34a" 
+                  borderRadius={20} 
+                  paddingHorizontal="$4" 
+                  height={32}
+                  onPress={() => speak('Voucher 20 nghìn đã được áp dụng vào giỏ hàng của bạn!')}
+                  pressStyle={{ backgroundColor: '#15803d', scale: 0.95 }}
+                >
+                  <Text color="white" fontSize={12} fontWeight="bold">Dùng ngay</Text>
+                </Button>
               </XStack>
             </Card>
 
             {/* Voucher 2 */}
-            <Card flex={1} height={120} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
-              <XStack flex={1}>
-                {/* Left Cut */}
-                <YStack 
-                  width={85} 
-                  backgroundColor="#f97316" 
-                  justifyContent="center" 
-                  alignItems="center"
-                  borderRightWidth={1.5}
-                  borderRightColor="rgba(255, 255, 255, 0.6)"
-                  borderStyle="dashed"
-                >
-                  <Text fontSize={18} fontWeight="bold" color="white">50k</Text>
-                  <Text fontSize={11} color="white" fontWeight="600">OFF</Text>
-                </YStack>
+            <Card flex={1} borderRadius={16} backgroundColor="white" padding="$4" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}>
+              <XStack gap="$3" alignItems="flex-start">
+                {/* Small colorful badge on the left */}
+                <View width={56} height={56} borderRadius={14} backgroundColor="#fff7ed" justifyContent="center" alignItems="center" borderWidth={1} borderColor="#ffedd5">
+                  <Text fontSize={18} fontWeight="900" color="#ea580c">50k</Text>
+                  <Text fontSize={10} fontWeight="bold" color="#ea580c">GIẢM</Text>
+                </View>
 
-                {/* Right Content */}
-                <XStack flex={1} paddingHorizontal="$4" paddingVertical="$3" justifyContent="space-between" alignItems="center">
-                  <YStack gap="$0.5" flex={1} marginRight="$2">
-                    <Text fontSize={11} fontWeight="bold" color="#f97316" letterSpacing={0.5}>FRESHA150</Text>
-                    <Text fontSize={16} fontWeight="bold" color="#111" lineHeight={20}>Giảm 50.000</Text>
-                    <Text fontSize={11} fontWeight="500" color="#666" lineHeight={14}>VNĐ cho đơn đầu tiên</Text>
-                    <Text fontSize={9} color="#999" marginTop="$1">HSD: Hạn 31/07</Text>
-                  </YStack>
-                  <Button
-                    backgroundColor="#00A550"
-                    size="$2.5"
-                    borderRadius={15}
-                    onPress={() => speak('Voucher 50 nghìn đã được áp dụng vào giỏ hàng của bạn!')}
-                    pressStyle={{ backgroundColor: '#008740' }}
-                  >
-                    <Text color="white" fontSize={11} fontWeight="bold">Dùng ngay</Text>
-                  </Button>
-                </XStack>
+                {/* Info on the right */}
+                <YStack flex={1} gap="$1.5">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <Text fontSize={11} fontWeight="bold" color="#666" backgroundColor="#f1f5f9" paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={6}>
+                      Mã: FRESHA150
+                    </Text>
+                  </XStack>
+                  
+                  <Text fontSize={15} fontWeight="bold" color="#111" numberOfLines={2} lineHeight={20}>
+                    Giảm 50.000đ áp dụng cho mọi sản phẩm. Dành riêng cho Đơn hàng đầu tiên.
+                  </Text>
+                </YStack>
+              </XStack>
+
+              {/* Divider */}
+              <View height={1} marginVertical="$3" overflow="hidden">
+                <View height={2} borderWidth={1} borderColor="#e2e8f0" borderStyle="dashed" marginTop={-1} />
+              </View>
+
+              {/* Footer */}
+              <XStack justifyContent="space-between" alignItems="center">
+                <Text fontSize={11} color="#888" fontWeight="500">HSD: 31/07/2026</Text>
+                <Button 
+                  size="$3" 
+                  backgroundColor="#ea580c" 
+                  borderRadius={20} 
+                  paddingHorizontal="$4" 
+                  height={32}
+                  onPress={() => speak('Voucher 50 nghìn đã được áp dụng vào giỏ hàng của bạn!')}
+                  pressStyle={{ backgroundColor: '#c2410c', scale: 0.95 }}
+                >
+                  <Text color="white" fontSize={12} fontWeight="bold">Dùng ngay</Text>
+                </Button>
               </XStack>
             </Card>
-          </XStack>
+          </YStack>
         </YStack>
 
         {/* EXCLUSIVE OFFERS */}
@@ -365,7 +385,7 @@ export default function MemberOffersScreen() {
             </XStack>
           </XStack>
 
-          <XStack gap="$4">
+          <YStack gap="$4">
             {/* Flash Sale Item 1 */}
             <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
               <XStack padding="$3" gap="$3" alignItems="center">
@@ -423,7 +443,7 @@ export default function MemberOffersScreen() {
                 </Button>
               </XStack>
             </Card>
-          </XStack>
+          </YStack>
         </YStack>
 
       </ScrollView>

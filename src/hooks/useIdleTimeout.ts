@@ -14,8 +14,8 @@ export function useIdleTimeout(timeoutMs: number = 60000) {
     // Nếu đang ở trang chủ (màn hình avatar) thì không cần đếm giờ để đẩy về nữa
     if (pathname !== '/') {
       timerRef.current = setTimeout(() => {
-        // Hết giờ -> Chuyển về màn hình Welcome (Avatar)
-        router.replace('/');
+        // Hết giờ -> Chuyển về màn hình Welcome (Avatar) và bỏ qua kịch bản loading 3s
+        router.replace('/?skipStartup=true');
       }, timeoutMs);
     }
   };

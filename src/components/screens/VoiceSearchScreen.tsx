@@ -1,24 +1,24 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, Pressable, Image } from 'react-native';
-import { View, Text, XStack, YStack, Button, Card } from 'tamagui';
-import { Mic, X, Sparkles, Volume2, MapPin, Info, ShoppingBag } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Info, MapPin, Mic, ShoppingBag, Sparkles, Volume2, X } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, Pressable, StyleSheet } from 'react-native';
 import Animated, {
-  useSharedValue,
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  SharedValue,
   useAnimatedStyle,
+  useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
-  withDelay,
-  Easing,
-  interpolate,
-  SharedValue,
-  ZoomIn,
-  FadeInDown,
-  FadeInUp,
+  ZoomIn
 } from 'react-native-reanimated';
-import { useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
-import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Card, Text, View, XStack, YStack } from 'tamagui';
+import { isRobotVoiceSpeaking, useRobotVoice } from '../../hooks/useRobotVoice';
 
 // Import logo robot cute từ thư mục assets
 const logoCuteSource = require('../../../assets/images/logocute.png');
@@ -37,6 +37,14 @@ export default function VoiceSearchScreen() {
   const [status, setStatus] = useState<'initial' | 'listening' | 'processing' | 'success'>('initial');
   const [transcript, setTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
+
+  // Ref để quản lý các timeout của giả lập gõ chữ thời gian thực
+  const voiceTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearVoiceTimeouts = () => {
+    voiceTimeouts.current.forEach(clearTimeout);
+    voiceTimeouts.current = [];
+  };
 
   // Animation values
   const pulseScale1 = useSharedValue(1);
@@ -83,6 +91,7 @@ export default function VoiceSearchScreen() {
 
     return () => {
       clearTimeout(startTimer);
+      clearVoiceTimeouts();
       stop();
     };
   }, []);
@@ -113,6 +122,7 @@ export default function VoiceSearchScreen() {
 
   // Bắt đầu lắng nghe giọng nói
   const startVoiceListening = async () => {
+    clearVoiceTimeouts();
     setStatus('listening');
     setTranscript('Đang lắng nghe...');
     setAiResponse('');
@@ -173,16 +183,37 @@ export default function VoiceSearchScreen() {
     animateWave(waveHeight4, 16, 55, 370);
     animateWave(waveHeight5, 10, 32, 430);
 
-    // Giả lập nhận diện sau 4.5 giây
-    setTimeout(() => {
+    // Giả lập nhận diện thời gian thực bám sát nhịp độ nói (Voice-paced Typewriter Effect)
+    const simulatedSpeechSequence = [
+      { word: 'Nước', delay: 400 },
+      { word: 'ép', delay: 250 },
+      { word: 'cam', delay: 300 },
+      { word: 'nguyên', delay: 600 }, // Ngập ngừng nhẹ mô phỏng người nói suy nghĩ
+      { word: 'chất', delay: 350 },
+    ];
+    let currentText = '';
+    let accumulatedTime = 1500; // Đợi 1.5s sau khi hiện 'Đang lắng nghe...'
+    
+    simulatedSpeechSequence.forEach((item, index) => {
+      accumulatedTime += item.delay;
+      const timeoutId = setTimeout(() => {
+        currentText += (index === 0 ? '' : ' ') + item.word;
+        setTranscript(currentText);
+      }, accumulatedTime);
+      voiceTimeouts.current.push(timeoutId);
+    });
+
+    // Sau khi chữ hiện ra hết, tự động chuyển sang xử lý sau một nhịp chờ
+    const finalTimeoutId = setTimeout(() => {
       simulateVoiceRecognition();
-    }, 4500);
+    }, accumulatedTime + 500);
+    voiceTimeouts.current.push(finalTimeoutId);
   };
 
   // Giả lập nhận diện thành công
   const simulateVoiceRecognition = () => {
     setStatus('processing');
-    setTranscript('“ Nước ép cam nguyên chất ”');
+    setTranscript('Nước ép cam nguyên chất');
 
     // Dừng ripple animation của Mic
     pulseScale1.value = withTiming(1);
@@ -236,7 +267,7 @@ export default function VoiceSearchScreen() {
 
   return (
     <View flex={1} backgroundColor="#F3FAF6" style={styles.container}>
-      
+
       {/* 1. FRESH LIGHT BACKGROUND GRID */}
       <View position="absolute" top={0} left={0} right={0} bottom={0} opacity={0.06} zIndex={0}>
         {[...Array(12)].map((_, i) => (
@@ -252,7 +283,7 @@ export default function VoiceSearchScreen() {
       <View position="absolute" bottom={-120} right={-60} width={260} height={260} borderRadius={130} backgroundColor="#E2F7EC" opacity={0.8} />
 
       {/* TOP HEADER */}
-      <XStack 
+      <XStack
         position="absolute"
         top={0}
         left={0}
@@ -274,7 +305,7 @@ export default function VoiceSearchScreen() {
             <Text fontSize={9.5} color="#357A57" fontWeight="600">📍 Vị trí: Lối vào chính • Kiosk #01</Text>
           </XStack>
         </YStack>
-        
+
         <Button
           size="$3"
           circular
@@ -290,152 +321,107 @@ export default function VoiceSearchScreen() {
         />
       </XStack>
 
-      {/* MAIN TWO-COLUMN DASHBOARD (Môi trường siêu thị thực tế) */}
-      <XStack
+      {/* MAIN VERTICAL DASHBOARD (Môi trường siêu thị thực tế - Portrait Mobile) */}
+      <YStack
         flex={1}
-        paddingTop={Math.max(insets.top, 20) + 48}
-        paddingBottom={Math.max(insets.bottom, 12)}
+        paddingTop={Math.max(insets.top, 20) + 50}
+        paddingBottom={Math.max(insets.bottom, 24)}
         paddingHorizontal="$6"
-        gap="$6"
+        gap="$4"
         zIndex={10}
         alignItems="center"
+        justifyContent="space-between"
       >
+        {/* TOP: Transcript & Status */}
+        <YStack width="100%" alignItems="center" gap="$4" flex={1} justifyContent="center">
+          <Animated.View entering={FadeInDown.duration(450).springify()} style={{ width: '100%', alignItems: 'center' }}>
+            <Text fontSize={28} fontWeight="900" color="#0C3823" textAlign="center" lineHeight={40} style={styles.transcriptText}>
+              {transcript ? `“ ${transcript} ”` : 'Hãy nói tên sản phẩm bạn muốn tìm...'}
+            </Text>
+          </Animated.View>
 
-        {/* LEFT COLUMN: Cute Robot Avatar, Active Status Badge, and Supermarket AI Tips */}
-        <YStack width="36%" justifyContent="center" alignItems="center" gap="$4" style={styles.leftCol}>
+          {/* AI Shelf Position Guide */}
+          {aiResponse ? (
+            <Animated.View entering={ZoomIn.duration(400)} style={{ width: '100%' }}>
+              <Card
+                backgroundColor="#FFFFFF"
+                borderWidth={1.5}
+                borderColor="#10B981"
+                borderRadius={16}
+                paddingHorizontal="$4"
+                paddingVertical="$3"
+                style={styles.supermarketNotification}
+              >
+                <XStack gap="$3" alignItems="center">
+                  <View width={36} height={36} borderRadius={18} backgroundColor="rgba(16, 185, 129, 0.15)" justifyContent="center" alignItems="center">
+                    <MapPin size={16} color="#10B981" />
+                  </View>
+                  <YStack flex={1}>
+                    <Text fontSize={11} fontWeight="900" color="#10B981" letterSpacing={0.5}>ĐÃ XÁC ĐỊNH KỆ HÀNG</Text>
+                    <Text fontSize={13} color="#0C3823" fontWeight="700" lineHeight={18}>
+                      {aiResponse}
+                    </Text>
+                  </YStack>
+                </XStack>
+              </Card>
+            </Animated.View>
+          ) : (
+            <Animated.View key={status} entering={ZoomIn.duration(300)}>
+              {status === 'listening' && (
+                <XStack backgroundColor="rgba(16, 185, 129, 0.15)" borderWidth={1} borderColor="rgba(16, 185, 129, 0.4)" borderRadius={20} paddingHorizontal="$4" paddingVertical="$1.5" gap="$2" alignItems="center">
+                  <Volume2 size={12} color="#0F5132" />
+                  <Text fontSize={10} color="#0F5132" fontWeight="900" letterSpacing={1.2}>AI LISTENING ACTIVE</Text>
+                </XStack>
+              )}
+              {status === 'processing' && (
+                <XStack backgroundColor="rgba(234,179,8,0.15)" borderWidth={1} borderColor="rgba(234,179,8,0.4)" borderRadius={20} paddingHorizontal="$4" paddingVertical="$1.5" gap="$2" alignItems="center">
+                  <Sparkles size={12} color="#b45309" />
+                  <Text fontSize={10} color="#b45309" fontWeight="900" letterSpacing={1.2}>PROCESSING AUDIO...</Text>
+                </XStack>
+              )}
+            </Animated.View>
+          )}
+        </YStack>
+
+        {/* MIDDLE: Robot Avatar */}
+        <YStack width="100%" justifyContent="center" alignItems="center" flex={1.2}>
           <Animated.View style={[styles.robotContainer, robotAnimatedStyle]}>
             {/* Glowing Aura Ring */}
-            <View position="absolute" width={150} height={150} borderRadius={75} borderWidth={2.5} borderColor="rgba(16, 185, 129, 0.35)" style={styles.shieldRing} />
+            <View position="absolute" width={180} height={180} borderRadius={90} borderWidth={3} borderColor="rgba(16, 185, 129, 0.35)" style={styles.shieldRing} />
 
             {/* Inner Avatar */}
-            <View width={110} height={110} borderRadius={55} backgroundColor="#FFFFFF" borderWidth={2.5} borderColor="#10B981" justifyContent="center" alignItems="center" style={[styles.avatarInner, { overflow: 'hidden' }]}>
-              {/* Tích hợp hình ảnh Robot Cute logocute.png */}
-              <Image 
-                source={logoCuteSource} 
-                style={styles.robotImage} 
-              />
+            <View width={130} height={130} borderRadius={65} backgroundColor="#FFFFFF" borderWidth={3} borderColor="#10B981" justifyContent="center" alignItems="center" style={[styles.avatarInner, { overflow: 'hidden' }]}>
+              <Image source={logoCuteSource} style={{ width: 140, height: 140, resizeMode: 'contain' }} />
             </View>
 
             {/* Glowing tech corners */}
-            <View position="absolute" top={-5} left={-5} width={18} height={18} borderTopWidth={3} borderLeftWidth={3} borderColor="#10B981" />
-            <View position="absolute" top={-5} right={-5} width={18} height={18} borderTopWidth={3} borderRightWidth={3} borderColor="#10B981" />
-            <View position="absolute" bottom={-5} left={-5} width={18} height={18} borderBottomWidth={3} borderLeftWidth={3} borderColor="#10B981" />
-            <View position="absolute" bottom={-5} right={-5} width={18} height={18} borderBottomWidth={3} borderRightWidth={3} borderColor="#10B981" />
-          </Animated.View>
-
-          {/* Status Badge */}
-          <YStack alignItems="center" gap="$2.5" width="100%">
-            <Animated.View key={status} entering={ZoomIn.duration(300)}>
-              {status === 'listening' && (
-                <XStack backgroundColor="rgba(16, 185, 129, 0.15)" borderWidth={1} borderColor="rgba(16, 185, 129, 0.4)" borderRadius={20} paddingHorizontal="$3.5" paddingVertical="$1" gap="$1.5" alignItems="center">
-                  <Volume2 size={11} color="#0F5132" />
-                  <Text fontSize={9} color="#0F5132" fontWeight="900" letterSpacing={1.2}>AI LISTENING ACTIVE</Text>
-                </XStack>
-              )}
-
-              {status === 'processing' && (
-                <XStack backgroundColor="rgba(234,179,8,0.15)" borderWidth={1} borderColor="rgba(234,179,8,0.4)" borderRadius={20} paddingHorizontal="$3.5" paddingVertical="$1" gap="$1.5" alignItems="center">
-                  <Sparkles size={11} color="#b45309" />
-                  <Text fontSize={9} color="#b45309" fontWeight="900" letterSpacing={1.2}>PROCESSING AUDIO...</Text>
-                </XStack>
-              )}
-
-              {status === 'success' && (
-                <XStack backgroundColor="rgba(16, 185, 129, 0.2)" borderWidth={1} borderColor="rgba(16, 185, 129, 0.5)" borderRadius={20} paddingHorizontal="$3.5" paddingVertical="$1" gap="$1.5" alignItems="center">
-                  <Sparkles size={11} color="#0F5132" />
-                  <Text fontSize={9} color="#0F5132" fontWeight="900" letterSpacing={1.2}>AI RECOGNIZED SUCCESS</Text>
-                </XStack>
-              )}
-            </Animated.View>
-          </YStack>
-
-          {/* Supermarket Shopping Tip Box */}
-          <Animated.View entering={FadeInUp.delay(150).duration(400)} style={{ width: '100%' }}>
-            <Card
-              backgroundColor="#FFFFFF"
-              borderWidth={1}
-              borderColor="rgba(16, 185, 129, 0.25)"
-              borderRadius={14}
-              padding="$3"
-              style={styles.tipCard}
-            >
-              <XStack gap="$2" alignItems="flex-start">
-                <Info size={13} color="#10B981" style={{ marginTop: 1 }} />
-                <YStack flex={1} gap="$1">
-                  <Text fontSize={9.5} color="#0F5132" fontWeight="bold" letterSpacing={0.5}>MẸO MUA SẮM NHANH</Text>
-                  <Text fontSize={9} color="#4A5568" lineHeight={12} fontWeight="500">
-                    Quý khách có thể nói to rõ: "Sữa tươi Vinamilk", "Tìm đùi gà CP", hoặc "Táo chín đỏ nằm ở đâu?" để Robot định vị ngay.
-                  </Text>
-                </YStack>
-              </XStack>
-            </Card>
+            <View position="absolute" top={-15} left={-15} width={24} height={24} borderTopWidth={4} borderLeftWidth={4} borderColor="#10B981" />
+            <View position="absolute" top={-15} right={-15} width={24} height={24} borderTopWidth={4} borderRightWidth={4} borderColor="#10B981" />
+            <View position="absolute" bottom={-15} left={-15} width={24} height={24} borderBottomWidth={4} borderLeftWidth={4} borderColor="#10B981" />
+            <View position="absolute" bottom={-15} right={-15} width={24} height={24} borderBottomWidth={4} borderRightWidth={4} borderColor="#10B981" />
           </Animated.View>
         </YStack>
 
-        {/* RIGHT COLUMN: Transcript, Waves, Mic, Supermarket Guide & Quick Shopping Chips (Width: 64%) */}
-        <YStack width="64%" justifyContent="center" alignItems="center" gap="$4" style={styles.rightCol}>
-
-          {/* Spoken words panel */}
-          <YStack width="100%" alignItems="center" gap="$2.5">
-            <Animated.View key={transcript} entering={FadeInDown.duration(450).springify()} style={{ width: '100%' }}>
-              <Text fontSize={24} fontWeight="900" color="#0C3823" textAlign="center" lineHeight={32} style={styles.transcriptText}>
-                {transcript || 'Hãy nói tên sản phẩm bạn muốn tìm...'}
-              </Text>
-            </Animated.View>
-
-            {/* AI Shelf Position Guide (Nhận diện môi trường siêu thị thực tế) */}
-            {aiResponse ? (
-              <Animated.View entering={ZoomIn.duration(400)} style={{ width: '100%', maxWidth: 460 }}>
-                <Card
-                  backgroundColor="#FFFFFF"
-                  borderWidth={1.5}
-                  borderColor="#10B981"
-                  borderRadius={14}
-                  paddingHorizontal="$3.5"
-                  paddingVertical="$2.5"
-                  style={styles.supermarketNotification}
-                >
-                  <XStack gap="$3" alignItems="center">
-                    <View width={26} height={26} borderRadius={13} backgroundColor="rgba(16, 185, 129, 0.15)" justifyContent="center" alignItems="center">
-                      <MapPin size={12} color="#10B981" />
-                    </View>
-                    <YStack flex={1}>
-                      <Text fontSize={10} fontWeight="900" color="#10B981" letterSpacing={0.5}>ĐÃ XÁC ĐỊNH BẢN ĐỒ KỆ HÀNG</Text>
-                      <Text fontSize={11} color="#0C3823" fontWeight="700" lineHeight={15}>
-                        {aiResponse}
-                      </Text>
-                    </YStack>
-                  </XStack>
-                </Card>
-              </Animated.View>
-            ) : (
-              /* Thể hiện cảnh báo âm thanh ở siêu thị đông người */
-              <XStack gap="$2" alignItems="center" opacity={0.8} marginTop="$1">
-                <Volume2 size={12} color="#357A57" />
-                <Text fontSize={9.5} color="#357A57" fontWeight="600">🔊 Hệ thống loa đang phát hướng dẫn • Vui lòng lắng nghe</Text>
-              </XStack>
-            )}
-          </YStack>
-
+        {/* BOTTOM: Equalizer, Mic, Suggestions */}
+        <YStack width="100%" alignItems="center" gap="$5" flex={1.5} justifyContent="flex-end">
+          
           {/* Equalizer Visualizer & Core Mic Row */}
-          <XStack width="100%" justifyContent="center" alignItems="center" gap="$6" height={100}>
-            {/* Sound waves (Left side of Mic) */}
-            <XStack gap={5.5} height={80} alignItems="center">
+          <XStack width="100%" justifyContent="center" alignItems="center" gap="$8" height={100}>
+            {/* Sound waves (Left) */}
+            <XStack gap={6} height={80} alignItems="center">
               <Animated.View style={[styles.waveBar, barStyle1]} />
               <Animated.View style={[styles.waveBar, barStyle2]} />
-              <Animated.View style={[styles.waveBar, barStyle3, styles.activeWaveBar]} />
-              <Animated.View style={[styles.waveBar, barStyle4]} />
-              <Animated.View style={[styles.waveBar, barStyle5]} />
             </XStack>
 
-            {/* Microphone Button with Ripples */}
-            <View position="relative" width={110} height={110} justifyContent="center" alignItems="center">
-              <Animated.View style={[styles.ripple, rippleStyle1]} />
-              <Animated.View style={[styles.ripple, rippleStyle2]} />
+            {/* Microphone Button */}
+            <View position="relative" width={100} height={100} justifyContent="center" alignItems="center">
+              <Animated.View style={[styles.ripple, rippleStyle1, { width: 90, height: 90, borderRadius: 45 }]} />
+              <Animated.View style={[styles.ripple, rippleStyle2, { width: 90, height: 90, borderRadius: 45 }]} />
 
               <Pressable
                 onPress={() => {
                   if (status === 'listening') {
+                    clearVoiceTimeouts();
                     stop();
                     setStatus('initial');
                     setTranscript('Đã tạm dừng. Nhấn nút để thử lại.');
@@ -446,60 +432,76 @@ export default function VoiceSearchScreen() {
                 style={({ pressed }) => [
                   styles.micButton,
                   {
+                    width: 80, height: 80, borderRadius: 40,
                     backgroundColor: status === 'listening' ? '#10B981' : '#FFFFFF',
                     borderColor: status === 'listening' ? '#059669' : 'rgba(16, 185, 129, 0.35)',
                     transform: [{ scale: pressed ? 0.92 : 1 }],
                   }
                 ]}
               >
-                <Mic size={26} color={status === 'listening' ? '#FFFFFF' : '#10B981'} style={styles.micIcon} />
+                <Mic size={32} color={status === 'listening' ? '#FFFFFF' : '#10B981'} style={styles.micIcon} />
               </Pressable>
             </View>
+
+            {/* Sound waves (Right) */}
+            <XStack gap={6} height={80} alignItems="center">
+              <Animated.View style={[styles.waveBar, barStyle4]} />
+              <Animated.View style={[styles.waveBar, barStyle5]} />
+            </XStack>
           </XStack>
 
-          {/* QUICK groceries Suggestion chips */}
+          {/* Tips / Suggestions Box to fill bottom space nicely */}
           {status !== 'success' && (
-            <Animated.View entering={FadeInUp.delay(300).duration(450)} style={{ width: '100%', marginTop: 4 }}>
-              <YStack gap="$2" width="100%" alignItems="center">
-                <XStack alignItems="center" gap="$1.5">
-                  <ShoppingBag size={11} color="#10B981" />
-                  <Text fontSize={9.5} fontWeight="bold" color="#357A57" letterSpacing={1.5}>GỢI Ý MUA SẮM HÔM NAY</Text>
+            <Animated.View entering={FadeInUp.delay(300).duration(450)} style={{ width: '100%', marginTop: 10 }}>
+              <Card
+                backgroundColor="#FFFFFF"
+                borderWidth={1}
+                borderColor="rgba(16, 185, 129, 0.25)"
+                borderRadius={16}
+                padding="$4"
+                style={styles.tipCard}
+              >
+                <XStack gap="$3" alignItems="flex-start">
+                  <Info size={16} color="#10B981" style={{ marginTop: 2 }} />
+                  <YStack flex={1} gap="$2">
+                    <Text fontSize={12} color="#0F5132" fontWeight="bold" letterSpacing={0.5}>MẸO MUA SẮM</Text>
+                    <Text fontSize={12} color="#4A5568" lineHeight={18} fontWeight="500">
+                      Hãy nói to tên sản phẩm bạn cần tìm, ví dụ: "Sữa tươi Vinamilk", hoặc bấm vào các gợi ý bên dưới.
+                    </Text>
+                    
+                    <XStack gap="$2" flexWrap="wrap" marginTop="$2">
+                      {[
+                        { text: 'Súp lơ xanh 🥦', query: 'súp lơ' },
+                        { text: 'Nước cam ép 🍊', query: 'cam' },
+                        { text: 'Thịt bò Kobe 🥩', query: 'thịt bò' },
+                      ].map((chip, idx) => (
+                        <Button
+                          key={idx}
+                          size="$3"
+                          backgroundColor="#f0fdf4"
+                          borderRadius={20}
+                          paddingHorizontal="$3.5"
+                          pressStyle={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', scale: 0.95 }}
+                          onPress={() => {
+                            if (isRobotVoiceSpeaking()) return;
+                            stop();
+                            router.replace(`/member-search?query=${encodeURIComponent(chip.query)}` as any);
+                          }}
+                        >
+                          <Text color="#0F5132" fontSize={12} fontWeight="700">
+                            {chip.text}
+                          </Text>
+                        </Button>
+                      ))}
+                    </XStack>
+                  </YStack>
                 </XStack>
-                
-                <XStack gap="$2.5" justifyContent="center" flexWrap="wrap">
-                  {[
-                    { text: 'Súp lơ xanh 🥦', query: 'súp lơ' },
-                    { text: 'Nước cam ép 🍊', query: 'cam' },
-                    { text: 'Thịt bò Kobe 🥩', query: 'thịt bò' },
-                  ].map((chip, idx) => (
-                    <Button
-                      key={idx}
-                      size="$2.5"
-                      backgroundColor="#FFFFFF"
-                      borderWidth={1}
-                      borderColor="rgba(16, 185, 129, 0.3)"
-                      borderRadius={18}
-                      paddingHorizontal="$3.5"
-                      pressStyle={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', scale: 0.95 }}
-                      onPress={() => {
-                        if (isRobotVoiceSpeaking()) return; // Chặn điều hướng khi Robot đang nói
-                        stop();
-                        router.replace(`/member-search?query=${encodeURIComponent(chip.query)}` as any);
-                      }}
-                    >
-                      <Text color="#0F5132" fontSize={11} fontWeight="700">
-                        {chip.text}
-                      </Text>
-                    </Button>
-                  ))}
-                </XStack>
-              </YStack>
+              </Card>
             </Animated.View>
           )}
 
         </YStack>
-
-      </XStack>
+      </YStack>
     </View>
   );
 }
@@ -541,8 +543,8 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   robotImage: {
-    width: 175,
-    height: 175,
+    width: 125,
+    height: 125,
     resizeMode: 'contain',
   },
   transcriptText: {
