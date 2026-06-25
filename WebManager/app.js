@@ -521,8 +521,8 @@ propType.addEventListener('input', (e) => {
     }
 });
 
-// Backend Sync Logic
-const BASE_URL = 'https://interiorly-pinnatisect-adalyn.ngrok-free.dev';
+let BASE_URL = localStorage.getItem('smb_backend_url') || 'https://interiorly-pinnatisect-adalyn.ngrok-free.dev';
+let ROBOT_IP = localStorage.getItem('smb_robot_ip') || '192.168.4.1';
 
 document.getElementById('btnSaveMap').addEventListener('click', async () => {
     // Chuyển đổi dữ liệu từ Web Manager sang định dạng DTO của Backend
@@ -796,86 +796,127 @@ document.getElementById('btnSimulate').addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        const payload = {
-            robotCode: robotCode,
-            startNodeId: parseInt(navStartNodeId),
-            endNodeId: parseInt(navEndNodeId)
-        };
+        let routeData = null;
         
-        console.log("Sending Navigate Request:", payload);
+        if (isRobotWsConnected) {
+            // --- CHẾ ĐỘ WS TRỰC TIẾP (OFFLINE) ---
+            // 1. Chỉ gọi API tính toán lộ trình Dijkstra (chạy local trên PC, không qua MQTT)
+            const resRoute = await fetch(`${BASE_URL}/api/Navigation/route`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify({
+                    startNodeId: parseInt(navStartNodeId),
+                    endNodeId: parseInt(navEndNodeId)
+                })
+            });
 
-        // 1. Gửi lệnh điều khiển Robot (Trả về 200 OK)
-        const resNavigate = await fetch(`${BASE_URL}/api/Navigation/navigate`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': '69420'
-            },
-            body: JSON.stringify(payload)
-        });
+            if (!resRoute.ok) {
+                const errText = await resRoute.text();
+                throw new Error(`Lỗi tính toán Route (${resRoute.status}): ${errText}`);
+            }
 
-        if (!resNavigate.ok) {
-            const errText = await resNavigate.text();
-            throw new Error(`Lỗi Gửi Navigate (${resNavigate.status}): ${errText}`);
-        }
+            routeData = await resRoute.json();
+            console.log("Calculated route via local API:", routeData);
 
-        // 2. Kéo lộ trình dự kiến về để hiển thị UI
-        const resRoute = await fetch(`${BASE_URL}/api/Navigation/route`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': '69420'
-            },
-            body: JSON.stringify({
+            if (routeData && routeData.nodes && Array.isArray(routeData.nodes) && routeData.nodes.length > 0) {
+                const waypoints = routeData.nodes.map(n => ({
+                    x: parseFloat(n.x),
+                    y: parseFloat(n.y),
+                    nodeId: parseInt(n.nodeId)
+                }));
+                
+                // 2. Bắn trực tiếp qua WebSocket cục bộ
+                const navigatePayload = JSON.stringify({ waypoints });
+                sendRobotCommand(null, 'navigate', navigatePayload);
+                console.log("Sent navigate payload directly via WebSocket:", navigatePayload);
+            } else {
+                throw new Error("Không tìm thấy đường đi khả thi.");
+            }
+        } 
+        else {
+            // --- CHẾ ĐỘ MQTT (ONLINE) ---
+            const payload = {
+                robotCode: robotCode,
                 startNodeId: parseInt(navStartNodeId),
                 endNodeId: parseInt(navEndNodeId)
-            })
-        });
+            };
+            
+            console.log("Sending Navigate Request via Backend:", payload);
+
+            // 1. Gọi API navigate của BE để bắn MQTT xuống Robot
+            const resNavigate = await fetch(`${BASE_URL}/api/Navigation/navigate`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!resNavigate.ok) {
+                const errText = await resNavigate.text();
+                throw new Error(`Lỗi Gửi Navigate qua Backend (${resNavigate.status}): ${errText}`);
+            }
+
+            // 2. Kéo lộ trình về để hiển thị UI
+            const resRoute = await fetch(`${BASE_URL}/api/Navigation/route`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify({
+                    startNodeId: parseInt(navStartNodeId),
+                    endNodeId: parseInt(navEndNodeId)
+                })
+            });
+
+            if (resRoute.ok) {
+                routeData = await resRoute.json();
+            }
+        }
 
         btn.innerHTML = '<i data-lucide="check" class="w-4 h-4 mr-2"></i> Đã ra lệnh Robot!';
         btn.classList.replace('bg-blue-600', 'bg-emerald-600');
+        
         // Cập nhật giao diện danh sách các Node sẽ đi qua
         const list = document.getElementById('routeList');
-        if (resRoute.ok) {
-            const routeData = await resRoute.json();
-            console.log("Route Path Response:", routeData);
-            
-            if (routeData && routeData.nodes && Array.isArray(routeData.nodes) && routeData.nodes.length > 0) {
-                let html = '';
-                routeData.nodes.forEach((rNode, idx) => {
-                    const nodeId = rNode.nodeId;
-                    const n = nodes.find(x => parseInt(x.id) === parseInt(nodeId));
-                    const nName = n ? (n.name || `Node ${nodeId}`) : `Node ID: ${nodeId}`;
-                    const isLast = idx === routeData.nodes.length - 1;
-                    
-                    let colorClass = "bg-slate-600";
-                    let statusText = "Chờ xử lý";
-                    let pulseClass = "";
-                    
-                    if (idx === 0) {
-                        colorClass = "bg-emerald-500";
-                        statusText = "Bắt đầu";
-                    } else if (idx === 1) {
-                        colorClass = "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]";
-                        statusText = "Đang tới...";
-                        pulseClass = "animate-pulse";
-                    } else if (isLast) {
-                        statusText = "Đích đến";
-                    }
+        if (routeData && routeData.nodes && Array.isArray(routeData.nodes) && routeData.nodes.length > 0) {
+            let html = '';
+            routeData.nodes.forEach((rNode, idx) => {
+                const nodeId = rNode.nodeId;
+                const n = nodes.find(x => parseInt(x.id) === parseInt(nodeId));
+                const nName = n ? (n.name || `Node ${nodeId}`) : `Node ID: ${nodeId}`;
+                const isLast = idx === routeData.nodes.length - 1;
+                
+                let colorClass = "bg-slate-600";
+                let statusText = "Chờ xử lý";
+                let pulseClass = "";
+                
+                if (idx === 0) {
+                    colorClass = "bg-emerald-500";
+                    statusText = "Bắt đầu";
+                } else if (idx === 1) {
+                    colorClass = "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]";
+                    statusText = "Đang tới...";
+                    pulseClass = "animate-pulse";
+                } else if (isLast) {
+                    statusText = "Đích đến";
+                }
 
-                    html += `
-                    <div class="relative ${isLast ? '' : 'mb-4'}">
-                        <div class="absolute -left-[21px] top-1 w-3 h-3 ${colorClass} rounded-full border-2 border-slate-900 ${pulseClass}"></div>
-                        <div class="text-sm font-semibold text-white">${nName}</div>
-                        <div class="text-xs ${idx === 0 ? 'text-emerald-400' : (idx === 1 ? 'text-blue-400' : 'text-slate-400')}">${statusText}</div>
-                    </div>`;
-                });
-                list.innerHTML = html;
-            } else {
-                list.innerHTML = `<div class="text-sm text-slate-400 font-medium italic">Không tìm thấy đường đi khả thi.</div>`;
-            }
+                html += `
+                <div class="relative ${isLast ? '' : 'mb-4'}">
+                    <div class="absolute -left-[21px] top-1 w-3 h-3 ${colorClass} rounded-full border-2 border-slate-900 ${pulseClass}"></div>
+                    <div class="text-sm font-semibold text-white">${nName}</div>
+                    <div class="text-xs ${idx === 0 ? 'text-emerald-400' : (idx === 1 ? 'text-blue-400' : 'text-slate-400')}">${statusText}</div>
+                </div>`;
+            });
+            list.innerHTML = html;
         } else {
-            list.innerHTML = `<div class="text-sm text-emerald-400 font-medium">Lệnh chạy thành công! Nhưng không vẽ được list do không tìm thấy API /route.</div>`;
+            list.innerHTML = `<div class="text-sm text-slate-400 font-medium italic">Không tìm thấy đường đi khả thi.</div>`;
         }
     } catch (err) {
         console.error("Navigation Error:", err);
@@ -936,7 +977,52 @@ async function pollRobotLivePose() {
 // Kích hoạt Live Tracking sau khi load trang
 setTimeout(pollRobotLivePose, 2000);
 
-// --- SPEED CONTROL MQTT BRIDGE ---
+// --- SPEED CONTROL & MOTOR TEST COMBINED (DIRECT WS + MQTT FALLBACK) ---
+let robotWs = null;
+let isRobotWsConnected = false;
+
+function connectRobotWs() {
+    if (robotWs) return;
+    try {
+        robotWs = new WebSocket(`ws://${ROBOT_IP}:81`);
+        
+        robotWs.onopen = () => {
+            isRobotWsConnected = true;
+            console.log('[RobotWS] Connected to robot WebSocket (port 81) directly.');
+            updateWsStatusBadge(true);
+        };
+        
+        robotWs.onclose = () => {
+            robotWs = null;
+            isRobotWsConnected = false;
+            console.warn('[RobotWS] Robot WebSocket closed. Retrying in 3s...');
+            updateWsStatusBadge(false);
+            setTimeout(connectRobotWs, 3000);
+        };
+        
+        robotWs.onerror = () => {
+            // will trigger onclose
+        };
+    } catch (e) {
+        console.warn('[RobotWS] Failed to open WebSocket:', e);
+    }
+}
+
+function updateWsStatusBadge(connected) {
+    const badge = document.getElementById('wsStatusBadge');
+    if (!badge) return;
+    if (connected) {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm";
+        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span><span class="text-slate-300">Robot: WS Direct</span>';
+    } else {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm";
+        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span><span class="text-slate-500">Robot: MQTT Mode</span>';
+    }
+}
+
+// Start attempting connection
+connectRobotWs();
+
 async function sendMqttCommand(command, value) {
     const robotCode = document.getElementById('inpRobotCode')?.value.trim() || 'RB001';
     try {
@@ -960,50 +1046,52 @@ async function sendMqttCommand(command, value) {
     }
 }
 
-// Slider elements and value displays
-const spdSlider = document.getElementById('spdSlider');
-const spdVal = document.getElementById('spdVal');
-if (spdSlider && spdVal) {
-    spdSlider.addEventListener('input', (e) => {
-        spdVal.textContent = e.target.value + '%';
+function sendRobotCommand(command, wsType, value) {
+    if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
+        try {
+            if (wsType === 'joy') {
+                const sVal = Math.round((parseInt(value, 10) - 50) / 50 * 100);
+                robotWs.send(JSON.stringify({ t: 'joy', x: 0, y: 0, s: sVal }));
+            } else if (wsType === 'test_motor') {
+                robotWs.send(JSON.stringify({ t: 'test_motor', payload: value }));
+            } else {
+                robotWs.send(JSON.stringify({ t: wsType, v: parseInt(value, 10) }));
+            }
+        } catch (e) {
+            console.error('[RobotWS] Error sending command over WS:', e);
+            sendMqttCommand(command, value);
+        }
+    } else {
+        sendMqttCommand(command, value);
+    }
+}
+
+// Helper to wire up sliders with both real-time WS (on input) and debounced MQTT (on change)
+function wireSlider(sliderId, valId, command, wsType) {
+    const slider = document.getElementById(sliderId);
+    const valDisplay = document.getElementById(valId);
+    if (!slider || !valDisplay) return;
+
+    slider.addEventListener('input', (e) => {
+        valDisplay.textContent = e.target.value + '%';
+        if (isRobotWsConnected) {
+            sendRobotCommand(command, wsType, e.target.value);
+        }
     });
-    spdSlider.addEventListener('change', (e) => {
-        sendMqttCommand('set_speed_manual', e.target.value);
+
+    slider.addEventListener('change', (e) => {
+        valDisplay.textContent = e.target.value + '%';
+        if (!isRobotWsConnected) {
+            sendRobotCommand(command, wsType, e.target.value);
+        }
     });
 }
 
-const strSlider = document.getElementById('strSlider');
-const strVal = document.getElementById('strVal');
-if (strSlider && strVal) {
-    strSlider.addEventListener('input', (e) => {
-        strVal.textContent = e.target.value + '%';
-    });
-    strSlider.addEventListener('change', (e) => {
-        sendMqttCommand('set_strafe', e.target.value);
-    });
-}
-
-const spdAutoSlider = document.getElementById('spdAutoSlider');
-const spdAutoVal = document.getElementById('spdAutoVal');
-if (spdAutoSlider && spdAutoVal) {
-    spdAutoSlider.addEventListener('input', (e) => {
-        spdAutoVal.textContent = e.target.value + '%';
-    });
-    spdAutoSlider.addEventListener('change', (e) => {
-        sendMqttCommand('set_speed_auto', e.target.value);
-    });
-}
-
-const spdSwerveSlider = document.getElementById('spdSwerveSlider');
-const spdSwerveVal = document.getElementById('spdSwerveVal');
-if (spdSwerveSlider && spdSwerveVal) {
-    spdSwerveSlider.addEventListener('input', (e) => {
-        spdSwerveVal.textContent = e.target.value + '%';
-    });
-    spdSwerveSlider.addEventListener('change', (e) => {
-        sendMqttCommand('set_speed_swerve', e.target.value);
-    });
-}
+// Wire up the 4 sliders
+wireSlider('spdSlider', 'spdVal', 'set_speed_manual', 'spd');
+wireSlider('strSlider', 'strVal', 'set_strafe', 'joy');
+wireSlider('spdAutoSlider', 'spdAutoVal', 'set_speed_auto', 'spdAuto');
+wireSlider('spdSwerveSlider', 'spdSwerveVal', 'set_speed_swerve', 'spdSwerve');
 
 // --- MOTOR TEST BUTTONS ---
 function setupMotorTestButton(buttonId, slot) {
@@ -1013,12 +1101,12 @@ function setupMotorTestButton(buttonId, slot) {
     const startTest = (e) => {
         e.preventDefault();
         const testSpeed = document.getElementById('spdSlider')?.value || 60;
-        sendMqttCommand('test_motor', `${slot}_${testSpeed}`);
+        sendRobotCommand('test_motor', 'test_motor', `${slot}_${testSpeed}`);
     };
 
     const stopTest = (e) => {
         e.preventDefault();
-        sendMqttCommand('test_motor', `${slot}_0`);
+        sendRobotCommand('test_motor', 'test_motor', `${slot}_0`);
     };
 
     // Mouse events
@@ -1035,5 +1123,52 @@ setupMotorTestButton('btnTestFL', 0); // Front-Left (slot 0)
 setupMotorTestButton('btnTestRL', 1); // Rear-Left (slot 1)
 setupMotorTestButton('btnTestFR', 2); // Front-Right (slot 2)
 setupMotorTestButton('btnTestRR', 3); // Rear-Right (slot 3)
+
+// --- SETTINGS MODAL INTERACTION ---
+const settingsModal = document.getElementById('settingsModal');
+const btnSettings = document.getElementById('btnSettings');
+const btnCloseSettings = document.getElementById('btnCloseSettings');
+const btnCancelSettings = document.getElementById('btnCancelSettings');
+const btnSaveSettings = document.getElementById('btnSaveSettings');
+const cfgBackendUrl = document.getElementById('cfgBackendUrl');
+const cfgRobotIp = document.getElementById('cfgRobotIp');
+
+if (btnSettings && settingsModal) {
+    btnSettings.addEventListener('click', () => {
+        cfgBackendUrl.value = BASE_URL;
+        cfgRobotIp.value = ROBOT_IP;
+        settingsModal.classList.replace('hidden', 'flex');
+    });
+
+    const hideSettings = () => {
+        settingsModal.classList.replace('flex', 'hidden');
+    };
+
+    btnCloseSettings.addEventListener('click', hideSettings);
+    btnCancelSettings.addEventListener('click', hideSettings);
+
+    btnSaveSettings.addEventListener('click', () => {
+        const newUrl = cfgBackendUrl.value.trim();
+        const newIp = cfgRobotIp.value.trim();
+
+        if (newUrl) {
+            BASE_URL = newUrl;
+            localStorage.setItem('smb_backend_url', newUrl);
+        }
+        if (newIp) {
+            ROBOT_IP = newIp;
+            localStorage.setItem('smb_robot_ip', newIp);
+            
+            // Force reconnect WebSocket to the new IP
+            if (robotWs) {
+                robotWs.close(); // triggers onclose which auto-reconnects to new ROBOT_IP
+            } else {
+                connectRobotWs();
+            }
+        }
+        hideSettings();
+        alert('Cấu hình đã lưu thành công! Đang kết nối thử lại...');
+    });
+}
 
 

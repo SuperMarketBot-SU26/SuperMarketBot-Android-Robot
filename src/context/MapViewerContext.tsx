@@ -54,17 +54,16 @@ export function MapViewerProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingMap, setLoadingMap] = useState(false);
 
   // Dùng stable wrapper ổn định để register/unregister đúng cùng 1 reference
-  const frameRef  = useRef<(f: LidarFrame) => void>();
-  const poseRef   = useRef<(p: RobotPose) => void>();
-  const connRef   = useRef<(c: boolean)   => void>();
-
-  // Cập nhật nội dung ref mỗi render (không tạo listener mới)
-  frameRef.current = (f) => setLatestFrame(f);
-  poseRef.current  = (p) => setRobotPose(p);
-  connRef.current  = (c) => setLidarConnected(c);
+  const frameRef  = useRef<(f: LidarFrame) => void | undefined>(undefined);
+  const poseRef   = useRef<(p: RobotPose) => void | undefined>(undefined);
+  const connRef   = useRef<(c: boolean)   => void | undefined>(undefined);
 
   useEffect(() => {
     // Stable wrapper: giữ nguyên reference nhưng delegate vào ref.current
+    frameRef.current = (f: LidarFrame) => setLatestFrame(f);
+    poseRef.current  = (p: RobotPose)  => setRobotPose(p);
+    connRef.current  = (c: boolean)    => setLidarConnected(c);
+
     const onFrame = (f: LidarFrame) => frameRef.current?.(f);
     const onPose  = (p: RobotPose)  => poseRef.current?.(p);
     const onConn  = (c: boolean)    => connRef.current?.(c);

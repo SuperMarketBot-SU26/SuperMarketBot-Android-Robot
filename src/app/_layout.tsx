@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { RobotAuthProvider } from '../context/RobotAuthContext';
 import { MapViewerProvider } from '../context/MapViewerContext';
+import { RobotControlProvider } from '../context/RobotControlContext';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -25,7 +26,9 @@ export default function RootLayout() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <RobotAuthProvider>
         <MapViewerProvider>
-          <RootLayoutContent />
+          <RobotControlProvider>
+            <RootLayoutContent />
+          </RobotControlProvider>
         </MapViewerProvider>
       </RobotAuthProvider>
     </TamaguiProvider>

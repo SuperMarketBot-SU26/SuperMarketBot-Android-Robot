@@ -110,6 +110,7 @@ export default function MapViewerScreen() {
   const mapImage = useImage(mapImageUrl);
 
   const canvasH = isFullscreen ? SH : SH * 0.65;
+  const canvasW = SW;
 
   return (
     <SafeAreaView style={styles.safe}>
