@@ -17,6 +17,8 @@ let selectedShapeId = null;
 let robotLiveX = null;
 let robotLiveY = null;
 let robotLiveStatus = 'OFFLINE';
+let lastKnownMode = null;
+let lastKnownWpStatus = null;
 
 // View transform
 let scale = 1;
@@ -961,7 +963,14 @@ async function pollRobotLivePose() {
             const r = robots.find(x => x.robotCode === robotCode);
             if (r) {
                 robotLiveStatus = r.status || 'UNKNOWN';
-                document.getElementById('robotStatus').textContent = robotLiveStatus;
+                const statusEl = document.getElementById('robotStatus') || document.getElementById('robotStatusBadge');
+                if (statusEl) {
+                    if (statusEl.id === 'robotStatusBadge') {
+                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ${robotLiveStatus}`;
+                    } else {
+                        statusEl.textContent = robotLiveStatus;
+                    }
+                }
 
                 // --- TỰ ĐỘNG PHÁT HIỆN IP CỦA ROBOT (AUTO IP DISCOVERY) ---
                 if (r.ipAddress && r.ipAddress !== ROBOT_IP && r.ipAddress !== "0.0.0.0" && r.ipAddress.trim() !== "") {
@@ -1004,15 +1013,56 @@ function connectRobotWs() {
             isRobotWsConnected = true;
             console.log('[RobotWS] Connected to robot WebSocket (port 81) directly.');
             updateWsStatusBadge(true);
+            try {
+                robotWs.send(JSON.stringify({ t: 'layoutGet' }));
+                robotWs.send(JSON.stringify({ t: 'motorLayoutGet' }));
+            } catch (err) {
+                console.error('[RobotWS] Failed to query layouts on connect:', err);
+            }
         };
         
         robotWs.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                if (data.t === 'layout') {
+                    for (let i = 0; i < 4; i++) {
+                        const su = document.getElementById('cfgUs' + i);
+                        const se = document.getElementById('cfgEnc' + i);
+                        if (su && data.us && data.us[i] !== undefined) su.value = String(data.us[i]);
+                        if (se && data.enc && data.enc[i] !== undefined) se.value = String(data.enc[i]);
+                    }
+                    const s = document.getElementById('cfgLidF');
+                    if (s && data.lidF !== undefined) s.value = String(data.lidF);
+                    appendSerialLog('[WS-Direct] Đã đồng bộ cấu hình cảm biến từ Robot.');
+                    return;
+                }
+                if (data.t === 'layoutErr') {
+                    appendSerialLog('[WS-Direct] Lỗi cấu hình cảm biến: ' + (data.msg || 'không hợp lệ'));
+                    alert('Lỗi cấu hình cảm biến: ' + (data.msg || 'không hợp lệ'));
+                    return;
+                }
+                if (data.t === 'motLayout') {
+                    for (let i = 0; i < 4; i++) {
+                        const sm = document.getElementById('cfgMot' + i);
+                        const si = document.getElementById('cfgInv' + i);
+                        if (sm && data.mapMot && data.mapMot[i] !== undefined) sm.value = String(data.mapMot[i]);
+                        if (si && data.motInv && data.motInv[i] !== undefined) si.checked = !!data.motInv[i];
+                    }
+                    appendSerialLog('[WS-Direct] Đã đồng bộ cấu hình động cơ từ Robot.');
+                    return;
+                }
+                if (data.t === 'motLayoutErr') {
+                    appendSerialLog('[WS-Direct] Lỗi cấu hình động cơ: ' + (data.msg || 'không hợp lệ'));
+                    alert('Lỗi cấu hình động cơ: ' + (data.msg || 'không hợp lệ'));
+                    return;
+                }
+                
                 if (data.type === 'log') {
                     appendSerialLog(`[WS-Direct] ${data.message}`);
                 } else if (data.msg) {
                     appendSerialLog(`[WS-Direct] ${data.msg}`);
+                } else {
+                    applyLiveTelemetry(data);
                 }
             } catch (e) {
                 appendSerialLog(`[WS-Direct] ${event.data}`);
@@ -1040,10 +1090,10 @@ function updateWsStatusBadge(connected) {
     if (!badge) return;
     if (connected) {
         badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm";
-        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span><span class="text-slate-300">Robot: WS Direct</span>';
+        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span><span class="text-slate-300">Robot: Kết nối trực tiếp (WS)</span>';
     } else {
         badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm";
-        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span><span class="text-slate-500">Robot: MQTT Mode</span>';
+        badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span><span class="text-slate-500">Robot: Chế độ MQTT (Từ xa)</span>';
     }
 }
 
@@ -1081,6 +1131,12 @@ function sendRobotCommand(command, wsType, value) {
                 robotWs.send(JSON.stringify({ t: 'joy', x: 0, y: 0, s: sVal }));
             } else if (wsType === 'test_motor') {
                 robotWs.send(JSON.stringify({ t: 'test_motor', payload: value }));
+            } else if (wsType === 'mode') {
+                robotWs.send(JSON.stringify({ t: 'mode', m: parseInt(value, 10) }));
+            } else if (wsType === 'estop') {
+                robotWs.send(JSON.stringify({ t: 'estop' }));
+            } else if (wsType === 'odomReset') {
+                robotWs.send(JSON.stringify({ t: 'odomReset' }));
             } else {
                 robotWs.send(JSON.stringify({ t: wsType, v: parseInt(value, 10) }));
             }
@@ -1120,36 +1176,324 @@ wireSlider('strSlider', 'strVal', 'set_strafe', 'joy');
 wireSlider('spdAutoSlider', 'spdAutoVal', 'set_speed_auto', 'spdAuto');
 wireSlider('spdSwerveSlider', 'spdSwerveVal', 'set_speed_swerve', 'spdSwerve');
 
-// --- MOTOR TEST BUTTONS ---
-function setupMotorTestButton(buttonId, slot) {
-    const btn = document.getElementById(buttonId);
-    if (!btn) return;
 
-    const startTest = (e) => {
-        e.preventDefault();
-        const testSpeed = document.getElementById('spdSlider')?.value || 60;
-        sendRobotCommand('test_motor', 'test_motor', `${slot}_${testSpeed}`);
+
+// Settings modal tab switcher
+window.switchSettingsTab = function(tabId) {
+    const tabs = ['connection', 'sensors', 'motors', 'speed'];
+    tabs.forEach(t => {
+        const content = document.getElementById('tabContent' + t.charAt(0).toUpperCase() + t.slice(1));
+        const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (content) {
+            if (t === tabId) {
+                content.classList.remove('hidden');
+            } else {
+                content.classList.add('hidden');
+            }
+        }
+        if (btn) {
+            if (t === tabId) {
+                btn.className = "flex-1 py-2 text-blue-400 border-b-2 border-blue-500 focus:outline-none";
+            } else {
+                btn.className = "flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none";
+            }
+        }
+    });
+};
+
+// Normalize SignalR remote telemetry properties to align with WS direct telemetry
+function normalizeSignalRTelemetry(telemetry) {
+    return {
+        lf: telemetry.lidarFront,
+        lb: telemetry.lidarRear,
+        lfOn: telemetry.lidarFront !== null && telemetry.lidarFront !== undefined && telemetry.lidarFront < 800,
+        lbOn: telemetry.lidarRear !== null && telemetry.lidarRear !== undefined && telemetry.lidarRear < 800,
+        usLF: telemetry.usLF,
+        usLR: telemetry.usLR,
+        usRF: telemetry.usRF,
+        usRR: telemetry.usRR,
+        rFL: telemetry.rpmFL,
+        rFR: telemetry.rpmFR,
+        rRL: telemetry.rpmRL,
+        rRR: telemetry.rpmRR,
+        HeadingRad: telemetry.headingRad,
+        batPct: telemetry.battery,
+        batV: telemetry.battery !== null && telemetry.battery !== undefined ? (11.0 + (telemetry.battery / 100) * 1.6) : undefined,
+        chip: undefined,
+        cpuMHz: undefined,
+        heap: undefined,
+        tempC: undefined,
+        mode: telemetry.mode,
+        wpSt: telemetry.navState,
+        usOn: [
+            telemetry.usLF !== null && telemetry.usLF !== undefined && telemetry.usLF < 250,
+            telemetry.usLR !== null && telemetry.usLR !== undefined && telemetry.usLR < 250,
+            telemetry.usRF !== null && telemetry.usRF !== undefined && telemetry.usRF < 250,
+            telemetry.usRR !== null && telemetry.usRR !== undefined && telemetry.usRR < 250
+        ],
+        encOn: [
+            telemetry.rpmFL !== null && telemetry.rpmFL !== undefined && telemetry.rpmFL > 0,
+            telemetry.rpmRL !== null && telemetry.rpmRL !== undefined && telemetry.rpmRL > 0,
+            telemetry.rpmFR !== null && telemetry.rpmFR !== undefined && telemetry.rpmFR > 0,
+            telemetry.rpmRR !== null && telemetry.rpmRR !== undefined && telemetry.rpmRR > 0
+        ]
     };
-
-    const stopTest = (e) => {
-        e.preventDefault();
-        sendRobotCommand('test_motor', 'test_motor', `${slot}_0`);
-    };
-
-    // Mouse events
-    btn.addEventListener('mousedown', startTest);
-    btn.addEventListener('mouseup', stopTest);
-    btn.addEventListener('mouseleave', stopTest);
-
-    // Touch events for mobile/tablet test
-    btn.addEventListener('touchstart', startTest, { passive: false });
-    btn.addEventListener('touchend', stopTest, { passive: false });
 }
 
-setupMotorTestButton('btnTestFL', 0); // Front-Left (slot 0)
-setupMotorTestButton('btnTestRL', 1); // Rear-Left (slot 1)
-setupMotorTestButton('btnTestFR', 2); // Front-Right (slot 2)
-setupMotorTestButton('btnTestRR', 3); // Rear-Right (slot 3)
+// Render telemetry to the detailed sensors panel DOM and the main Live Monitor
+function applyLiveTelemetry(d) {
+    const lfOn = d.lfOn !== undefined ? !!d.lfOn : true;
+    const lbOn = d.lbOn !== undefined ? !!d.lbOn : true;
+    
+    const valLidarF = document.getElementById('valLidarF');
+    const valLidarB = document.getElementById('valLidarB');
+    
+    if (valLidarF) {
+        valLidarF.textContent = lfOn && d.lf !== undefined && d.lf >= 0 ? d.lf + ' cm' : '-- cm';
+        valLidarF.className = lfOn ? 'font-mono text-blue-400 font-bold' : 'font-mono text-slate-500 font-bold';
+    }
+    if (valLidarB) {
+        valLidarB.textContent = lbOn && d.lb !== undefined && d.lb >= 0 ? d.lb + ' cm' : '-- cm';
+        valLidarB.className = lbOn ? 'font-mono text-blue-400 font-bold' : 'font-mono text-slate-500 font-bold';
+    }
+    
+    const usOn = Array.isArray(d.usOn) ? d.usOn : null;
+    const updateUs = (id, val, active) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = active && val !== undefined && val >= 0 ? val + ' cm' : '-- cm';
+            el.className = active ? 'text-emerald-400 font-bold' : 'text-slate-500 font-bold';
+        }
+    };
+    updateUs('valUsLF', d.usLF, usOn ? !!usOn[0] : true);
+    updateUs('valUsLR', d.usLR, usOn ? !!usOn[1] : true);
+    updateUs('valUsRF', d.usRF, usOn ? !!usOn[2] : true);
+    updateUs('valUsRR', d.usRR, usOn ? !!usOn[3] : true);
+    
+    const encOn = Array.isArray(d.encOn) ? d.encOn : null;
+    const updateRpm = (id, val, active) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = active && val !== undefined ? Math.round(val) + ' RPM' : 'OFF';
+            el.className = active ? 'text-indigo-400 font-bold' : 'text-slate-500 font-bold';
+        }
+    };
+    updateRpm('valRpmFL', d.rFL, encOn ? !!encOn[0] : true);
+    updateRpm('valRpmRL', d.rRL, encOn ? !!encOn[1] : true);
+    updateRpm('valRpmFR', d.rFR, encOn ? !!encOn[2] : true);
+    updateRpm('valRpmRR', d.rRR, encOn ? !!encOn[3] : true);
+    
+    const valImuHeading = document.getElementById('valImuHeading');
+    if (valImuHeading && d.HeadingRad !== undefined) {
+        const headingDeg = Math.round(d.HeadingRad * 180 / Math.PI);
+        valImuHeading.textContent = headingDeg + '°';
+    }
+    
+    const valSysBat = document.getElementById('valSysBat');
+    if (valSysBat) {
+        if (d.batPct !== undefined && d.batPct >= 0 && d.batV !== undefined && d.batV >= 0) {
+            valSysBat.textContent = d.batV.toFixed(1) + 'V (' + d.batPct + '%)';
+        } else {
+            valSysBat.textContent = '-- V';
+        }
+    }
+    
+    if (d.chip !== undefined) {
+        const valSysChip = document.getElementById('valSysChip');
+        if (valSysChip) valSysChip.textContent = d.chip;
+    }
+    if (d.cpuMHz !== undefined) {
+        const valSysCpu = document.getElementById('valSysCpu');
+        if (valSysCpu) valSysCpu.textContent = d.cpuMHz + ' MHz';
+    }
+    if (d.heap !== undefined) {
+        const valSysHeap = document.getElementById('valSysHeap');
+        if (valSysHeap) valSysHeap.textContent = (d.heap / 1024).toFixed(1) + ' KB';
+    }
+    if (d.tempC !== undefined) {
+        const valSysTemp = document.getElementById('valSysTemp');
+        if (valSysTemp) {
+            valSysTemp.textContent = d.tempC >= 0 ? d.tempC.toFixed(1) + ' °C' : '-- °C';
+            valSysTemp.className = d.tempC >= 80 ? 'text-rose-500 font-bold' : (d.tempC >= 70 ? 'text-amber-500 font-bold' : 'text-slate-300 font-bold');
+        }
+    }
+
+    // --- Update main Live Monitor dashboard elements ---
+    
+    // Update Coordinates
+    const robotXEl = document.getElementById('robotX');
+    const robotYEl = document.getElementById('robotY');
+    if (robotXEl && d.xCoord !== undefined && d.xCoord !== null) {
+        robotXEl.textContent = d.xCoord.toFixed(2) + 'm';
+        robotLiveX = d.xCoord;
+    }
+    if (robotYEl && d.yCoord !== undefined && d.yCoord !== null) {
+        robotYEl.textContent = d.yCoord.toFixed(2) + 'm';
+        robotLiveY = d.yCoord;
+    }
+
+    // Update active robot code display
+    const currentRobotCode = document.getElementById('inpRobotCode')?.value.trim() || 'RB001';
+    const monitorRobotCode = document.getElementById('monitorRobotCode');
+    if (monitorRobotCode && monitorRobotCode.textContent.trim() !== currentRobotCode) {
+        monitorRobotCode.textContent = currentRobotCode;
+    }
+
+    // Update Heading
+    const robotHeading = document.getElementById('robotHeading');
+    if (robotHeading && d.HeadingRad !== undefined) {
+        let headingDeg = Math.round(d.HeadingRad * 180 / Math.PI) % 360;
+        if (headingDeg < 0) headingDeg += 360;
+        
+        let dirStr = '';
+        if (headingDeg >= 337.5 || headingDeg < 22.5) dirStr = 'Bắc (N)';
+        else if (headingDeg >= 22.5 && headingDeg < 67.5) dirStr = 'Đông Bắc (NE)';
+        else if (headingDeg >= 67.5 && headingDeg < 112.5) dirStr = 'Đông (E)';
+        else if (headingDeg >= 112.5 && headingDeg < 157.5) dirStr = 'Đông Nam (SE)';
+        else if (headingDeg >= 157.5 && headingDeg < 202.5) dirStr = 'Nam (S)';
+        else if (headingDeg >= 202.5 && headingDeg < 247.5) dirStr = 'Tây Nam (SW)';
+        else if (headingDeg >= 247.5 && headingDeg < 292.5) dirStr = 'Tây (W)';
+        else if (headingDeg >= 292.5 && headingDeg < 337.5) dirStr = 'Tây Bắc (NW)';
+        
+        robotHeading.textContent = `${headingDeg}° (${dirStr})`;
+    }
+
+    // Update Battery
+    const robotBattery = document.getElementById('robotBattery');
+    const batIcon = document.getElementById('robotBatIcon');
+    if (robotBattery && d.batPct !== undefined && d.batPct >= 0) {
+        let batText = `${d.batPct}%`;
+        if (d.batV !== undefined && d.batV > 0) {
+            batText += ` (${d.batV.toFixed(1)}V)`;
+        }
+        robotBattery.textContent = batText;
+        
+        if (batIcon) {
+            batIcon.className = 'w-3.5 h-3.5';
+            if (d.batPct >= 80) {
+                batIcon.className += ' text-emerald-400';
+            } else if (d.batPct >= 50) {
+                batIcon.className += ' text-blue-400';
+            } else if (d.batPct >= 20) {
+                batIcon.className += ' text-amber-500';
+            } else {
+                batIcon.className += ' text-rose-500 animate-pulse';
+            }
+        }
+    }
+
+    // Update Mode & Highlight Buttons
+    const robotModeBadge = document.getElementById('robotModeBadge');
+    if (robotModeBadge && d.mode !== undefined) {
+        let modeStr = '';
+        let badgeClass = 'px-2 py-0.5 rounded text-[10px] font-bold border uppercase ';
+        
+        let modeVal = -1;
+        const rawMode = String(d.mode).toLowerCase().trim();
+        if (rawMode === '0' || rawMode === 'manual' || rawMode === 'lái tay') modeVal = 0;
+        else if (rawMode === '1' || rawMode === 'auto' || rawMode === 'tự hành') modeVal = 1;
+        else if (rawMode === '2' || rawMode === 'waypoint') modeVal = 2;
+        
+        if (modeVal === 0) {
+            modeStr = 'LÁI TAY';
+            badgeClass += 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        } else if (modeVal === 1) {
+            modeStr = 'TỰ HÀNH';
+            badgeClass += 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+        } else if (modeVal === 2) {
+            modeStr = 'WAYPOINT';
+            badgeClass += 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+        } else {
+            modeStr = String(d.mode).toUpperCase();
+            badgeClass += 'bg-slate-800 text-slate-400 border-slate-700';
+        }
+        
+        robotModeBadge.textContent = modeStr;
+        robotModeBadge.className = badgeClass;
+        
+        // Highlight active mode selector button
+        const btnManual = document.getElementById('btnModeManual');
+        const btnAuto = document.getElementById('btnModeAuto');
+        const btnWaypoint = document.getElementById('btnModeWaypoint');
+        if (btnManual && btnAuto && btnWaypoint) {
+            btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+            btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+            btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+            
+            if (modeVal === 0) {
+                btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-emerald-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(16,185,129,0.3)]";
+            } else if (modeVal === 1) {
+                btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-amber-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(245,158,11,0.3)]";
+            } else if (modeVal === 2) {
+                btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-blue-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(59,130,246,0.3)]";
+            }
+        }
+        
+        if (lastKnownMode !== modeStr && lastKnownMode !== null) {
+            addMiniEvent(`Chế độ vận hành: ${lastKnownMode} ➔ ${modeStr}`);
+        }
+        lastKnownMode = modeStr;
+    }
+
+    // Update FSM Status
+    const robotStatusBadge = document.getElementById('robotStatusBadge');
+    if (robotStatusBadge && d.wpSt !== undefined) {
+        const wpStatusStr = String(d.wpSt).toLowerCase().trim();
+        let displayStatus = String(d.wpSt).toUpperCase();
+        let badgeClass = 'px-2 py-0.5 rounded text-[10px] font-bold border uppercase flex items-center gap-1 ';
+        let dotColor = 'bg-slate-400';
+        
+        if (wpStatusStr === 'idle') {
+            displayStatus = 'CHỜ';
+            badgeClass += 'bg-slate-800 text-slate-400 border-slate-700';
+            dotColor = 'bg-slate-500';
+        } else if (wpStatusStr === 'route_set') {
+            displayStatus = 'LÊN LỘ TRÌNH';
+            badgeClass += 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
+            dotColor = 'bg-indigo-400';
+        } else if (wpStatusStr === 'navigating') {
+            displayStatus = 'ĐANG CHẠY';
+            badgeClass += 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+            dotColor = 'bg-blue-400 animate-pulse';
+        } else if (wpStatusStr === 'oa_active') {
+            displayStatus = 'NÉ VẬT CẢN (OA)';
+            badgeClass += 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            dotColor = 'bg-amber-400 animate-pulse';
+        } else if (wpStatusStr === 'done') {
+            displayStatus = 'HOÀN THÀNH';
+            badgeClass += 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            dotColor = 'bg-emerald-400';
+        } else if (wpStatusStr === 'cancelled') {
+            displayStatus = 'ĐÃ HỦY';
+            badgeClass += 'bg-slate-700/50 text-slate-400 border-slate-600/30';
+            dotColor = 'bg-slate-400';
+        } else if (wpStatusStr === 'aborted') {
+            displayStatus = 'BỊ HỦY (ABORT)';
+            badgeClass += 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+            dotColor = 'bg-rose-400 animate-pulse';
+        } else if (wpStatusStr === 'reroute_needed') {
+            displayStatus = 'KẸT - CẦN TÍNH LẠI';
+            badgeClass += 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+            dotColor = 'bg-rose-400 animate-pulse';
+        } else {
+            badgeClass += 'bg-slate-800 text-slate-400 border-slate-700';
+            dotColor = 'bg-slate-400';
+        }
+        
+        robotStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span> ${displayStatus}`;
+        robotStatusBadge.className = badgeClass;
+        
+        if (lastKnownWpStatus !== wpStatusStr && lastKnownWpStatus !== null) {
+            let msgType = 'info';
+            if (wpStatusStr === 'done') msgType = 'success';
+            if (wpStatusStr === 'aborted' || wpStatusStr === 'reroute_needed') msgType = 'error';
+            if (wpStatusStr === 'oa_active') msgType = 'warning';
+            
+            addMiniEvent(`Trạng thái FSM: ${lastKnownWpStatus.toUpperCase()} ➔ ${displayStatus}`, msgType);
+        }
+        lastKnownWpStatus = wpStatusStr;
+    }
+}
 
 // --- SETTINGS MODAL INTERACTION ---
 const settingsModal = document.getElementById('settingsModal');
@@ -1165,6 +1509,15 @@ if (btnSettings && settingsModal) {
         cfgBackendUrl.value = BASE_URL;
         cfgRobotIp.value = ROBOT_IP;
         settingsModal.classList.replace('hidden', 'flex');
+        
+        if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
+            try {
+                robotWs.send(JSON.stringify({ t: 'layoutGet' }));
+                robotWs.send(JSON.stringify({ t: 'motorLayoutGet' }));
+            } catch (err) {
+                console.error('[RobotWS] Failed to query layouts on modal open:', err);
+            }
+        }
     });
 
     const hideSettings = () => {
@@ -1186,17 +1539,60 @@ if (btnSettings && settingsModal) {
             ROBOT_IP = newIp;
             localStorage.setItem('smb_robot_ip', newIp);
             
-            // Force reconnect WebSocket to the new IP
             if (robotWs) {
-                robotWs.close(); // triggers onclose which auto-reconnects to new ROBOT_IP
+                robotWs.close();
             } else {
                 connectRobotWs();
             }
         }
+        
+        if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
+            const us = [];
+            const enc = [];
+            const mapMot = [];
+            const motInv = [];
+            
+            for (let i = 0; i < 4; i++) {
+                us.push(parseInt(document.getElementById('cfgUs' + i).value, 10));
+                enc.push(parseInt(document.getElementById('cfgEnc' + i).value, 10));
+                mapMot.push(parseInt(document.getElementById('cfgMot' + i).value, 10));
+                motInv.push(document.getElementById('cfgInv' + i).checked ? 1 : 0);
+            }
+            const lidF = parseInt(document.getElementById('cfgLidF').value, 10);
+            
+            const isPerm4 = (arr) => {
+                if (arr.length !== 4) return false;
+                const s = new Set(arr);
+                return s.size === 4 && arr.every(v => v >= 0 && v <= 3);
+            };
+            
+            if (!isPerm4(us)) {
+                alert('Lỗi cấu hình cảm biến siêu âm: 4 góc phải chọn đủ Cổng từ 0 đến 3, không được chọn trùng lặp!');
+                return;
+            }
+            if (!isPerm4(enc)) {
+                alert('Lỗi cấu hình Encoder: 4 bánh phải chọn đủ Kênh từ 0 đến 3, không được chọn trùng lặp!');
+                return;
+            }
+            if (!isPerm4(mapMot)) {
+                alert('Lỗi cấu hình TB6612: 4 bánh phải chọn đủ Kênh từ 0 đến 3, không được chọn trùng lặp!');
+                return;
+            }
+            
+            try {
+                robotWs.send(JSON.stringify({ t: 'layout', us, enc, lidF }));
+                robotWs.send(JSON.stringify({ t: 'motLayout', mapMot, motInv }));
+                appendSerialLog('[WS-Direct] Đang gửi cấu hình Sensor Layout & Motor Layout mới xuống Robot...');
+            } catch (err) {
+                appendSerialLog('[WS-Direct] Lỗi gửi cấu hình: ' + err.message);
+                alert('Không thể gửi cấu hình xuống Robot: ' + err.message);
+                return;
+            }
+        }
+        
         hideSettings();
         alert('Cấu hình đã lưu thành công! Đang kết nối thử lại...');
         
-        // Reconnect SignalR if host changed
         if (signalrConnection) {
             signalrConnection.stop().then(() => connectSignalR());
         }
@@ -1245,6 +1641,47 @@ function appendSerialLog(message) {
     if (autoScrollLogs) {
         container.scrollTop = container.scrollHeight;
     }
+
+    // Mirror to mini event feed if it is a high-level event
+    const lowerMsg = message.toLowerCase();
+    const isRawSensor = lowerMsg.includes('rpm') || lowerMsg.includes('heap') || lowerMsg.includes('temp') || lowerMsg.includes('cpu') || (lowerMsg.includes('cm') && !lowerMsg.includes('vật cản') && !lowerMsg.includes('tránh'));
+    if (!isRawSensor && (message.includes('[WS-Direct]') || message.includes('[BE-MQTT]') || message.includes('[Hệ thống]'))) {
+        const cleanMsg = message.replace('[WS-Direct] ', '').replace('[BE-MQTT] ', '').replace('[Hệ thống] ', '');
+        addMiniEvent(cleanMsg);
+    }
+}
+
+// Function to add a message to the mini event feed on the sidebar
+function addMiniEvent(message, type = 'info') {
+    const feed = document.getElementById('miniEventFeed');
+    if (!feed) return;
+
+    const initMsg = feed.querySelector('.italic');
+    if (initMsg) {
+        feed.innerHTML = '';
+    }
+
+    const logLine = document.createElement('div');
+    logLine.className = 'pb-1.5 whitespace-pre-wrap flex items-start gap-1 text-[10px] leading-relaxed border-b border-slate-800/10';
+
+    const timeStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+    
+    let colorClass = 'text-slate-300';
+    if (type === 'error' || message.includes('[ERROR]') || message.includes('Lỗi') || message.includes('fail') || message.includes('FAIL') || message.includes('aborted')) {
+        colorClass = 'text-rose-400 font-semibold';
+    } else if (type === 'warning' || message.includes('[WARNING]') || message.includes('Cảnh báo') || message.includes('Warning') || message.includes('reroute_needed') || message.includes('oa_active')) {
+        colorClass = 'text-amber-400';
+    } else if (type === 'success' || message.includes('done') || message.includes('success') || message.includes('SUCCESS') || message.includes('Thành công')) {
+        colorClass = 'text-emerald-400 font-semibold';
+    }
+
+    logLine.innerHTML = `<span class="text-slate-500 select-none font-sans mr-1">[${timeStr}]</span><span class="${colorClass}">${escapeHtml(message)}</span>`;
+    feed.appendChild(logLine);
+
+    while (feed.childNodes.length > 20) {
+        feed.removeChild(feed.firstChild);
+    }
+    feed.scrollTop = feed.scrollHeight;
 }
 
 function escapeHtml(text) {
@@ -1265,7 +1702,7 @@ document.getElementById('btnClearLogs')?.addEventListener('click', () => {
 
 document.getElementById('btnToggleAutoScroll')?.addEventListener('click', (e) => {
     autoScrollLogs = !autoScrollLogs;
-    e.target.textContent = `Auto-Scroll: ${autoScrollLogs ? 'ON' : 'OFF'}`;
+    e.target.textContent = `Tự động cuộn: ${autoScrollLogs ? 'BẬT' : 'TẮT'}`;
     if (autoScrollLogs) {
         e.target.className = "text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded transition-all";
         const container = document.getElementById('serialLogsContainer');
@@ -1303,13 +1740,20 @@ function connectSignalR() {
         if (telemetry.robotCode === currentRobotCode) {
             robotLiveX = telemetry.xCoord;
             robotLiveY = telemetry.yCoord;
-            if (telemetry.battery !== null && telemetry.battery !== undefined) {
-                document.getElementById('robotStatus').textContent = `${telemetry.status} (${telemetry.battery}%)`;
-            } else {
-                document.getElementById('robotStatus').textContent = telemetry.status;
+            const statusEl = document.getElementById('robotStatus') || document.getElementById('robotStatusBadge');
+            if (statusEl) {
+                if (statusEl.id === 'robotStatusBadge') {
+                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ${telemetry.status}`;
+                } else {
+                    statusEl.textContent = telemetry.status;
+                }
             }
             if (telemetry.xCoord !== null) document.getElementById('robotX').textContent = telemetry.xCoord.toFixed(2) + 'm';
             if (telemetry.yCoord !== null) document.getElementById('robotY').textContent = telemetry.yCoord.toFixed(2) + 'm';
+            
+            // Cập nhật bảng chi tiết cảm biến
+            applyLiveTelemetry(normalizeSignalRTelemetry(telemetry));
+            
             draw();
         }
     });
@@ -1329,5 +1773,293 @@ function connectSignalR() {
 
 // Start SignalR
 setTimeout(connectSignalR, 1000);
+
+// --- MANUAL DRIVE CONTROL LOGIC ---
+let activeDirections = {
+    forward: false,
+    backward: false,
+    turnLeft: false,
+    turnRight: false,
+    strafeLeft: false,
+    strafeRight: false,
+    diagFL: false,
+    diagFR: false,
+    diagBL: false,
+    diagBR: false
+};
+
+function getDriveValues() {
+    let x = 0; // turn
+    let y = 0; // forward/backward
+    let s = 0; // strafe
+
+    if (activeDirections.forward) y = 100;
+    if (activeDirections.backward) y = -100;
+    if (activeDirections.turnLeft) x = -100;
+    if (activeDirections.turnRight) x = 100;
+    if (activeDirections.strafeLeft) s = -100;
+    if (activeDirections.strafeRight) s = 100;
+
+    // Diagonal overrides
+    if (activeDirections.diagFL) { y = 100; s = -100; }
+    if (activeDirections.diagFR) { y = 100; s = 100; }
+    if (activeDirections.diagBL) { y = -100; s = -100; }
+    if (activeDirections.diagBR) { y = -100; s = 100; }
+
+    return { x, y, s };
+}
+
+let lastSentDrive = { x: 0, y: 0, s: 0 };
+
+function sendDriveCommand() {
+    if (!isRobotWsConnected || !robotWs || robotWs.readyState !== WebSocket.OPEN) {
+        return; // Only support direct WebSocket driving
+    }
+
+    const { x, y, s } = getDriveValues();
+    
+    // Only send if values changed to avoid network flooding
+    if (x === lastSentDrive.x && y === lastSentDrive.y && s === lastSentDrive.s) {
+        return;
+    }
+
+    lastSentDrive = { x, y, s };
+    try {
+        robotWs.send(JSON.stringify({ t: 'joy', x: x, y: y, s: s }));
+    } catch (e) {
+        console.error('[RobotWS] Error sending drive command:', e);
+    }
+}
+
+// Button controls helper
+function bindDriveButton(buttonId, directionKey) {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+
+    const startDrive = (e) => {
+        e.preventDefault();
+        if (!isRobotWsConnected) {
+            alert('Lái tay yêu cầu kết nối WebSocket trực tiếp đến Robot (WS Direct)! Vui lòng kết nối vào Wi-Fi của Robot.');
+            return;
+        }
+        activeDirections[directionKey] = true;
+        btn.classList.replace('bg-slate-800', 'bg-blue-600');
+        btn.classList.add('text-white');
+        sendDriveCommand();
+    };
+
+    const stopDrive = (e) => {
+        e.preventDefault();
+        activeDirections[directionKey] = false;
+        btn.classList.replace('bg-blue-600', 'bg-slate-800');
+        btn.classList.remove('text-white');
+        sendDriveCommand();
+    };
+
+    // Mouse events
+    btn.addEventListener('mousedown', startDrive);
+    btn.addEventListener('mouseup', stopDrive);
+    btn.addEventListener('mouseleave', stopDrive);
+    
+    // Touch events
+    btn.addEventListener('touchstart', startDrive, { passive: false });
+    btn.addEventListener('touchend', stopDrive, { passive: false });
+}
+
+// Bind all direction and diagonal buttons
+bindDriveButton('btnDriveForward', 'forward');
+bindDriveButton('btnDriveBackward', 'backward');
+bindDriveButton('btnDriveTurnLeft', 'turnLeft');
+bindDriveButton('btnDriveTurnRight', 'turnRight');
+bindDriveButton('btnDriveStrafeLeft', 'strafeLeft');
+bindDriveButton('btnDriveStrafeRight', 'strafeRight');
+bindDriveButton('btnDriveDiagFL', 'diagFL');
+bindDriveButton('btnDriveDiagFR', 'diagFR');
+bindDriveButton('btnDriveDiagBL', 'diagBL');
+bindDriveButton('btnDriveDiagBR', 'diagBR');
+
+// Stop Button
+const btnDriveStop = document.getElementById('btnDriveStop');
+if (btnDriveStop) {
+    btnDriveStop.addEventListener('click', () => {
+        // Reset all states
+        for (let key in activeDirections) {
+            activeDirections[key] = false;
+            // Remove active classes
+            const btnId = 'btnDrive' + key.charAt(0).toUpperCase() + key.slice(1);
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.classList.replace('bg-blue-600', 'bg-slate-800');
+                btn.classList.remove('text-white');
+            }
+        }
+        sendDriveCommand();
+    });
+}
+
+// Keyboard controls
+window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+        return;
+    }
+
+    let handled = false;
+    switch (e.key.toLowerCase()) {
+        case 'w':
+        case 'arrowup':
+            activeDirections.forward = true;
+            document.getElementById('btnDriveForward')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveForward')?.classList.add('text-white');
+            handled = true;
+            break;
+        case 's':
+        case 'arrowdown':
+            activeDirections.backward = true;
+            document.getElementById('btnDriveBackward')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveBackward')?.classList.add('text-white');
+            handled = true;
+            break;
+        case 'a':
+        case 'arrowleft':
+            activeDirections.turnLeft = true;
+            document.getElementById('btnDriveTurnLeft')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveTurnLeft')?.classList.add('text-white');
+            handled = true;
+            break;
+        case 'd':
+        case 'arrowright':
+            activeDirections.turnRight = true;
+            document.getElementById('btnDriveTurnRight')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveTurnRight')?.classList.add('text-white');
+            handled = true;
+            break;
+        case 'q':
+            activeDirections.strafeLeft = true;
+            document.getElementById('btnDriveStrafeLeft')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveStrafeLeft')?.classList.add('text-white');
+            handled = true;
+            break;
+        case 'e':
+            activeDirections.strafeRight = true;
+            document.getElementById('btnDriveStrafeRight')?.classList.replace('bg-slate-800', 'bg-blue-600');
+            document.getElementById('btnDriveStrafeRight')?.classList.add('text-white');
+            handled = true;
+            break;
+        case ' ': // Space bar for STOP
+            for (let key in activeDirections) {
+                activeDirections[key] = false;
+                const btnId = 'btnDrive' + key.charAt(0).toUpperCase() + key.slice(1);
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.classList.replace('bg-blue-600', 'bg-slate-800');
+                    btn.classList.remove('text-white');
+                }
+            }
+            handled = true;
+            break;
+    }
+
+    if (handled) {
+        e.preventDefault();
+        sendDriveCommand();
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+        return;
+    }
+
+    let handled = false;
+    switch (e.key.toLowerCase()) {
+        case 'w':
+        case 'arrowup':
+            activeDirections.forward = false;
+            document.getElementById('btnDriveForward')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveForward')?.classList.remove('text-white');
+            handled = true;
+            break;
+        case 's':
+        case 'arrowdown':
+            activeDirections.backward = false;
+            document.getElementById('btnDriveBackward')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveBackward')?.classList.remove('text-white');
+            handled = true;
+            break;
+        case 'a':
+        case 'arrowleft':
+            activeDirections.turnLeft = false;
+            document.getElementById('btnDriveTurnLeft')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveTurnLeft')?.classList.remove('text-white');
+            handled = true;
+            break;
+        case 'd':
+        case 'arrowright':
+            activeDirections.turnRight = false;
+            document.getElementById('btnDriveTurnRight')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveTurnRight')?.classList.remove('text-white');
+            handled = true;
+            break;
+        case 'q':
+            activeDirections.strafeLeft = false;
+            document.getElementById('btnDriveStrafeLeft')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveStrafeLeft')?.classList.remove('text-white');
+            handled = true;
+            break;
+        case 'e':
+            activeDirections.strafeRight = false;
+            document.getElementById('btnDriveStrafeRight')?.classList.replace('bg-blue-600', 'bg-slate-800');
+            document.getElementById('btnDriveStrafeRight')?.classList.remove('text-white');
+            handled = true;
+            break;
+    }
+
+    if (handled) {
+        e.preventDefault();
+        sendDriveCommand();
+    }
+});
+
+// --- OVERRIDE CONTROLS (MODE & ESTOP) ---
+window.changeRobotMode = function(modeVal) {
+    console.log(`[ModeControl] Yêu cầu chuyển chế độ: ${modeVal}`);
+    
+    // Tạm thời highlight nút vừa bấm để phản hồi tức thì cho người dùng
+    const btnManual = document.getElementById('btnModeManual');
+    const btnAuto = document.getElementById('btnModeAuto');
+    const btnWaypoint = document.getElementById('btnModeWaypoint');
+    if (btnManual && btnAuto && btnWaypoint) {
+        btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+        btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+        btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+        
+        if (modeVal === 0) {
+            btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-emerald-400 border border-emerald-500/30 animate-pulse";
+        } else if (modeVal === 1) {
+            btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-amber-400 border border-amber-500/30 animate-pulse";
+        } else if (modeVal === 2) {
+            btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-blue-400 border border-blue-500/30 animate-pulse";
+        }
+    }
+    
+    sendRobotCommand('set_mode', 'mode', modeVal);
+};
+
+// Gắn sự kiện click cho các nút chế độ điều khiển
+document.getElementById('btnModeManual')?.addEventListener('click', () => changeRobotMode(0));
+document.getElementById('btnModeAuto')?.addEventListener('click', () => changeRobotMode(1));
+document.getElementById('btnModeWaypoint')?.addEventListener('click', () => changeRobotMode(2));
+
+document.getElementById('btnEstop')?.addEventListener('click', () => {
+    console.warn('[Control] KÍCH HOẠT ESTOP!');
+    sendRobotCommand('estop', 'estop', 1);
+    addMiniEvent('⚠️ ĐÃ KÍCH HOẠT DỪNG KHẨN CẤP (ESTOP)!', 'error');
+});
+
+document.getElementById('btnResetOdom')?.addEventListener('click', () => {
+    console.log('[Control] Resetting Odometry');
+    sendRobotCommand('odom_reset', 'odomReset', 1);
+    addMiniEvent('🔄 Đã gửi lệnh Reset Odometry.', 'info');
+});
 
 

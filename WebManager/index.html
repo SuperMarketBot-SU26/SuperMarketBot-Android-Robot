@@ -57,20 +57,20 @@
             </div>
             <div>
                 <h1 class="font-bold text-lg text-white leading-tight">SmartMarketBot</h1>
-                <p class="text-xs text-slate-400">Map & Navigation Manager</p>
+                <p class="text-xs text-slate-400">Hệ thống Giám sát & Điều hướng</p>
             </div>
         </div>
         
         <div class="flex items-center gap-3">
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
-                <span class="text-slate-300">Backend Connected</span>
+                <span class="text-slate-300">Đã kết nối Server</span>
             </div>
             <div id="wsStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm">
                 <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span class="text-slate-500">Robot: MQTT Mode</span>
+                <span class="text-slate-500">Robot: Chế độ MQTT (Từ xa)</span>
             </div>
-            <button id="btnSettings" class="p-2 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Cấu hình kết nối">
+            <button id="btnSettings" class="p-2 hover:bg-slate-700 rounded text-slate-300 transition-colors" title="Cấu hình hệ thống">
                 <i data-lucide="settings" class="w-5 h-5"></i>
             </button>
         </div>
@@ -82,7 +82,7 @@
         <!-- Left Sidebar: Tools -->
         <aside class="w-72 glass-panel border-r border-slate-700/50 flex flex-col z-10">
             <div class="p-4 border-b border-slate-700/50">
-                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Bản đồ làm việc</h2>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Bản đồ Làm việc</h2>
                 
                 <!-- Map Upload / Select -->
                 <div class="space-y-3">
@@ -103,7 +103,7 @@
 
             <!-- Toolbar -->
             <div class="p-4 flex-1 overflow-y-auto">
-                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">Công cụ chỉnh sửa</h2>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Công cụ Chỉnh sửa</h2>
                 
                 <div class="grid grid-cols-2 gap-2 mb-6" id="toolsGroup">
                     <button class="tool-btn active flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="select">
@@ -120,7 +120,7 @@
                     </button>
                     <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="erase">
                         <i data-lucide="eraser" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Xoá</span>
+                        <span class="text-xs">Xóa</span>
                     </button>
                     <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="rect">
                         <i data-lucide="square" class="w-5 h-5 mb-1"></i>
@@ -153,48 +153,49 @@
             <!-- Action Buttons -->
             <div class="p-4 border-t border-slate-700/50 space-y-2">
                 <div class="flex items-center space-x-3">
-                    <button id="btnLoadMapFromServer" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
-                        <i data-lucide="cloud-download" class="w-4 h-4 mr-2"></i> Tải từ Server
+                    <button id="btnLoadMapFromServer" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center">
+                        <i data-lucide="cloud-download" class="w-4 h-4 mr-1.5"></i> Tải từ Server
                     </button>
-                    <button id="btnSaveMap" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
-                        <i data-lucide="cloud-upload" class="w-4 h-4 mr-2"></i> Lưu lên Server
+                    <button id="btnSaveMap" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center">
+                        <i data-lucide="cloud-upload" class="w-4 h-4 mr-1.5"></i> Lưu lên Server
                     </button>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <button id="btnExportJson" class="py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-all flex justify-center items-center gap-1">
-                        <i data-lucide="download" class="w-3 h-3"></i> Export JSON
+                        <i data-lucide="download" class="w-3 h-3"></i> Xuất bản đồ JSON
                     </button>
                     <label class="py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-all flex justify-center items-center gap-1 cursor-pointer">
                         <input type="file" id="btnImportJson" accept=".json" class="hidden">
-                        <i data-lucide="upload" class="w-3 h-3"></i> Import JSON
+                        <i data-lucide="upload" class="w-3 h-3"></i> Nhập bản đồ JSON
                     </label>
                 </div>
                 <div class="border border-slate-700/50 rounded-lg p-3 bg-slate-800/30">
-                    <h3 class="text-xs font-semibold text-slate-300 uppercase mb-2">Gửi Test Lộ Trình (Navigate)</h3>
+                    <h3 class="text-xs font-semibold text-slate-300 uppercase mb-2">Điều hướng Robot</h3>
                     <div class="space-y-2 mb-2">
                         <div class="flex justify-between items-center text-xs">
-                            <span class="text-slate-400">Robot:</span>
+                            <span class="text-slate-400 font-medium">Mã Robot:</span>
                             <input type="text" id="inpRobotCode" value="RB001" class="w-16 bg-slate-900 text-white text-xs px-2 py-1 rounded border border-slate-600 text-center" />
                         </div>
                         <div class="flex flex-col gap-1">
                             <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400">Start:</span>
+                                <span class="text-slate-400 font-medium">Điểm bắt đầu:</span>
                                 <span id="lblStartNode" class="text-indigo-400 font-medium truncate">Chưa chọn</span>
                             </div>
-                            <button id="btnSetStart" class="w-full py-1 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded text-xs transition-colors border border-indigo-600/30">Dùng Node Đang Chọn</button>
+                            <button id="btnSetStart" class="w-full py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded text-[11px] transition-colors border border-indigo-600/30">Đặt làm Điểm xuất phát</button>
                         </div>
                         <div class="flex flex-col gap-1">
                             <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400">End:</span>
+                                <span class="text-slate-400 font-medium">Điểm đích đến:</span>
                                 <span id="lblEndNode" class="text-emerald-400 font-medium truncate">Chưa chọn</span>
                             </div>
-                            <button id="btnSetEnd" class="w-full py-1 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded text-xs transition-colors border border-emerald-600/30">Dùng Node Đang Chọn</button>
+                            <button id="btnSetEnd" class="w-full py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded text-[11px] transition-colors border border-emerald-600/30">Đặt làm Điểm đích đến</button>
                         </div>
                     </div>
-                    <button id="btnSimulate" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
-                        <i data-lucide="play" class="w-4 h-4"></i> Gửi Lệnh Navigate
+                    <button id="btnSimulate" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-semibold transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
+                        <i data-lucide="play" class="w-4 h-4"></i> Bắt đầu di chuyển
                     </button>
                 </div>
+            </div>
         </aside>
 
         <!-- Center: Canvas Area -->
@@ -217,11 +218,11 @@
             <div class="h-44 mt-4 glass-panel rounded-lg flex flex-col overflow-hidden border border-slate-700/50">
                 <div class="px-4 py-2 border-b border-slate-700/50 flex justify-between items-center bg-slate-800/40">
                     <span class="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                        <i data-lucide="terminal" class="w-4 h-4 text-blue-400"></i> Serial Monitor Live Logs
+                        <i data-lucide="terminal" class="w-4 h-4 text-blue-400"></i> Nhật ký Robot (Serial Monitor)
                     </span>
                     <div class="flex items-center gap-2">
                         <button id="btnClearLogs" class="text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-0.5 rounded transition-all">Xóa log</button>
-                        <button id="btnToggleAutoScroll" class="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded transition-all">Auto-Scroll: ON</button>
+                        <button id="btnToggleAutoScroll" class="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded transition-all">Tự động cuộn: BẬT</button>
                     </div>
                 </div>
                 <div id="serialLogsContainer" class="flex-1 p-3 font-mono text-xs text-slate-300 overflow-y-auto space-y-1 bg-slate-950/80 leading-normal">
@@ -233,127 +234,215 @@
         <!-- Right Sidebar: Live Robot Status & Routes -->
         <aside class="w-80 glass-panel border-l border-slate-700/50 flex flex-col z-10">
             <div class="p-4 border-b border-slate-700/50 flex justify-between items-center">
-                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Robot Live Monitor</h2>
-                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Giám sát Robot Trực tiếp</h2>
+                <div class="flex items-center gap-1.5 bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-400 font-mono font-bold border border-slate-700" id="monitorRobotCode">
+                    RB001
+                </div>
             </div>
 
-            <div class="p-4 space-y-6 flex-1 overflow-y-auto">
-                <!-- Telemetry -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
-                        <div class="text-[10px] text-slate-400 uppercase mb-1">Tọa độ X</div>
-                        <div class="text-lg font-mono text-emerald-400" id="robotX">0.00m</div>
-                    </div>
-                    <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
-                        <div class="text-[10px] text-slate-400 uppercase mb-1">Tọa độ Y</div>
-                        <div class="text-lg font-mono text-emerald-400" id="robotY">0.00m</div>
-                    </div>
-                    <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50 col-span-2">
-                        <div class="text-[10px] text-slate-400 uppercase mb-1">Trạng thái</div>
-                        <div class="text-sm font-medium text-blue-400 flex items-center gap-2">
-                            <i data-lucide="activity" class="w-4 h-4"></i> <span id="robotStatus">IDLE</span>
+            <div class="p-4 space-y-5 flex-1 overflow-y-auto">
+                <!-- Telemetry Dashboard -->
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <!-- Coordinate X -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Tọa độ X</div>
+                            <div class="text-sm font-mono text-emerald-400 font-bold mt-1" id="robotX">0.00m</div>
+                        </div>
+                        <!-- Coordinate Y -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Tọa độ Y</div>
+                            <div class="text-sm font-mono text-emerald-400 font-bold mt-1" id="robotY">0.00m</div>
+                        </div>
+                        <!-- Heading IMU -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center justify-between">
+                                <span>Góc IMU (Heading)</span>
+                                <i data-lucide="compass" class="w-3.5 h-3.5 text-amber-500"></i>
+                            </div>
+                            <div class="text-sm font-mono text-amber-400 font-bold mt-1" id="robotHeading">0°</div>
+                        </div>
+                        <!-- Battery -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center justify-between">
+                                <span>Điện áp Pin</span>
+                                <i id="robotBatIcon" data-lucide="battery" class="w-3.5 h-3.5 text-slate-400"></i>
+                            </div>
+                            <div class="text-sm font-mono text-slate-300 font-bold mt-1" id="robotBattery">--</div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Speed Controls (Mqtt Bridge) -->
-                <div class="border-t border-slate-700/50 pt-4">
-                    <h3 class="text-xs font-semibold text-slate-400 uppercase mb-3 flex items-center gap-2">
-                        <i data-lucide="gauge" class="w-4 h-4"></i> Điều Chỉnh Tốc Độ
-                    </h3>
-                    
-                    <div class="space-y-4">
-                        <!-- Manual Speed -->
-                        <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs text-slate-300 font-medium">Tốc độ · Lái tay</span>
-                                <span id="spdVal" class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">60%</span>
-                            </div>
-                            <input type="range" id="spdSlider" min="0" max="100" value="60" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
-                            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
-                                <span>0%</span>
-                                <span>50%</span>
-                                <span>100%</span>
-                            </div>
+                    <!-- Robot Modes & States -->
+                    <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-2 text-xs">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">Chế độ vận hành:</span>
+                            <span id="robotModeBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 uppercase">--</span>
                         </div>
-
-                        <!-- Strafe -->
-                        <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs text-slate-300 font-medium">Trượt ngang · Strafe</span>
-                                <span id="strVal" class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">50%</span>
-                            </div>
-                            <input type="range" id="strSlider" min="0" max="100" value="50" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
-                            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
-                                <span>Trái</span>
-                                <span>50%</span>
-                                <span>Phải</span>
-                            </div>
-                        </div>
-
-                        <!-- Auto Speed -->
-                        <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs text-slate-300 font-medium">Tốc độ · Tự hành</span>
-                                <span id="spdAutoVal" class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">50%</span>
-                            </div>
-                            <input type="range" id="spdAutoSlider" min="15" max="100" value="50" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
-                            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
-                                <span>15%</span>
-                                <span>50%</span>
-                                <span>100%</span>
-                            </div>
-                        </div>
-
-                        <!-- Swerve Speed -->
-                        <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs text-slate-300 font-medium">Tốc độ · Tránh vật</span>
-                                <span id="spdSwerveVal" class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">45%</span>
-                            </div>
-                            <input type="range" id="spdSwerveSlider" min="15" max="100" value="45" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
-                            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
-                                <span>15%</span>
-                                <span>45%</span>
-                                <span>100%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Motor Testing (Jig Control) -->
-                <div class="border-t border-slate-700/50 pt-4">
-                    <h3 class="text-xs font-semibold text-slate-400 uppercase mb-3 flex items-center gap-2">
-                        <i data-lucide="cog" class="w-4 h-4"></i> Test Từng Bánh (Motor Test)
-                    </h3>
-                    <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-3">
-                        <p class="text-[10px] text-slate-400 leading-relaxed">Nhấn giữ nút để quay thử bánh xe tương ứng với tốc độ Lái tay. Nhả chuột/tay ra để dừng.</p>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button id="btnTestFL" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 hover:border-slate-500 rounded text-xs font-semibold text-slate-200 transition-all select-none focus:outline-none">
-                                Trái Trước (FL)
-                            </button>
-                            <button id="btnTestFR" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 hover:border-slate-500 rounded text-xs font-semibold text-slate-200 transition-all select-none focus:outline-none">
-                                Phải Trước (FR)
-                            </button>
-                            <button id="btnTestRL" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 hover:border-slate-500 rounded text-xs font-semibold text-slate-200 transition-all select-none focus:outline-none">
-                                Trái Sau (RL)
-                            </button>
-                            <button id="btnTestRR" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 hover:border-slate-500 rounded text-xs font-semibold text-slate-200 transition-all select-none focus:outline-none">
-                                Phải Sau (RR)
-                            </button>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">Trạng thái FSM:</span>
+                            <span id="robotStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-850 text-blue-400 border border-blue-500/20 uppercase flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> CHỜ
+                            </span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Navigation Route -->
-                <div>
-                    <h3 class="text-xs font-semibold text-slate-400 uppercase mb-3 flex items-center gap-2">
-                        <i data-lucide="route" class="w-4 h-4"></i> Lộ Trình Đang Chạy
+                <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30">
+                    <h3 class="text-xs font-semibold text-slate-300 uppercase mb-2 flex items-center gap-2">
+                        <i data-lucide="route" class="w-4 h-4 text-blue-400"></i> Lộ trình đang chạy
                     </h3>
-                    <div class="relative border-l-2 border-slate-700 ml-2 pl-4 py-2 space-y-4" id="routeList">
-                        <div class="text-sm text-slate-500 italic">Chưa có lộ trình.</div>
+                    <div class="relative border-l-2 border-slate-700 ml-2 pl-4 py-1 space-y-3" id="routeList">
+                        <div class="text-xs text-slate-400 italic">Chưa có lộ trình di chuyển.</div>
                     </div>
                 </div>
+
+                <!-- Manual Drive Pad -->
+                <div class="border-t border-slate-700/50 pt-4">
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase mb-3 flex items-center gap-2">
+                        <i data-lucide="gamepad-2" class="w-4 h-4"></i> Điều khiển & Vận hành
+                    </h3>
+                    <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-3">
+                        <!-- Mode Selector Button Group -->
+                        <div class="space-y-1.5">
+                            <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Chuyển chế độ điều khiển:</span>
+                            <div class="flex gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-700/30">
+                                <button id="btnModeManual" class="flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30">Lái tay</button>
+                                <button id="btnModeAuto" class="flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30">Tự hành</button>
+                                <button id="btnModeWaypoint" class="flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30">Waypoint</button>
+                            </div>
+                        </div>
+
+                        <!-- Emergency & Reset Action Bar -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btnEstop" class="py-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white border border-rose-500 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-[0_0_12px_rgba(239,68,68,0.4)]" title="DỪNG KHẨN CẤP">
+                                <i data-lucide="octagon" class="w-4 h-4 fill-white"></i> ESTOP (DỪNG KHẨN)
+                            </button>
+                            <button id="btnResetOdom" class="py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-850 text-slate-200 border border-slate-600 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-all" title="Đặt lại Odometry">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Đặt lại Odom
+                            </button>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 leading-relaxed pt-1.5 border-t border-slate-700/20">
+                            Dùng các phím **W-S-A-D** hoặc các phím **Mũi tên** để di chuyển, phím **Q/E** để trượt ngang. Phím **Space** để dừng khẩn cấp.
+                        </p>
+                        
+                        <!-- Control Grid (Translation) -->
+                        <div class="grid grid-cols-3 gap-2 max-w-[200px] mx-auto">
+                            <!-- Row 1 -->
+                            <button id="btnDriveDiagFL" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Chéo Trái Trước (FL)">
+                                <i data-lucide="arrow-up-left" class="w-5 h-5"></i>
+                            </button>
+                            <button id="btnDriveForward" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Tiến (W / Mũi tên Lên)">
+                                <i data-lucide="arrow-up" class="w-5 h-5"></i>
+                            </button>
+                            <button id="btnDriveDiagFR" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Chéo Phải Trước (FR)">
+                                <i data-lucide="arrow-up-right" class="w-5 h-5"></i>
+                            </button>
+                            
+                            <!-- Row 2 -->
+                            <button id="btnDriveStrafeLeft" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Trượt Trái (Q)">
+                                <i data-lucide="arrow-left-to-line" class="w-5 h-5"></i>
+                            </button>
+                            <button id="btnDriveStop" class="p-3 bg-rose-600/20 hover:bg-rose-600 active:bg-rose-700 border border-rose-500/30 hover:border-rose-500 rounded-lg flex items-center justify-center text-rose-400 hover:text-white transition-all select-none font-bold text-xs focus:outline-none" title="Dừng xe (Space)">
+                                DỪNG
+                            </button>
+                            <button id="btnDriveStrafeRight" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Trượt Phải (E)">
+                                <i data-lucide="arrow-right-to-line" class="w-5 h-5"></i>
+                            </button>
+                            
+                            <!-- Row 3 -->
+                            <button id="btnDriveDiagBL" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Chéo Trái Sau (BL)">
+                                <i data-lucide="arrow-down-left" class="w-5 h-5"></i>
+                            </button>
+                            <button id="btnDriveBackward" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Lùi (S / Mũi tên Xuống)">
+                                <i data-lucide="arrow-down" class="w-5 h-5"></i>
+                            </button>
+                            <button id="btnDriveDiagBR" class="p-3 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center text-slate-200 transition-all select-none focus:outline-none" title="Chéo Phải Sau (BR)">
+                                <i data-lucide="arrow-down-right" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+ 
+                        <!-- Rotation Controls -->
+                        <div class="flex gap-2 max-w-[200px] mx-auto border-t border-slate-700/30 pt-2">
+                            <button id="btnDriveTurnLeft" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center gap-1 text-slate-200 text-xs transition-all select-none focus:outline-none" title="Xoay Trái (A / Mũi tên Trái)">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Xoay Trái
+                            </button>
+                            <button id="btnDriveTurnRight" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 border border-slate-700 rounded-lg flex items-center justify-center gap-1 text-slate-200 text-xs transition-all select-none focus:outline-none" title="Xoay Phải (D / Mũi tên Phải)">
+                                Xoay Phải <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Sensors Panel -->
+                <div class="border-t border-slate-700/50 pt-4">
+                    <div class="w-full flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase mb-3">
+                        <i data-lucide="cpu" class="w-4 h-4 text-blue-400"></i> Cảm biến & Phần cứng
+                    </div>
+                    
+                    <div id="panelDetailedSensors" class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-4 text-xs">
+                        <!-- Distance Sensors -->
+                        <div class="space-y-2">
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Cảm biến khoảng cách</div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-500">LiDAR Trước:</span>
+                                    <span class="font-mono text-blue-400 font-bold" id="valLidarF">-- cm</span>
+                                </div>
+                                <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-500">LiDAR Sau:</span>
+                                    <span class="font-mono text-blue-400 font-bold" id="valLidarB">-- cm</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex flex-col gap-1.5">
+                                <div class="text-[9px] text-slate-500 font-semibold uppercase">Siêu âm 4 Góc</div>
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
+                                    <div class="flex justify-between"><span class="text-slate-400">Trái Trước (LF):</span><span class="text-emerald-400 font-bold" id="valUsLF">-- cm</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">Phải Trước (RF):</span><span class="text-emerald-400 font-bold" id="valUsRF">-- cm</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">Trái Sau (LR):</span><span class="text-emerald-400 font-bold" id="valUsLR">-- cm</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">Phải Sau (RR):</span><span class="text-emerald-400 font-bold" id="valUsRR">-- cm</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Encoders & IMU -->
+                        <div class="space-y-2">
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Động cơ & Đọc Encoder</div>
+                            <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex flex-col gap-1.5">
+                                <div class="text-[9px] text-slate-500 font-semibold uppercase">Tốc độ vòng quay (RPM)</div>
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px]">
+                                    <div class="flex justify-between"><span class="text-slate-400">FL:</span><span class="text-indigo-400 font-bold" id="valRpmFL">-- RPM</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">FR:</span><span class="text-indigo-400 font-bold" id="valRpmFR">-- RPM</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">RL:</span><span class="text-indigo-400 font-bold" id="valRpmRL">-- RPM</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-400">RR:</span><span class="text-indigo-400 font-bold" id="valRpmRR">-- RPM</span></div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-500">Góc IMU:</span>
+                                    <span class="font-mono text-amber-400 font-bold" id="valImuHeading">--°</span>
+                                </div>
+                                <div class="bg-slate-900/50 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-500">Điện áp Pin:</span>
+                                    <span class="font-mono text-slate-300 font-bold" id="valSysBat">-- V</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- System Details -->
+                        <div class="space-y-2">
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Thông số phần cứng ESP32</div>
+                            <div class="bg-slate-900/50 p-2 rounded border border-slate-800 space-y-1 font-mono text-[10px]">
+                                <div class="flex justify-between"><span class="text-slate-500">Dòng chip ESP:</span><span class="text-slate-300 font-bold" id="valSysChip">--</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">Tần số CPU:</span><span class="text-slate-300 font-bold" id="valSysCpu">-- MHz</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">SRAM trống:</span><span class="text-slate-300 font-bold" id="valSysHeap">-- KB</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">Nhiệt độ chip:</span><span class="text-slate-300 font-bold" id="valSysTemp">-- °C</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </aside>
 
@@ -365,34 +454,221 @@
             <i data-lucide="loader-2" class="w-12 h-12 text-blue-500 animate-spin mb-4"></i>
             <h2 id="loadingText" class="text-xl font-semibold text-white">Đang xử lý...</h2>
             <p class="text-slate-400 text-sm mt-2">Vui lòng đợi trong giây lát</p>
+        </div>
     </div>
 
-    <!-- Settings Modal -->
+    <!-- Settings Modal (Advanced Config) -->
     <div id="settingsModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex-col justify-center items-center hidden">
-        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl flex flex-col w-96 max-w-full">
-            <div class="flex justify-between items-center mb-4">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl flex flex-col w-[440px] max-w-full">
+            <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                    <i data-lucide="settings" class="text-blue-400"></i> Cấu hình kết nối
+                    <i data-lucide="settings" class="text-blue-400"></i> Cấu hình Hệ thống Robot
                 </h2>
                 <button id="btnCloseSettings" class="text-slate-400 hover:text-white transition-colors">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
-            <div class="space-y-4">
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Backend URL (API)</label>
-                    <input type="text" id="cfgBackendUrl" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="http://localhost:5000">
-                    <p class="text-[10px] text-slate-500 mt-1">VD: http://localhost:5000 hoặc URL ngrok.</p>
+ 
+            <!-- Tab Headers -->
+            <div class="flex border-b border-slate-700/50 mb-4 text-xs font-semibold">
+                <button id="tabBtnConnection" class="flex-1 py-2 text-blue-400 border-b-2 border-blue-500 focus:outline-none" onclick="switchSettingsTab('connection')">Kết nối</button>
+                <button id="tabBtnSensors" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('sensors')">Cảm biến</button>
+                <button id="tabBtnMotors" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('motors')">Động cơ</button>
+                <button id="tabBtnSpeed" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('speed')">Tốc độ</button>
+            </div>
+ 
+            <!-- Tab Contents -->
+            <div class="space-y-4 flex-1 overflow-y-auto max-h-[360px] pr-1">
+                <!-- Tab: Connection -->
+                <div id="tabContentConnection" class="space-y-4">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Địa chỉ URL Backend (API)</label>
+                        <input type="text" id="cfgBackendUrl" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="http://localhost:5000">
+                        <p class="text-[10px] text-slate-500 mt-1">VD: http://localhost:5000 hoặc URL ngrok công cộng.</p>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">IP Robot (WebSocket Direct)</label>
+                        <input type="text" id="cfgRobotIp" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="192.168.4.1">
+                        <p class="text-[10px] text-slate-500 mt-1">VD: 192.168.4.1 (Hotspot Robot phát) hoặc IP cấp bởi router.</p>
+                    </div>
                 </div>
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">IP Robot (WebSocket)</label>
-                    <input type="text" id="cfgRobotIp" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="192.168.4.1">
-                    <p class="text-[10px] text-slate-500 mt-1">VD: 192.168.4.1 (hotspot) hoặc IP cấp bởi router.</p>
+ 
+                <!-- Tab: Sensors Layout -->
+                <div id="tabContentSensors" class="space-y-4 hidden">
+                    <p class="text-[10px] text-slate-400 leading-relaxed">Ánh xạ cổng cảm biến vật lý tương ứng với vị trí logic trên xe. Các cổng phải là hoán vị không trùng lặp (từ Cổng 0 đến Cổng 3).</p>
+                    
+                    <!-- Ultrasonics -->
+                    <div class="space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">Cấu hình Siêu âm (HC-SR04)</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Trước (LF)</label>
+                                <select id="cfgUs0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Cổng 0</option><option value="1">Cổng 1</option><option value="2">Cổng 2</option><option value="3">Cổng 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Sau (LR)</label>
+                                <select id="cfgUs1" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Cổng 0</option><option value="1">Cổng 1</option><option value="2">Cổng 2</option><option value="3">Cổng 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Trước (RF)</label>
+                                <select id="cfgUs2" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Cổng 0</option><option value="1">Cổng 1</option><option value="2">Cổng 2</option><option value="3">Cổng 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Sau (RR)</label>
+                                <select id="cfgUs3" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Cổng 0</option><option value="1">Cổng 1</option><option value="2">Cổng 2</option><option value="3">Cổng 3</option></select>
+                            </div>
+                        </div>
+                    </div>
+ 
+                    <!-- Encoders -->
+                    <div class="space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">Cấu hình Encoder Bánh xe</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Trước (FL)</label>
+                                <select id="cfgEnc0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Sau (RL)</label>
+                                <select id="cfgEnc1" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Trước (FR)</label>
+                                <select id="cfgEnc2" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Sau (RR)</label>
+                                <select id="cfgEnc3" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                        </div>
+                    </div>
+ 
+                    <!-- LiDAR Front Selection -->
+                    <div>
+                        <label class="text-xs text-slate-300 block mb-1 font-semibold">Cổng UART LiDAR trước xe (Front LiDAR)</label>
+                        <select id="cfgLidF" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:outline-none">
+                            <option value="0">Cổng Serial 1 (Mặc định)</option>
+                            <option value="1">Cổng Serial 2</option>
+                        </select>
+                    </div>
+                </div>
+ 
+                <!-- Tab: Motors Layout -->
+                <div id="tabContentMotors" class="space-y-4 hidden">
+                    <p class="text-[10px] text-slate-400 leading-relaxed">Ánh xạ góc bánh xe logic đến các kênh điều khiển phần cứng của Driver TB6612 và lật đảo chiều động cơ.</p>
+                    
+                    <!-- Motor Channels Mapping -->
+                    <div class="space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">Kênh TB6612 Vật lý</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Trước (FL)</label>
+                                <select id="cfgMot0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Trái Sau (RL)</label>
+                                <select id="cfgMot1" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Trước (FR)</label>
+                                <select id="cfgMot2" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Phải Sau (RR)</label>
+                                <select id="cfgMot3" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none"><option value="0">Kênh 0</option><option value="1">Kênh 1</option><option value="2">Kênh 2</option><option value="3">Kênh 3</option></select>
+                            </div>
+                        </div>
+                    </div>
+ 
+                    <!-- Motor Invert -->
+                    <div class="space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">Đảo chiều Động cơ (Motor Invert)</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <label class="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800 cursor-pointer text-slate-200">
+                                <input type="checkbox" id="cfgInv0" class="rounded border-slate-700 text-blue-600 focus:ring-blue-500 bg-slate-950">
+                                <span>Trái Trước (FL)</span>
+                            </label>
+                            <label class="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800 cursor-pointer text-slate-200">
+                                <input type="checkbox" id="cfgInv1" class="rounded border-slate-700 text-blue-600 focus:ring-blue-500 bg-slate-950">
+                                <span>Trái Sau (RL)</span>
+                            </label>
+                            <label class="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800 cursor-pointer text-slate-200">
+                                <input type="checkbox" id="cfgInv2" class="rounded border-slate-700 text-blue-600 focus:ring-blue-500 bg-slate-950">
+                                <span>Phải Trước (FR)</span>
+                            </label>
+                            <label class="flex items-center gap-2 bg-slate-900/50 p-2 rounded border border-slate-800 cursor-pointer text-slate-200">
+                                <input type="checkbox" id="cfgInv3" class="rounded border-slate-700 text-blue-600 focus:ring-blue-500 bg-slate-950">
+                                <span>Phải Sau (RR)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+ 
+                <!-- Tab: Speed Controls -->
+                <div id="tabContentSpeed" class="space-y-4 hidden">
+                    <p class="text-[10px] text-slate-400 leading-relaxed">Cấu hình giới hạn tốc độ di chuyển của Robot (lái tay, tự hành, trượt ngang và tránh vật cản).</p>
+                    
+                    <!-- Manual Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Lái tay (Manual)</span>
+                            <span id="spdVal" class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">60%</span>
+                        </div>
+                        <input type="range" id="spdSlider" min="0" max="100" value="60" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>0%</span>
+                            <span>50%</span>
+                            <span>100%</span>
+                        </div>
+                    </div>
+ 
+                    <!-- Strafe -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Trượt ngang (Strafe)</span>
+                            <span id="strVal" class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">50%</span>
+                        </div>
+                        <input type="range" id="strSlider" min="0" max="100" value="50" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>Trái</span>
+                            <span>50%</span>
+                            <span>Phải</span>
+                        </div>
+                    </div>
+ 
+                    <!-- Auto Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Tự hành (Auto)</span>
+                            <span id="spdAutoVal" class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">50%</span>
+                        </div>
+                        <input type="range" id="spdAutoSlider" min="15" max="100" value="50" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>15%</span>
+                            <span>50%</span>
+                            <span>100%</span>
+                        </div>
+                    </div>
+ 
+                    <!-- Swerve Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Tránh vật cản (Swerve)</span>
+                            <span id="spdSwerveVal" class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">45%</span>
+                        </div>
+                        <input type="range" id="spdSwerveSlider" min="15" max="100" value="45" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>15%</span>
+                            <span>45%</span>
+                            <span>100%</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="flex justify-end gap-2 mt-6">
-                <button id="btnCancelSettings" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Hủy</button>
-                <button id="btnSaveSettings" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-all">Lưu & Kết nối</button>
+ 
+            <div class="flex justify-end gap-2 mt-6 border-t border-slate-700/50 pt-4">
+                <button id="btnCancelSettings" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-all">Hủy bỏ</button>
+                <button id="btnSaveSettings" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-all">Lưu & Áp dụng</button>
             </div>
         </div>
     </div>
