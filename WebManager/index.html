@@ -45,6 +45,9 @@
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
             border-color: #60a5fa;
         }
+        /* Collapsible details */
+        details summary::-webkit-details-marker { display: none; }
+        details[open] summary .group-open\:rotate-180 { transform: rotate(180deg); }
     </style>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col">
@@ -324,7 +327,7 @@
                         </div>
 
                         <p class="text-[10px] text-slate-400 leading-relaxed pt-1.5 border-t border-slate-700/20">
-                            Dùng các phím **W-S-A-D** hoặc các phím **Mũi tên** để di chuyển, phím **Q/E** để trượt ngang. Phím **Space** để dừng khẩn cấp.
+                            Dùng các phím <strong class="text-slate-300">W-S-A-D</strong> hoặc các phím <strong class="text-slate-300">Mũi tên</strong> để di chuyển, phím <strong class="text-slate-300">Q/E</strong> để trượt ngang. Phím <strong class="text-slate-300">Space</strong> để dừng khẩn cấp.
                         </p>
                         
                         <!-- Control Grid (Translation) -->
@@ -376,10 +379,11 @@
                 </div>
 
                 <!-- Detailed Sensors Panel -->
-                <div class="border-t border-slate-700/50 pt-4">
-                    <div class="w-full flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase mb-3">
+                <details class="border-t border-slate-700/50 pt-4 group">
+                    <summary class="w-full flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase mb-3 cursor-pointer select-none list-none">
                         <i data-lucide="cpu" class="w-4 h-4 text-blue-400"></i> Cảm biến & Phần cứng
-                    </div>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-auto text-slate-500 transition-transform group-open:rotate-180"></i>
+                    </summary>
                     
                     <div id="panelDetailedSensors" class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-4 text-xs">
                         <!-- Distance Sensors -->
@@ -441,7 +445,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </details>
 
             </div>
         </aside>
@@ -674,7 +678,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
     <script>
         lucide.createIcons();
     </script>

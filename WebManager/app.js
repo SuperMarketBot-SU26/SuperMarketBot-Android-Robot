@@ -1430,7 +1430,7 @@ function applyLiveTelemetry(d) {
         }
         
         if (lastKnownMode !== modeStr && lastKnownMode !== null) {
-            addMiniEvent(`Chế độ vận hành: ${lastKnownMode} ➔ ${modeStr}`);
+            appendSerialLog(`[Hệ thống] Chế độ vận hành: ${lastKnownMode} ➔ ${modeStr}`);
         }
         lastKnownMode = modeStr;
     }
@@ -1489,7 +1489,7 @@ function applyLiveTelemetry(d) {
             if (wpStatusStr === 'aborted' || wpStatusStr === 'reroute_needed') msgType = 'error';
             if (wpStatusStr === 'oa_active') msgType = 'warning';
             
-            addMiniEvent(`Trạng thái FSM: ${lastKnownWpStatus.toUpperCase()} ➔ ${displayStatus}`, msgType);
+            appendSerialLog(`[Hệ thống] Trạng thái FSM: ${lastKnownWpStatus.toUpperCase()} ➔ ${displayStatus}`);
         }
         lastKnownWpStatus = wpStatusStr;
     }
@@ -1642,46 +1642,6 @@ function appendSerialLog(message) {
         container.scrollTop = container.scrollHeight;
     }
 
-    // Mirror to mini event feed if it is a high-level event
-    const lowerMsg = message.toLowerCase();
-    const isRawSensor = lowerMsg.includes('rpm') || lowerMsg.includes('heap') || lowerMsg.includes('temp') || lowerMsg.includes('cpu') || (lowerMsg.includes('cm') && !lowerMsg.includes('vật cản') && !lowerMsg.includes('tránh'));
-    if (!isRawSensor && (message.includes('[WS-Direct]') || message.includes('[BE-MQTT]') || message.includes('[Hệ thống]'))) {
-        const cleanMsg = message.replace('[WS-Direct] ', '').replace('[BE-MQTT] ', '').replace('[Hệ thống] ', '');
-        addMiniEvent(cleanMsg);
-    }
-}
-
-// Function to add a message to the mini event feed on the sidebar
-function addMiniEvent(message, type = 'info') {
-    const feed = document.getElementById('miniEventFeed');
-    if (!feed) return;
-
-    const initMsg = feed.querySelector('.italic');
-    if (initMsg) {
-        feed.innerHTML = '';
-    }
-
-    const logLine = document.createElement('div');
-    logLine.className = 'pb-1.5 whitespace-pre-wrap flex items-start gap-1 text-[10px] leading-relaxed border-b border-slate-800/10';
-
-    const timeStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-    
-    let colorClass = 'text-slate-300';
-    if (type === 'error' || message.includes('[ERROR]') || message.includes('Lỗi') || message.includes('fail') || message.includes('FAIL') || message.includes('aborted')) {
-        colorClass = 'text-rose-400 font-semibold';
-    } else if (type === 'warning' || message.includes('[WARNING]') || message.includes('Cảnh báo') || message.includes('Warning') || message.includes('reroute_needed') || message.includes('oa_active')) {
-        colorClass = 'text-amber-400';
-    } else if (type === 'success' || message.includes('done') || message.includes('success') || message.includes('SUCCESS') || message.includes('Thành công')) {
-        colorClass = 'text-emerald-400 font-semibold';
-    }
-
-    logLine.innerHTML = `<span class="text-slate-500 select-none font-sans mr-1">[${timeStr}]</span><span class="${colorClass}">${escapeHtml(message)}</span>`;
-    feed.appendChild(logLine);
-
-    while (feed.childNodes.length > 20) {
-        feed.removeChild(feed.firstChild);
-    }
-    feed.scrollTop = feed.scrollHeight;
 }
 
 function escapeHtml(text) {
@@ -2053,13 +2013,13 @@ document.getElementById('btnModeWaypoint')?.addEventListener('click', () => chan
 document.getElementById('btnEstop')?.addEventListener('click', () => {
     console.warn('[Control] KÍCH HOẠT ESTOP!');
     sendRobotCommand('estop', 'estop', 1);
-    addMiniEvent('⚠️ ĐÃ KÍCH HOẠT DỪNG KHẨN CẤP (ESTOP)!', 'error');
+    appendSerialLog('[Hệ thống] ⚠️ ĐÃ KÍCH HOẠT DỪNG KHẨN CẤP (ESTOP)!');
 });
 
 document.getElementById('btnResetOdom')?.addEventListener('click', () => {
     console.log('[Control] Resetting Odometry');
     sendRobotCommand('odom_reset', 'odomReset', 1);
-    addMiniEvent('🔄 Đã gửi lệnh Reset Odometry.', 'info');
+    appendSerialLog('[Hệ thống] 🔄 Đã gửi lệnh Reset Odometry.');
 });
 
 
