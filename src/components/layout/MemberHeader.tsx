@@ -14,48 +14,24 @@ export function MemberHeader() {
   };
 
   return (
-    <XStack
+    <YStack
       width="100%"
-      justifyContent="space-between"
-      alignItems="center"
-      paddingHorizontal="$6"
+      paddingHorizontal="$4"
       paddingVertical="$4"
       backgroundColor="white"
       borderBottomWidth={1}
       borderBottomColor="#f0f0f0"
       zIndex={100}
+      gap="$4"
     >
-      {/* LEFT: Logo & Weather */}
-      <XStack alignItems="center" gap="$6">
+      {/* ROW 1: Logo & Profile */}
+      <XStack justifyContent="space-between" alignItems="center">
+        {/* LEFT: Logo */}
         <Text fontSize={22} fontWeight="900" color="#00A550">
           SmartMarketBot
         </Text>
-      </XStack>
 
-      {/* RIGHT: Budget, Icons, Profile */}
-      <XStack alignItems="center" gap="$6">
-
-        {/* Budget */}
-        <XStack alignItems="center" gap="$3" backgroundColor="#f2fcf5" paddingHorizontal="$4" paddingVertical="$2" borderRadius={20}>
-          <YStack gap="$1" width={120}>
-            <Text fontSize={10} fontWeight="bold" color="#00A550">NGÂN SÁCH</Text>
-            <Progress size="$1" value={45} backgroundColor="#e0f2e9">
-              <Progress.Indicator backgroundColor="#00A550" />
-            </Progress>
-          </YStack>
-          <Text fontSize={12} fontWeight="bold" color="#00A550">450k/1000k</Text>
-        </XStack>
-
-        {/* Action Icons
-        <XStack gap="$4" alignItems="center">
-          <Trash2 size={20} color="#333" />
-          <MapPin size={20} color="#333" />
-        </XStack> */}
-
-        {/* Divider */}
-        <View width={1} height={24} backgroundColor="#e0e0e0" />
-
-        {/* Profile (Clickable with Dropdown) */}
+        {/* RIGHT: Profile (Clickable with Dropdown) */}
         <View position="relative" zIndex={100}>
           <XStack
             alignItems="center"
@@ -130,8 +106,20 @@ export function MemberHeader() {
             </Animated.View>
           )}
         </View>
-
       </XStack>
-    </XStack>
+
+      {/* ROW 2: Budget */}
+      <XStack alignItems="center" justifyContent="space-between" backgroundColor="#f2fcf5" paddingHorizontal="$4" paddingVertical="$3" borderRadius={16}>
+        <YStack gap="$1.5" flex={1} paddingRight="$4">
+          <XStack justifyContent="space-between">
+            <Text fontSize={11} fontWeight="bold" color="#00A550">NGÂN SÁCH MUA SẮM</Text>
+            <Text fontSize={12} fontWeight="bold" color="#00A550">450k / 1000k</Text>
+          </XStack>
+          <Progress size="$2" value={45} backgroundColor="#e0f2e9">
+            <Progress.Indicator backgroundColor="#00A550" />
+          </Progress>
+        </YStack>
+      </XStack>
+    </YStack>
   );
 }

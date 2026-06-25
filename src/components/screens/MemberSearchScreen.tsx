@@ -230,7 +230,7 @@ export default function MemberSearchScreen() {
             borderWidth={0}
             fontSize={16}
             color="#333"
-            placeholder="Nhập tên sản phẩm bạn cần tìm..."
+            placeholder="Tìm kiếm sản phẩm..."
             placeholderTextColor={"#aaa" as any}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -238,6 +238,8 @@ export default function MemberSearchScreen() {
             returnKeyType="search"
             height={50}
             style={{ paddingHorizontal: 0 }}
+            multiline={false}
+            numberOfLines={1}
           />
 
           {searchQuery ? (
@@ -266,16 +268,16 @@ export default function MemberSearchScreen() {
       {/* HIỂN THỊ KẾT QUẢ TÌM KIẾM ĐẲNG CẤP BẰNG VOICE */}
       {isSearching ? (
         <YStack flex={1} gap="$4">
-          <XStack justifyContent="space-between" alignItems="center">
-            <XStack alignItems="center" gap="$2">
-              <Sparkles size={16} color="#00A550" />
-              <Text fontSize={14} fontWeight="800" color="#333" letterSpacing={0.5}>
-                ĐÃ TÌM THẤY {results.length} SẢN PHẨM KHỚP VỚI GIỌNG NÓI
+          <XStack justifyContent="space-between" alignItems="center" paddingRight="$4">
+            <XStack alignItems="flex-start" gap="$2" flex={1}>
+              <Sparkles size={16} color="#00A550" style={{ marginTop: 2 }} />
+              <Text fontSize={13} fontWeight="800" color="#333" letterSpacing={0.5} flex={1} flexWrap="wrap" lineHeight={18}>
+                ĐÃ TÌM THẤY {results.length} SẢN PHẨM PHÙ HỢP
               </Text>
             </XStack>
           </XStack>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
             {results.length > 0 ? (
               <YStack gap="$4">
                 {results.map((product, index) => (
@@ -302,7 +304,7 @@ export default function MemberSearchScreen() {
 
                         {/* Product Info & Shelf Position */}
                         <YStack flex={1} gap="$1.5">
-                          <Text fontSize={15} fontWeight="bold" color="#333" numberOfLines={1}>{product.name}</Text>
+                          <Text fontSize={15} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={20}>{product.name}</Text>
 
                           <XStack gap="$2" alignItems="center">
                             {product.originalPrice ? (
@@ -366,9 +368,10 @@ export default function MemberSearchScreen() {
           </ScrollView>
         </YStack>
       ) : (
-        /* POPULAR searches (Chỉ hiện khi chưa tìm kiếm) */
-        <Animated.View entering={FadeInDown.delay(100).duration(450)}>
-          <YStack gap="$3" marginBottom="$6">
+        /* TRẠNG THÁI EMPTY LÚC ĐẦU (POPULAR, DANH MỤC, KHUYẾN MÃI) */
+        <Animated.View style={{ flex: 1 }} entering={FadeInDown.delay(100).duration(450)}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          <YStack gap="$3" marginBottom="$4">
             <XStack alignItems="center" gap="$1.5">
               <Text fontSize={10} fontWeight="900" color="#666" letterSpacing={0.5}>📈 TÌM KIẾM PHỔ BIẾN</Text>
             </XStack>
@@ -409,14 +412,71 @@ export default function MemberSearchScreen() {
               </Button>
             </XStack>
           </YStack>
+
+          {/* KHÁM PHÁ DANH MỤC */}
+          <Animated.View entering={FadeInDown.delay(200).duration(450)}>
+            <YStack gap="$3" marginTop="$2">
+              <Text fontSize={11} fontWeight="900" color="#666" letterSpacing={0.5}>🏷️ KHÁM PHÁ DANH MỤC</Text>
+              <XStack flexWrap="wrap" justifyContent="space-between" rowGap="$3">
+                {[
+                  { title: 'Thực phẩm tươi sống', icon: '🥩', color: '#fee2e2' },
+                  { title: 'Trái cây nhập khẩu', icon: '🍎', color: '#fef3c7' },
+                  { title: 'Nước giải khát', icon: '🥤', color: '#e0f2fe' },
+                  { title: 'Bánh kẹo & Đồ ngọt', icon: '🍫', color: '#f3e8ff' },
+                ].map((cat, idx) => (
+                  <Card 
+                    key={idx} 
+                    width="48%" 
+                    backgroundColor={cat.color} 
+                    borderRadius={16} 
+                    padding="$3" 
+                    pressStyle={{ scale: 0.95 }}
+                    onPress={() => {
+                      setSearchQuery(cat.title);
+                      executeSearch(cat.title);
+                    }}
+                  >
+                    <YStack gap="$2" alignItems="center">
+                      <Text fontSize={26}>{cat.icon}</Text>
+                      <Text fontSize={13} fontWeight="bold" color="#333" textAlign="center">{cat.title}</Text>
+                    </YStack>
+                  </Card>
+                ))}
+              </XStack>
+            </YStack>
+          </Animated.View>
+
+          {/* KHUYẾN MÃI HÔM NAY BĂNG RÔN (BANNER) */}
+          <Animated.View entering={FadeInDown.delay(300).duration(450)}>
+            <Card 
+              marginTop="$4" 
+              backgroundColor="#10B981" 
+              borderRadius={20} 
+              padding="$4" 
+              pressStyle={{ scale: 0.98 }}
+              onPress={() => executeSearch('Rau xà lách')}
+            >
+              <XStack justifyContent="space-between" alignItems="center">
+                <YStack gap="$1" flex={1}>
+                  <Text color="white" fontSize={11} fontWeight="900" letterSpacing={1}>⚡ GIỜ VÀNG GIÁ SỐC</Text>
+                  <Text color="white" fontSize={16} fontWeight="bold">Giảm 50% Rau Củ Sạch</Text>
+                  <Text color="rgba(255,255,255,0.9)" fontSize={12} marginTop="$1">Áp dụng đến 12:00 trưa nay</Text>
+                </YStack>
+                <View backgroundColor="white" borderRadius={30} paddingHorizontal="$4" paddingVertical="$2">
+                  <Text color="#10B981" fontWeight="bold" fontSize={12}>Xem ngay</Text>
+                </View>
+              </XStack>
+            </Card>
+          </Animated.View>
+        </ScrollView>
         </Animated.View>
       )}
 
       {/* FLOATING MIC BUTTON - Click leads directly to Futuristic Voice Search Screen */}
       <View
         position="absolute"
-        bottom={30}
-        right={30}
+        bottom={Math.max(insets.bottom, 20) + 30}
+        right={24}
         zIndex={200}
       >
         <Animated.View entering={ZoomIn.delay(300)}>

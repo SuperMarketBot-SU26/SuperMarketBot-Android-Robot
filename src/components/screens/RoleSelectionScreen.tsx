@@ -1,19 +1,23 @@
 import React, { useEffect } from 'react';
-import { View, Text, Button, XStack, YStack } from 'tamagui';
+import { View, Text, Button, XStack, YStack, ScrollView } from 'tamagui';
 import { UserSearch, Star, ArrowRight } from 'lucide-react-native';
 import { Header } from '../layout/Header';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
-import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Crown } from 'lucide-react-native';
+import { Image } from 'expo-image';
 
 export default function RoleSelectionScreen() {
   const { speak } = useRobotVoice();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Giá trị animation nổi/bồng bềnh cho thẻ
   const float1 = useSharedValue(0);
   const float2 = useSharedValue(0);
+  const scaleMember = useSharedValue(1);
 
   useEffect(() => {
     speak('Vui lòng chọn vai trò của bạn');
@@ -39,27 +43,45 @@ export default function RoleSelectionScreen() {
         true
       )
     );
+
+    // Hiệu ứng "thở" (scale) nhẹ nhàng cho thẻ Member
+    scaleMember.value = withRepeat(
+      withSequence(
+        withTiming(1.02, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
   }, []);
 
-  // Style áp dụng animation vào thẻ
   const floatStyle1 = useAnimatedStyle(() => ({
     transform: [{ translateY: float1.value }]
   }));
 
   const floatStyle2 = useAnimatedStyle(() => ({
-    transform: [{ translateY: float2.value }]
+    transform: [
+      { translateY: float2.value },
+      { scale: scaleMember.value }
+    ]
   }));
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fcfdfd' }}>
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <View flex={1} position="relative" overflow="hidden">
 
-        {/* 1. Nền mờ giả Gradient Trắng -> Xanh Mint */}
-        <View position="absolute" top={-100} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#00A550" opacity={0.05} />
-        <View position="absolute" bottom={-150} right={-100} width={500} height={500} borderRadius={250} backgroundColor="#00A550" opacity={0.06} />
+        {/* Mảng sương mờ Aura cực kỳ sang trọng (Real Image Background) */}
+        <Image
+          source={{ uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1080&auto=format&fit=crop' }}
+          contentFit="cover"
+          style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 0 }}
+          transition={500}
+        />
+        {/* Lớp phủ sáng mờ giúp chữ dễ đọc */}
+        <View position="absolute" top={0} left={0} right={0} bottom={0} backgroundColor="rgba(255,255,255,0.85)" zIndex={0} />
 
         {/* 2. Grid Pattern (Sơ đồ siêu thị/AI map mờ) */}
-        <View position="absolute" top={0} left={0} right={0} bottom={0} opacity={0.04} zIndex={0}>
+        <View position="absolute" top={0} left={0} right={0} bottom={0} opacity={0.03} zIndex={0}>
           {/* Lưới ngang */}
           {[...Array(15)].map((_, i) => (
             <View key={`h-${i}`} position="absolute" top={i * 40} left={0} right={0} height={1} backgroundColor="black" />
@@ -68,80 +90,85 @@ export default function RoleSelectionScreen() {
           {[...Array(25)].map((_, i) => (
             <View key={`v-${i}`} position="absolute" left={i * 40} top={0} bottom={0} width={1} backgroundColor="black" />
           ))}
-          {/* Một vài Waypoint / Node tròn trên lưới */}
-          <View position="absolute" top={120 - 4} left={240 - 4} width={8} height={8} borderRadius={4} backgroundColor="black" />
-          <View position="absolute" top={200 - 4} left={480 - 4} width={8} height={8} borderRadius={4} backgroundColor="black" />
-          <View position="absolute" top={280 - 4} left={360 - 4} width={8} height={8} borderRadius={4} backgroundColor="black" />
-          <View position="absolute" top={80 - 4} left={600 - 4} width={8} height={8} borderRadius={4} backgroundColor="black" />
         </View>
 
         {/* Header tĩnh ở trên cùng */}
-        <View zIndex={10}>
+        <View zIndex={10} paddingTop={insets.top}>
           <Header />
         </View>
 
-        <YStack flex={1} justifyContent="center" alignItems="center" gap="$5" paddingBottom={80} zIndex={10}>
+        <ScrollView 
+          flex={1} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start', paddingBottom: 40, paddingTop: 30 }}
+          zIndex={10}
+        >
+          <YStack alignItems="center" gap="$5">
 
-          {/* Tiêu đề trang (Animation trượt xuống) */}
-          <Animated.View entering={FadeInDown.duration(800).springify()}>
-            <Text fontSize={26} fontWeight="bold" color="$textPrimary" fontFamily="$heading">
-              Vui lòng chọn vai trò của bạn
-            </Text>
-          </Animated.View>
+            {/* Tiêu đề trang (Animation trượt xuống) */}
+            <Animated.View entering={FadeInDown.duration(800).springify()}>
+              <Text fontSize={28} fontWeight="900" color="#1a1a1a" textAlign="center" paddingHorizontal="$4" letterSpacing={0.5}>
+                Vui lòng chọn vai trò
+              </Text>
+            </Animated.View>
 
-          {/* Hai tấm thẻ chọn vai trò */}
-          <XStack gap="$8" justifyContent="center" width="100%" paddingHorizontal="$4" marginTop={30}>
+            {/* Hai tấm thẻ chọn vai trò */}
+            <YStack gap="$5" justifyContent="center" width="100%" paddingHorizontal="$4" marginTop={16} alignItems="center">
 
             {/* Card 1: Khách vãng lai */}
-            <Animated.View entering={FadeInUp.delay(200).duration(600).springify()} style={{ flex: 1, maxWidth: 340 }}>
+            <Animated.View entering={FadeInUp.delay(200).duration(600).springify()} style={{ width: '100%', maxWidth: 380 }}>
               <Animated.View style={floatStyle1}>
                 <YStack
                   backgroundColor="white"
-                  borderRadius={20}
-                  padding="$5"
-                  height={210}
-                  justifyContent="space-between"
-                  alignItems="center"
-                  shadowColor="rgba(0,0,0,0.05)"
-                  shadowOffset={{ width: 0, height: 8 }}
+                  borderRadius={32}
+                  paddingVertical="$5"
+                  paddingHorizontal="$5"
+                  shadowColor="rgba(0,0,0,0.06)"
+                  shadowOffset={{ width: 0, height: 15 }}
                   shadowOpacity={1}
-                  shadowRadius={15}
-                  elevation={3}
+                  shadowRadius={30}
+                  style={{ elevation: 4 }}
                   borderWidth={1}
-                  borderColor="#f0f0f0"
+                  borderColor="#F1F5F9"
+                  position="relative"
+                  overflow="hidden"
+                  gap="$3"
                 >
-                  <YStack alignItems="center" gap="$3">
+                  <YStack alignItems="center" gap="$3" justifyContent="center" zIndex={2}>
                     {/* Icon */}
-                    <View width={50} height={50} borderRadius={25} backgroundColor="#f9f9f9" justifyContent="center" alignItems="center">
-                      <UserSearch size={24} color="#888" />
+                    <View width={64} height={64} borderRadius={32} backgroundColor="#F0FDF4" justifyContent="center" alignItems="center">
+                      <UserSearch size={30} color="#00A550" strokeWidth={2} />
                     </View>
 
                     {/* Content */}
-                    <YStack alignItems="center" gap="$1.5">
-                      <Text fontSize={18} fontWeight="bold" color="$textPrimary">
+                    <YStack alignItems="center" gap="$1" paddingHorizontal="$2">
+                      <Text fontSize={20} fontWeight="800" color="#0F172A">
                         Khách vãng lai
                       </Text>
-                      <Text fontSize={11} color="$textSecondary" textAlign="center" lineHeight={16}>
-                        Trải nghiệm mua sắm nhanh chóng mà không cần đăng ký tài khoản thành viên.
+                      <Text fontSize={13} color="#64748B" textAlign="center" lineHeight={18} fontWeight="500">
+                        Trải nghiệm mua sắm nhanh chóng mà không cần đăng ký thành viên.
                       </Text>
                     </YStack>
                   </YStack>
 
                   <Button
                     variant="outlined"
-                    borderColor="#e0e0e0"
+                    borderColor="#E2E8F0"
+                    borderWidth={1.5}
                     borderRadius={30}
                     paddingHorizontal="$5"
-                    size="$3"
-                    pressStyle={{ scale: 0.97, backgroundColor: '#f5f5f5' }}
+                    size="$4"
+                    width="100%"
+                    pressStyle={{ scale: 0.97, backgroundColor: '#F8FAFC' }}
                     onPress={() => {
                       speak('Chào mừng khách hàng đến với Smart Market Bot');
                       setTimeout(() => {
                         router.push('/guest-home' as any);
                       }, 1500);
                     }}
+                    zIndex={2}
                   >
-                    <Text color="$textSecondary" fontWeight="bold" fontSize={11}>
+                    <Text color="#475569" fontWeight="800" fontSize={14} letterSpacing={0.5}>
                       BẮT ĐẦU NGAY
                     </Text>
                   </Button>
@@ -150,58 +177,105 @@ export default function RoleSelectionScreen() {
             </Animated.View>
 
             {/* Card 2: Khách hàng thành viên */}
-            <Animated.View entering={FadeInUp.delay(400).duration(600).springify()} style={{ flex: 1, maxWidth: 340 }}>
+            <Animated.View entering={FadeInUp.delay(400).duration(600).springify()} style={{ width: '100%', maxWidth: 380 }}>
               <Animated.View style={floatStyle2}>
+                
+                {/* Badge Khuyên dùng */}
+                <View
+                  position="absolute"
+                  top={-16}
+                  right={24}
+                  backgroundColor="#FFD700"
+                  paddingHorizontal="$4"
+                  paddingVertical="$2"
+                  borderRadius={20}
+                  zIndex={100}
+                  shadowColor="#FFD700"
+                  shadowOffset={{ width: 0, height: 4 }}
+                  shadowOpacity={0.6}
+                  shadowRadius={12}
+                  style={{ elevation: 6 }}
+                >
+                  <XStack alignItems="center" gap="$1.5">
+                    <Crown size={14} color="#8B6508" fill="#8B6508" />
+                    <Text color="#8B6508" fontWeight="900" fontSize={11} textTransform="uppercase" letterSpacing={1}>
+                      Khuyên dùng
+                    </Text>
+                  </XStack>
+                </View>
+
                 <YStack
                   backgroundColor="#00A550"
-                  borderRadius={20}
-                  padding="$5"
-                  height={210}
-                  justifyContent="space-between"
-                  alignItems="center"
+                  borderRadius={32}
+                  paddingVertical="$5"
+                  paddingHorizontal="$5"
                   shadowColor="#00A550"
-                  shadowOffset={{ width: 0, height: 8 }}
-                  shadowOpacity={0.3}
-                  shadowRadius={15}
-                  elevation={8}
+                  shadowOffset={{ width: 0, height: 15 }}
+                  shadowOpacity={0.4}
+                  shadowRadius={25}
+                  style={{ elevation: 8 }}
                   overflow="hidden"
                   position="relative"
+                  gap="$3"
                 >
-                  {/* Trang trí vòng tròn góc phải */}
-                  <View
+                  <YStack
                     position="absolute"
-                    top={-15}
-                    right={-15}
-                    width={100}
-                    height={100}
-                    borderRadius={50}
-                    backgroundColor="white"
-                    opacity={0.08}
-                  />
-                  <View
-                    position="absolute"
-                    top={25}
-                    right={15}
-                    width={60}
-                    height={60}
-                    borderRadius={30}
-                    backgroundColor="black"
-                    opacity={0.1}
-                  />
+                    top={0} left={0} right={0} bottom={0}
+                    overflow="hidden"
+                    borderRadius={32}
+                  >
 
-                  <YStack alignItems="center" gap="$3" zIndex={2}>
+                    {/* Lớp bóng Glossy chéo */}
+                    <View
+                      position="absolute"
+                      top={-100}
+                      left={-50}
+                      width={300}
+                      height={200}
+                      backgroundColor="white"
+                      opacity={0.15}
+                      transform={[{ rotate: '-35deg' }]}
+                      zIndex={1}
+                    />
+
+                    {/* Các mảng màu bùng nổ - Explosive background shapes */}
+                    <View
+                      position="absolute"
+                      top={-40}
+                      right={-40}
+                      width={200}
+                      height={200}
+                      borderRadius={100}
+                      backgroundColor="white"
+                      opacity={0.1}
+                      zIndex={0}
+                    />
+                    <View
+                      position="absolute"
+                      bottom={-60}
+                      left={-40}
+                      width={160}
+                      height={160}
+                      borderRadius={80}
+                      backgroundColor="black"
+                      opacity={0.15}
+                      zIndex={0}
+                    />
+                  </YStack>
+
+                  <YStack alignItems="center" gap="$3" justifyContent="center" zIndex={2}>
                     {/* Icon */}
-                    <View width={50} height={50} borderRadius={16} backgroundColor="rgba(255,255,255,0.2)" justifyContent="center" alignItems="center">
-                      <Star size={24} color="white" fill="white" />
+                    <View width={64} height={64} borderRadius={32} backgroundColor="rgba(255,255,255,0.2)" justifyContent="center" alignItems="center" borderWidth={1.5} borderColor="rgba(255,255,255,0.3)">
+                      <Star size={30} color="white" fill="white" />
                     </View>
 
                     {/* Content */}
-                    <YStack alignItems="center" gap="$1.5">
-                      <Text fontSize={18} fontWeight="bold" color="white">
+                    <YStack alignItems="center" gap="$1" paddingHorizontal="$2">
+                      <Text fontSize={20} fontWeight="800" color="white" textShadowColor="rgba(0,0,0,0.1)" textShadowOffset={{width:0, height:2}} textShadowRadius={4}>
                         Khách hàng thành viên
                       </Text>
-                      <Text fontSize={11} color="rgba(255,255,255,0.8)" textAlign="center" lineHeight={16}>
-                        Tích điểm đổi quà, nhận ưu đãi đặc quyền và được AI tư vấn dinh dưỡng cá nhân.
+                      <Text fontSize={13} color="rgba(255,255,255,0.9)" textAlign="center" lineHeight={18} fontWeight="500">
+                        Tích điểm đổi quà, tư vấn dinh dưỡng và nhận nhiều ưu đãi đặc quyền.
                       </Text>
                     </YStack>
                   </YStack>
@@ -210,13 +284,18 @@ export default function RoleSelectionScreen() {
                     backgroundColor="white"
                     borderRadius={30}
                     paddingHorizontal="$5"
-                    size="$3"
-                    pressStyle={{ scale: 0.97, opacity: 0.9 }}
-                    iconAfter={<ArrowRight size={14} color="#00A550" />}
+                    size="$4"
+                    width="100%"
+                    pressStyle={{ scale: 0.96, opacity: 0.9 }}
+                    iconAfter={<ArrowRight size={18} color="#00A550" strokeWidth={3} />}
                     onPress={() => router.push('/face-scan')}
                     zIndex={2}
+                    shadowColor="rgba(0,0,0,0.1)"
+                    shadowOffset={{ width: 0, height: 4 }}
+                    shadowOpacity={1}
+                    shadowRadius={10}
                   >
-                    <Text color="#00A550" fontWeight="bold" fontSize={11}>
+                    <Text color="#00A550" fontWeight="900" fontSize={14} letterSpacing={0.5}>
                       ĐĂNG NHẬP / ĐĂNG KÝ
                     </Text>
                   </Button>
@@ -224,10 +303,11 @@ export default function RoleSelectionScreen() {
               </Animated.View>
             </Animated.View>
 
-          </XStack>
+          </YStack>
         </YStack>
+        </ScrollView>
 
       </View>
-    </SafeAreaView>
+    </View>
   );
 }

@@ -1,21 +1,21 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, Dimensions } from 'react-native';
-import { View, Text, XStack, YStack, Button, Image, Card } from 'tamagui';
-import { Camera, X, Zap, Settings as SettingsIcon, Sparkles, Scan, History } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import { Camera, History, Scan, Settings as SettingsIcon, Sparkles, X, Zap } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Dimensions, StyleSheet } from 'react-native';
 import Animated, {
-  useSharedValue,
+  Easing,
+  FadeOutUp,
   useAnimatedStyle,
+  useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
-  Easing,
-  FadeOutUp,
   ZoomIn,
 } from 'react-native-reanimated';
-import { useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
-import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Card, Image, Text, View, XStack, YStack } from 'tamagui';
+import { isRobotVoiceSpeaking, useRobotVoice } from '../../hooks/useRobotVoice';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -119,9 +119,9 @@ export default function ImageSearchScreen() {
       setDetectedProduct('Coca Cola Original');
       setAccuracy(98);
       boxOpacity.value = withTiming(1, { duration: 500 });
-      
+
       // Robot phát tiếng nói tìm thấy sản phẩm
-      speak('Tuyệt vời! Tôi đã nhận diện được Nước ép cam nguyên chất tại Kệ số 2 dãy C, có giá ưu đãi là 38.000 đồng. Tôi sẽ mở chi tiết sản phẩm và bản đồ dẫn đường cho bạn ngay đây!');
+      speak('Tuyệt vời! Tôi đã nhận diện được Nước ép cam nguyên chất. Tôi sẽ mở chi tiết sản phẩm!');
     }, 4500);
   };
 
@@ -157,7 +157,7 @@ export default function ImageSearchScreen() {
       {permission?.granted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
-          facing="back"
+          facing="front"
           enableTorch={flashOn}
         />
       ) : (
@@ -242,7 +242,7 @@ export default function ImageSearchScreen() {
 
         {/* Cửa sổ Quét trung tâm */}
         <View width={SCREEN_WIDTH * 0.7} height={SCREEN_HEIGHT * 0.65} borderWidth={2} borderColor="rgba(255,255,255,0.3)" borderRadius={24} overflow="hidden" position="relative">
-          
+
           {/* Laser quét màu xanh lá neon sang trọng */}
           <Animated.View
             style={[
@@ -299,47 +299,14 @@ export default function ImageSearchScreen() {
         </View>
       </View>
 
-      {/* 5. ROBOT ASSISTANT AI BUBBLE ON BOTTOM RIGHT */}
-      <View position="absolute" bottom={110} right={40} zIndex={100}>
-        <XStack gap="$3" alignItems="center">
-          {scanState === 'detected' && (
-            <Animated.View entering={ZoomIn.duration(400)} exiting={FadeOutUp}>
-              <Card
-                backgroundColor="white"
-                borderRadius={16}
-                paddingHorizontal="$4"
-                paddingVertical="$2"
-                shadowColor="black"
-                shadowRadius={10}
-                shadowOpacity={0.15}
-                style={{ elevation: 5 }}
-                position="relative"
-              >
-                <Text fontSize={13} fontWeight="bold" color="#005b2b">Tìm thấy sản phẩm rồi! ✨</Text>
-                {/* Mũi tên trỏ bong bóng */}
-                <View
-                  position="absolute"
-                  bottom={12}
-                  right={-8}
-                  width={0}
-                  height={0}
-                  borderStyle="solid"
-                  borderLeftWidth={8}
-                  borderTopWidth={6}
-                  borderBottomWidth={6}
-                  borderLeftColor="white"
-                  borderTopColor="transparent"
-                  borderBottomColor="transparent"
-                />
-              </Card>
-            </Animated.View>
-          )}
-
+      {/* 5. ROBOT ASSISTANT AI BUBBLE */}
+      <View position="absolute" top={insets.top + 90} right={24} zIndex={100}>
+        <YStack gap="$3" alignItems="flex-end">
           {/* Float Avatar Robot Cute */}
           <Card
-            width={72}
-            height={72}
-            borderRadius={36}
+            width={64}
+            height={64}
+            borderRadius={32}
             backgroundColor="rgba(255, 255, 255, 0.95)"
             justifyContent="center"
             alignItems="center"
@@ -352,58 +319,86 @@ export default function ImageSearchScreen() {
           >
             <Image
               source={LOGO_CUTE}
-              width={54}
-              height={54}
+              width={48}
+              height={48}
               resizeMode="contain"
             />
           </Card>
-        </XStack>
+
+          {scanState === 'detected' && (
+            <Animated.View entering={ZoomIn.duration(400)} exiting={FadeOutUp}>
+              <Card
+                backgroundColor="white"
+                borderRadius={16}
+                paddingHorizontal="$4"
+                paddingVertical="$3"
+                shadowColor="black"
+                shadowRadius={10}
+                shadowOpacity={0.15}
+                style={{ elevation: 5 }}
+                position="relative"
+              >
+                <Text fontSize={13} fontWeight="bold" color="#005b2b">Tìm thấy sản phẩm rồi! ✨</Text>
+                {/* Mũi tên trỏ bong bóng (chỉ lên trên) */}
+                <View
+                  position="absolute"
+                  top={-6}
+                  right={20}
+                  width={0}
+                  height={0}
+                  borderStyle="solid"
+                  borderLeftWidth={6}
+                  borderRightWidth={6}
+                  borderBottomWidth={6}
+                  borderLeftColor="transparent"
+                  borderRightColor="transparent"
+                  borderBottomColor="white"
+                />
+              </Card>
+            </Animated.View>
+          )}
+        </YStack>
       </View>
 
-      {/* 6. GLASSMORPHISM BOTTOM CONTROL PANEL */}
-      <XStack
+      {/* 6. STANDARD CAMERA BOTTOM CONTROLS */}
+      <View
         position="absolute"
-        bottom={24}
-        left={24}
-        right={24}
-        height={84}
+        bottom={40}
+        left={0}
+        right={0}
         alignItems="center"
-        justifyContent="space-between"
-        backgroundColor="rgba(10, 25, 15, 0.7)"
-        borderWidth={1}
-        borderColor="rgba(16, 185, 129, 0.2)"
-        borderRadius={24}
-        paddingHorizontal="$6"
+        justifyContent="center"
         zIndex={100}
-        style={{ backdropFilter: 'blur(20px)' }}
       >
+        <XStack width="100%" px="$6" justifyContent="space-between" alignItems="center">
+
         {/* Left: History Button */}
-        <Button
-          size="$4"
-          backgroundColor="rgba(255, 255, 255, 0.08)"
-          borderWidth={1}
-          borderColor="rgba(255, 255, 255, 0.12)"
-          borderRadius={30}
-          paddingHorizontal="$5"
-          pressStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', scale: 0.95 }}
-          icon={<History size={18} color="white" />}
-        >
-          <Text color="white" fontWeight="bold" fontSize={13}>Lịch sử quét</Text>
-        </Button>
+        <YStack alignItems="center" gap="$2" width={80}>
+          <Button
+            size="$4"
+            circular
+            backgroundColor="rgba(0, 0, 0, 0.5)"
+            borderWidth={1}
+            borderColor="rgba(255, 255, 255, 0.2)"
+            pressStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', scale: 0.95 }}
+            icon={<History size={20} color="white" />}
+          />
+          <Text color="white" fontSize={12} fontWeight="600" textShadowColor="black" textShadowRadius={4}>Lịch sử</Text>
+        </YStack>
 
         {/* Center: Main Scan / Refresh Button */}
-        <View position="relative">
+        <View position="relative" alignItems="center" justifyContent="center">
           {scanState !== 'detected' && (
             <Animated.View
               style={[
                 {
                   position: 'absolute',
-                  top: -6,
-                  left: -6,
-                  right: -6,
-                  bottom: -6,
-                  borderRadius: 36,
-                  borderWidth: 2,
+                  top: -8,
+                  left: -8,
+                  right: -8,
+                  bottom: -8,
+                  borderRadius: 50,
+                  borderWidth: 3,
                   borderColor: '#22c55e',
                   opacity: 0.4,
                 },
@@ -412,40 +407,43 @@ export default function ImageSearchScreen() {
             />
           )}
           <Button
-            size="$5"
-            backgroundColor="#22c55e"
-            borderRadius={30}
-            paddingHorizontal="$7"
-            pressStyle={{ backgroundColor: '#16a34a', scale: 0.95 }}
-            icon={<Camera size={22} color="white" />}
+            width={72}
+            height={72}
+            circular
+            backgroundColor={scanState === 'scanning' ? 'transparent' : '#22c55e'}
+            borderWidth={4}
+            borderColor={scanState === 'scanning' ? '#22c55e' : 'white'}
+            pressStyle={{ scale: 0.9 }}
+            icon={<Camera size={28} color={scanState === 'scanning' ? '#22c55e' : 'white'} />}
             onPress={() => {
-              if (isRobotVoiceSpeaking()) return; // Khóa điều hướng/click khi giọng đang chạy
+              if (isRobotVoiceSpeaking()) return;
               handleStartScanning();
             }}
-          >
-            <Text color="white" fontWeight="bold" fontSize={15}>
-              {scanState === 'scanning' ? 'Đang phân tích...' : 'Chụp/Quét lại'}
-            </Text>
-          </Button>
+          />
         </View>
 
         {/* Right: Accuracy/Status Glass Widget */}
-        <Card
-          backgroundColor="rgba(255,255,255,0.06)"
-          borderWidth={1}
-          borderColor="rgba(255,255,255,0.1)"
-          borderRadius={18}
-          paddingHorizontal="$4"
-          paddingVertical="$2"
-          alignItems="center"
-          gap="$1"
-        >
-          <Text fontSize={10} color="rgba(255,255,255,0.5)" fontWeight="bold">AI CONFIDENCE</Text>
-          <Text fontSize={16} fontWeight="bold" color={scanState === 'detected' ? '#22c55e' : '#3b82f6'}>
-            {scanState === 'detected' ? `${accuracy}% ACC` : 'SCANNING'}
+        <YStack alignItems="center" gap="$2" width={80}>
+          <Card
+            backgroundColor="rgba(0,0,0,0.5)"
+            borderWidth={1}
+            borderColor="rgba(255,255,255,0.2)"
+            borderRadius={22}
+            width={44}
+            height={44}
+            justifyContent="center"
+            alignItems="center"
+          >
+            <Text fontSize={14} fontWeight="900" color={scanState === 'detected' ? '#22c55e' : '#3b82f6'}>
+              {scanState === 'detected' ? `${accuracy}` : '--'}
+            </Text>
+          </Card>
+          <Text color="white" fontSize={12} fontWeight="600" textShadowColor="black" textShadowRadius={4}>
+            {scanState === 'detected' ? 'Độ chính xác' : 'AI Status'}
           </Text>
-        </Card>
+        </YStack>
       </XStack>
+      </View>
     </View>
   );
 }

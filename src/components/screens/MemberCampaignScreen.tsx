@@ -62,7 +62,6 @@ export default function MemberCampaignScreen() {
         {/* HERO BANNER SECTION (Green Banner) */}
         <Animated.View entering={FadeInDown.delay(200).duration(600)}>
           <Card
-            height={180}
             borderRadius={24}
             overflow="hidden"
             backgroundColor="#22c55e"
@@ -70,9 +69,35 @@ export default function MemberCampaignScreen() {
             style={{ elevation: 3 }}
             marginBottom="$6"
           >
-            <XStack flex={1}>
-              {/* Left Column - Promotion Details */}
-              <YStack flex={1.2} padding="$5" justifyContent="space-between" height="100%">
+            <YStack flex={1}>
+              {/* Top - Image & Floating Badge */}
+              <View position="relative" height={160} width="100%">
+                <Image
+                  src="https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&q=80"
+                  width="100%"
+                  height="100%"
+                  objectFit="cover"
+                />
+
+                {/* AI Badge (#1 AI Pick) */}
+                <View
+                  position="absolute"
+                  bottom={12}
+                  right={12}
+                  backgroundColor="rgba(254, 243, 199, 0.9)"
+                  borderWidth={1.5}
+                  borderColor="rgba(217, 119, 6, 0.4)"
+                  paddingHorizontal="$3.5"
+                  paddingVertical="$1.5"
+                  borderRadius={12}
+                  style={{ elevation: 2 }}
+                >
+                  <Text fontSize={11} color="#b45309" fontWeight="950">#1 AI Pick</Text>
+                </View>
+              </View>
+
+              {/* Bottom - Promotion Details */}
+              <YStack padding="$5" gap="$3">
                 <XStack
                   backgroundColor="#15803d"
                   paddingHorizontal="$2.5"
@@ -107,38 +132,13 @@ export default function MemberCampaignScreen() {
                   <Text color="#15803d" fontSize={12} fontWeight="bold">Nhận Ưu Đãi Ngay</Text>
                 </Button>
               </YStack>
-
-              {/* Right Column - Image & Floating Badge */}
-              <View flex={1} position="relative" height="100%">
-                <Image
-                  src="https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&q=80"
-                  width="100%"
-                  height="100%"
-                  objectFit="cover"
-                />
-
-                {/* AI Badge (#1 AI Pick) */}
-                <View
-                  position="absolute"
-                  bottom={12}
-                  right={12}
-                  backgroundColor="rgba(254, 243, 199, 0.9)"
-                  borderWidth={1.5}
-                  borderColor="rgba(217, 119, 6, 0.4)"
-                  paddingHorizontal="$3.5"
-                  paddingVertical="$1.5"
-                  borderRadius={12}
-                  style={{ elevation: 2 }}
-                >
-                  <Text fontSize={11} color="#b45309" fontWeight="950">#1 AI Pick</Text>
-                </View>
-              </View>
-            </XStack>
+            </YStack>
           </Card>
         </Animated.View>
 
         {/* 4 PRODUCT CARDS GRID */}
-        <XStack gap="$4" marginBottom="$6">
+        <YStack gap="$4" marginBottom="$6">
+          <XStack gap="$4">
 
           {/* Card 1 */}
           <Animated.View style={{ flex: 1 }} entering={FadeInUp.delay(300).duration(500)}>
@@ -210,6 +210,8 @@ export default function MemberCampaignScreen() {
               </YStack>
             </Card>
           </Animated.View>
+          </XStack>
+          <XStack gap="$4">
 
           {/* Card 3 */}
           <Animated.View style={{ flex: 1 }} entering={FadeInUp.delay(500).duration(500)}>
@@ -284,6 +286,7 @@ export default function MemberCampaignScreen() {
           </Animated.View>
 
         </XStack>
+        </YStack>
 
         {/* AI SAVINGS RECOMMENDATION BAR */}
         <Animated.View entering={FadeInDown.delay(700).duration(600)}>
@@ -295,7 +298,7 @@ export default function MemberCampaignScreen() {
             padding="$4"
             marginBottom="$4"
           >
-            <XStack alignItems="center" justifyContent="space-between" gap="$4">
+            <YStack gap="$4">
               <XStack alignItems="center" gap="$3.5" flex={1}>
                 {/* Circular Icon */}
                 <View
@@ -329,7 +332,7 @@ export default function MemberCampaignScreen() {
               >
                 <Text color="#00A550" fontSize={12} fontWeight="bold">Xem Gợi Ý</Text>
               </Button>
-            </XStack>
+            </YStack>
           </Card>
         </Animated.View>
 

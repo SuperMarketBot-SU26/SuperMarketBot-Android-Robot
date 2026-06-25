@@ -117,9 +117,9 @@ export default function GuestHomeScreen() {
 
           {/* Guest Avatar with Dropdown */}
           <View position="relative" zIndex={100}>
-            <XStack 
-              alignItems="center" 
-              gap="$3" 
+            <XStack
+              alignItems="center"
+              gap="$3"
               onPress={() => setMenuOpen(!menuOpen)}
               cursor="pointer"
             >
@@ -131,7 +131,7 @@ export default function GuestHomeScreen() {
 
             {/* Dropdown Menu */}
             {menuOpen && (
-              <Animated.View 
+              <Animated.View
                 entering={FadeInUp.duration(300).springify()}
                 exiting={FadeOutUp.duration(200)}
                 style={{
@@ -151,32 +151,32 @@ export default function GuestHomeScreen() {
                   overflow: 'hidden'
                 }}
               >
-                <Button 
-                  justifyContent="flex-start" 
-                  backgroundColor="transparent" 
-                  borderRadius={0} 
+                <Button
+                  justifyContent="flex-start"
+                  backgroundColor="transparent"
+                  borderRadius={0}
                   icon={<User size={18} color="#555" />}
                   onPress={() => setMenuOpen(false)}
                 >
                   <Text color="#333" fontWeight="500">Hồ sơ cá nhân</Text>
                 </Button>
-                
-                <Button 
-                  justifyContent="flex-start" 
-                  backgroundColor="transparent" 
-                  borderRadius={0} 
+
+                <Button
+                  justifyContent="flex-start"
+                  backgroundColor="transparent"
+                  borderRadius={0}
                   icon={<Settings size={18} color="#555" />}
                   onPress={() => setMenuOpen(false)}
                 >
                   <Text color="#333" fontWeight="500">Cài đặt</Text>
                 </Button>
-                
+
                 <View width="100%" height={1} backgroundColor="#f0f0f0" />
-                
-                <Button 
-                  justifyContent="flex-start" 
-                  backgroundColor="#fff1f2" 
-                  borderRadius={0} 
+
+                <Button
+                  justifyContent="flex-start"
+                  backgroundColor="#fff1f2"
+                  borderRadius={0}
                   icon={<LogOut size={18} color="#e11d48" />}
                   pressStyle={{ backgroundColor: '#ffe4e6' }}
                   onPress={handleLogout}
@@ -194,7 +194,7 @@ export default function GuestHomeScreen() {
         {/* BANNER SECTION */}
         <Animated.View entering={FadeInDown.duration(600).springify()}>
           <Card size="$4" borderRadius={24} padding="$6" backgroundColor="#f2fcf5" overflow="hidden" marginBottom="$6">
-            <XStack justifyContent="space-between" alignItems="center">
+            <YStack justifyContent="space-between" alignItems="center" gap="$4">
               <YStack flex={1} gap="$4" maxWidth={600}>
                 <Text fontSize={18} fontWeight="bold" color="$textPrimary">
                   Chào quý khách! Sẵn sàng mua sắm cùng <Text color="#00A550">SmartMarketBot</Text> chứ?
@@ -219,12 +219,12 @@ export default function GuestHomeScreen() {
                 </View>
                 <Text fontSize={10} color="$textSecondary" fontWeight="bold">Tải App nhận ưu đãi</Text>
               </Card>
-            </XStack>
+            </YStack>
           </Card>
         </Animated.View>
 
-        {/* QUICK ACTIONS SECTION (3 Cột ngang) */}
-        <XStack gap="$4" marginBottom="$8">
+        {/* QUICK ACTIONS SECTION (Dọc) */}
+        <YStack gap="$4" marginBottom="$8">
 
           {/* Giọng nói */}
           <Animated.View entering={FadeInUp.delay(200).duration(500).springify()} style={{ flex: 1 }}>
@@ -305,7 +305,7 @@ export default function GuestHomeScreen() {
             </Pressable>
           </Animated.View>
 
-        </XStack>
+        </YStack>
 
         {/* HOT PRODUCTS SECTION */}
         <Animated.View entering={FadeInUp.delay(500).duration(600).springify()}>
