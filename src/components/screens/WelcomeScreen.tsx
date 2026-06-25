@@ -1,5 +1,6 @@
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowRight, Cpu, Sparkles } from 'lucide-react-native';
+import { ArrowRight, Cpu, Sparkles, Settings } from 'lucide-react-native';
+import { TouchableOpacity } from 'react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet } from 'react-native';
 import Animated, {
@@ -196,6 +197,14 @@ export default function WelcomeScreen() {
                 <Cpu size={12} color="#00A550" />
                 <Text fontSize={9} color="#005b2b" fontWeight="800" letterSpacing={1}>SYSTEM ONLINE</Text>
               </XStack>
+
+              {/* Developer Mode Button */}
+              <TouchableOpacity
+                onPress={() => router.push('/robot-control' as any)}
+                style={{ padding: 8 }}
+              >
+                <Settings size={20} color="#357A57" />
+              </TouchableOpacity>
             </XStack>
 
             {/* 3. CENTER PIECE: ANIMATED FLOATING ROBOT CONTAINER */}
