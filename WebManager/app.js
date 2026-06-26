@@ -1137,6 +1137,8 @@ function sendRobotCommand(command, wsType, value) {
                 robotWs.send(JSON.stringify({ t: 'estop' }));
             } else if (wsType === 'odomReset') {
                 robotWs.send(JSON.stringify({ t: 'odomReset' }));
+            } else if (wsType === 'navigate') {
+                robotWs.send(JSON.stringify({ t: 'navigate', payload: value }));
             } else {
                 robotWs.send(JSON.stringify({ t: wsType, v: parseInt(value, 10) }));
             }
