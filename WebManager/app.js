@@ -963,12 +963,18 @@ async function pollRobotLivePose() {
             const r = robots.find(x => x.robotCode === robotCode);
             if (r) {
                 robotLiveStatus = r.status || 'UNKNOWN';
-                const statusEl = document.getElementById('robotStatus') || document.getElementById('robotStatusBadge');
+                const statusEl = document.getElementById('robotStatus');
                 if (statusEl) {
-                    if (statusEl.id === 'robotStatusBadge') {
-                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ${robotLiveStatus}`;
+                    const statusLower = robotLiveStatus.toLowerCase();
+                    if (statusLower === 'online') {
+                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span> ONLINE`;
+                        statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase flex items-center gap-1';
+                    } else if (statusLower === 'offline') {
+                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> OFFLINE`;
+                        statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 uppercase flex items-center gap-1';
                     } else {
-                        statusEl.textContent = robotLiveStatus;
+                        statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> ${robotLiveStatus.toUpperCase()}`;
+                        statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 uppercase flex items-center gap-1';
                     }
                 }
 
@@ -1700,12 +1706,18 @@ function connectSignalR() {
         if (telemetry.robotCode === currentRobotCode) {
             robotLiveX = telemetry.xCoord;
             robotLiveY = telemetry.yCoord;
-            const statusEl = document.getElementById('robotStatus') || document.getElementById('robotStatusBadge');
+            const statusEl = document.getElementById('robotStatus');
             if (statusEl) {
-                if (statusEl.id === 'robotStatusBadge') {
-                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ${telemetry.status}`;
+                const statusLower = (telemetry.status || '').toLowerCase();
+                if (statusLower === 'online') {
+                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span> ONLINE`;
+                    statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase flex items-center gap-1';
+                } else if (statusLower === 'offline') {
+                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> OFFLINE`;
+                    statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 uppercase flex items-center gap-1';
                 } else {
-                    statusEl.textContent = telemetry.status;
+                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> ${(telemetry.status || 'UNKNOWN').toUpperCase()}`;
+                    statusEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 uppercase flex items-center gap-1';
                 }
             }
             if (telemetry.xCoord !== null) document.getElementById('robotX').textContent = telemetry.xCoord.toFixed(2) + 'm';
