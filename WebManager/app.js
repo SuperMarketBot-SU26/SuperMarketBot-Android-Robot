@@ -13,6 +13,12 @@ let currentTool = 'select';
 let selectedNodeId = null;
 let selectedShapeId = null;
 
+// Unsaved items temporary ID counter (negative to distinguish from database IDs)
+let tempIdCounter = -1;
+function getNextTempId() {
+    return tempIdCounter--;
+}
+
 // Live Robot State
 let robotLiveX = null;
 let robotLiveY = null;
@@ -129,7 +135,7 @@ graphCanvas.addEventListener('mousedown', (e) => {
     } 
     else if (currentTool === 'node') {
         const newNode = {
-            id: Date.now(),
+            id: getNextTempId(),
             name: `Node ${nodes.length + 1}`,
             type: 'WAYPOINT',
             x: worldX,
@@ -152,7 +158,7 @@ graphCanvas.addEventListener('mousedown', (e) => {
                     // Create edge
                     const dist = Math.hypot(clickedNode.x - tempEdgeStartNode.x, clickedNode.y - tempEdgeStartNode.y);
                     edges.push({
-                        id: Date.now(),
+                        id: getNextTempId(),
                         from: tempEdgeStartNode.id,
                         to: clickedNode.id,
                         distance: (dist * PIXEL_TO_METER).toFixed(2)
@@ -236,7 +242,7 @@ graphCanvas.addEventListener('mouseup', (e) => {
 
         if (currentTool === 'rect') {
             shapes.push({
-                id: Date.now(),
+                id: getNextTempId(),
                 type: 'rect',
                 name: 'Kệ Hàng ' + (shapes.length + 1),
                 object_type: 'PRODUCT_SHELF',
@@ -249,7 +255,7 @@ graphCanvas.addEventListener('mouseup', (e) => {
         } else if (currentTool === 'circle') {
             const r = Math.hypot(worldX - tempShapeStart.x, worldY - tempShapeStart.y);
             shapes.push({
-                id: Date.now(),
+                id: getNextTempId(),
                 type: 'circle',
                 name: 'Vật thể ' + (shapes.length + 1),
                 object_type: 'OBSTACLE',
@@ -530,15 +536,12 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
     // Chuyển đổi dữ liệu từ Web Manager sang định dạng DTO của Backend
     // Vấn đề 1: ID trên Web đang dùng Date.now() quá lớn so với kiểu int32 của Backend. Phải map lại thành số từ 1, 2, 3...
     // Vấn đề 2: Tọa độ x, y phải nhân với PIXEL_TO_METER để ra số thực (mét).
-    const idMap = new Map();
-    let currentId = 1;
-    
     const beNodes = nodes.map(n => {
-        let newId = currentId++;
-        idMap.set(n.id, newId);
+        // Nếu ID âm hoặc null -> truyền nguyên bản để BE biết là nút mới cần sinh ID
+        // Nếu ID dương -> truyền đúng ID của DB để BE biết là nút đã có
         return {
-            nodeId: newId,
-            nodeName: n.name || `Node ${newId}`,
+            nodeId: n.id,
+            nodeName: n.name || `Node ${n.id}`,
             xCoord: parseFloat(n.x * PIXEL_TO_METER) || 0.0,
             yCoord: parseFloat(n.y * PIXEL_TO_METER) || 0.0,
             nodeType: n.type || 'WAYPOINT',
@@ -546,11 +549,10 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         };
     });
 
-    let edgeIdCounter = 1;
-    const rawBeEdges = edges.map(e => ({
-        edgeId: edgeIdCounter++,
-        fromNodeId: idMap.get(e.from) || 1,
-        toNodeId: idMap.get(e.to) || 1,
+    const beEdges = edges.map(e => ({
+        edgeId: null, // Để database tự sinh khóa
+        fromNodeId: e.from,
+        toNodeId: e.to,
         distance: parseFloat(e.distance) || 0.0,
         isBidirectional: true
     }));
@@ -559,8 +561,8 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
     // 1. Bỏ các cạnh nối chính nó (from === to) -> Gây ra lỗi Key (3, 3) khi add vào Dictionary 2 chiều ở C#
     // 2. Bỏ các cạnh trùng lặp (duplicate)
     const seenEdges = new Set();
-    const beEdges = [];
-    rawBeEdges.forEach(e => {
+    const beEdgesFiltered = [];
+    beEdges.forEach(e => {
         if (e.fromNodeId === e.toNodeId) return; // Bỏ self-loop
         
         // Chuẩn hoá key để check duplicate (vd: 3-4 và 4-3 là 1)
@@ -569,18 +571,17 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         
         if (!seenEdges.has(key1) && !seenEdges.has(key2)) {
             seenEdges.add(key1);
-            beEdges.push(e);
+            beEdgesFiltered.push(e);
         }
     });
 
-    let shapeIdCounter = 1;
     const beSemanticObjects = shapes.map(s => {
         const rX = parseFloat(s.x * PIXEL_TO_METER) || 0.0;
         const rY = parseFloat(s.y * PIXEL_TO_METER) || 0.0;
         const rW = parseFloat((s.w || (s.r * 2)) * PIXEL_TO_METER) || 0.1;
         const rH = parseFloat((s.h || (s.r * 2)) * PIXEL_TO_METER) || 0.1;
         return {
-            objectId: shapeIdCounter++,
+            objectId: s.id > 0 ? s.id : null, // Nếu đã có id dương từ DB thì truyền, ngược lại null
             objectType: s.object_type || 'OBSTACLE',
             xMin: rX,
             yMin: rY,
@@ -598,7 +599,7 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         mapName: "Bản đồ Web Manager",
         mapData: JSON.stringify({ version: "1.0", nodes, edges, shapes }),
         nodes: beNodes,
-        edges: beEdges,
+        edges: beEdgesFiltered,
         semanticObjects: beSemanticObjects
     };
 
@@ -780,14 +781,34 @@ document.getElementById('btnSetEnd').addEventListener('click', () => {
     document.getElementById('lblEndNode').title = `ID: ${n.id}`;
 });
 
+// Helper function to fetch route from BE
+async function fetchRoute(startId, endId) {
+    const res = await fetch(`${BASE_URL}/api/Navigation/route`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': '69420'
+        },
+        body: JSON.stringify({
+            startNodeId: parseInt(startId),
+            endNodeId: parseInt(endId)
+        })
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Lỗi tính toán Route từ Node ${startId} đến Node ${endId} (${res.status}): ${errText}`);
+    }
+    return await res.json();
+}
+
 document.getElementById('btnSimulate').addEventListener('click', async () => {
     if (!navStartNodeId || !navEndNodeId) {
         return alert('Vui lòng thiết lập đủ Điểm Start và Điểm End trước khi gửi lệnh!');
     }
     
-    // Check if the IDs are large Date.now() timestamps which will crash backend int32 parser
-    if (navStartNodeId > 2147483647 || navEndNodeId > 2147483647) {
-        return alert('⚠️ Dữ liệu chưa đồng bộ!\n\nCác Node trên web đang dùng ID tạm thời. Vui lòng bấm nút "Lưu lên Server" (nếu bạn mới vẽ thêm) và sau đó bấm "Tải từ Server" để cập nhật ID chuẩn (1, 2, 3...) trước khi chạy Navigate!');
+    // Kiểm tra nếu các Node đang dùng ID tạm âm chưa được lưu lên Server
+    if (parseInt(navStartNodeId) < 0 || parseInt(navEndNodeId) < 0) {
+        return alert('⚠️ Dữ liệu chưa đồng bộ!\n\nCác Node/Đường nối mới vẽ chưa được lưu lên Server. Vui lòng bấm nút "Lưu lên Server" và sau đó bấm "Tải từ Server" để cập nhật ID chuẩn từ database trước khi chạy!');
     }
     
     const robotCode = document.getElementById('inpRobotCode').value.trim() || 'RB001';
@@ -799,57 +820,91 @@ document.getElementById('btnSimulate').addEventListener('click', async () => {
 
     try {
         let routeData = null;
-        
+        let waypoints = [];
+
+        // 1. Tự động định vị Robot: Tìm Node gần vị trí hiện tại của Robot nhất
+        let closestNodeId = null;
+        if (robotLiveX !== null && robotLiveY !== null && nodes.length > 0) {
+            let minDist = Infinity;
+            nodes.forEach(n => {
+                const rx = n.x * PIXEL_TO_METER;
+                const ry = n.y * PIXEL_TO_METER;
+                const dx = rx - robotLiveX;
+                const dy = ry - robotLiveY;
+                const dist = Math.hypot(dx, dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestNodeId = n.id;
+                }
+            });
+            console.log(`[Định vị] Robot đang ở vị trí (${robotLiveX.toFixed(2)}m, ${robotLiveY.toFixed(2)}m), gần Node ${closestNodeId} nhất (khoảng cách ${minDist.toFixed(2)}m).`);
+        }
+
+        // 2. Tính lộ trình ghép
+        // Nếu robot ở xa Node bắt đầu (closestNodeId khác navStartNodeId) -> Tính đường gom từ robot tới StartNode trước
+        if (closestNodeId !== null && parseInt(closestNodeId) !== parseInt(navStartNodeId)) {
+            console.log(`[Lộ trình] Đang ghép tuyến đường gom từ vị trí Robot (Node ${closestNodeId}) -> Điểm bắt đầu (Node ${navStartNodeId})...`);
+            try {
+                const routeToStart = await fetchRoute(closestNodeId, navStartNodeId);
+                if (routeToStart && routeToStart.nodes && routeToStart.nodes.length > 0) {
+                    waypoints = routeToStart.nodes.map(n => ({
+                        x: parseFloat(n.x),
+                        y: parseFloat(n.y),
+                        nodeId: parseInt(n.nodeId)
+                    }));
+                }
+            } catch (e) {
+                console.warn("[Lộ trình] Không tìm được đường gom từ Robot tới Node bắt đầu, robot sẽ tự chạy từ Điểm bắt đầu.", e);
+            }
+        }
+
+        // 3. Tính lộ trình chính từ Điểm bắt đầu tới Điểm đích
+        const mainRoute = await fetchRoute(navStartNodeId, navEndNodeId);
+        if (mainRoute && mainRoute.nodes && mainRoute.nodes.length > 0) {
+            const mainWaypoints = mainRoute.nodes.map(n => ({
+                x: parseFloat(n.x),
+                y: parseFloat(n.y),
+                nodeId: parseInt(n.nodeId)
+            }));
+
+            // Ghép 2 lộ trình, tránh trùng lặp điểm nối ở giữa
+            if (waypoints.length > 0 && mainWaypoints.length > 0 && waypoints[waypoints.length - 1].nodeId === mainWaypoints[0].nodeId) {
+                waypoints = waypoints.concat(mainWaypoints.slice(1));
+            } else {
+                waypoints = waypoints.concat(mainWaypoints);
+            }
+        } else {
+            throw new Error("Không tìm thấy đường đi khả thi giữa Điểm Start và Điểm End.");
+        }
+
+        routeData = {
+            totalDistance: 0.0,
+            nodes: waypoints.map(wp => ({
+                nodeId: wp.nodeId,
+                x: wp.x,
+                y: wp.y
+            }))
+        };
+
+        const navigatePayload = JSON.stringify({ waypoints });
+
         if (isRobotWsConnected) {
             // --- CHẾ ĐỘ WS TRỰC TIẾP (OFFLINE) ---
-            // 1. Chỉ gọi API tính toán lộ trình Dijkstra (chạy local trên PC, không qua MQTT)
-            const resRoute = await fetch(`${BASE_URL}/api/Navigation/route`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': '69420'
-                },
-                body: JSON.stringify({
-                    startNodeId: parseInt(navStartNodeId),
-                    endNodeId: parseInt(navEndNodeId)
-                })
-            });
-
-            if (!resRoute.ok) {
-                const errText = await resRoute.text();
-                throw new Error(`Lỗi tính toán Route (${resRoute.status}): ${errText}`);
-            }
-
-            routeData = await resRoute.json();
-            console.log("Calculated route via local API:", routeData);
-
-            if (routeData && routeData.nodes && Array.isArray(routeData.nodes) && routeData.nodes.length > 0) {
-                const waypoints = routeData.nodes.map(n => ({
-                    x: parseFloat(n.x),
-                    y: parseFloat(n.y),
-                    nodeId: parseInt(n.nodeId)
-                }));
-                
-                // 2. Bắn trực tiếp qua WebSocket cục bộ
-                const navigatePayload = JSON.stringify({ waypoints });
-                sendRobotCommand(null, 'navigate', navigatePayload);
-                console.log("Sent navigate payload directly via WebSocket:", navigatePayload);
-            } else {
-                throw new Error("Không tìm thấy đường đi khả thi.");
-            }
+            sendRobotCommand(null, 'navigate', navigatePayload);
+            console.log("Sent navigate payload directly via WebSocket:", navigatePayload);
         } 
         else {
             // --- CHẾ ĐỘ MQTT (ONLINE) ---
+            // Bắn lệnh qua API command trung gian của BE để gửi gói JSON Waypoints đầy đủ
             const payload = {
                 robotCode: robotCode,
-                startNodeId: parseInt(navStartNodeId),
-                endNodeId: parseInt(navEndNodeId)
+                command: "navigate",
+                payload: navigatePayload
             };
             
-            console.log("Sending Navigate Request via Backend:", payload);
+            console.log("Sending Navigate Command via Backend MQTT:", payload);
 
-            // 1. Gọi API navigate của BE để bắn MQTT xuống Robot
-            const resNavigate = await fetch(`${BASE_URL}/api/Navigation/navigate`, {
+            const resNavigate = await fetch(`${BASE_URL}/api/Robots/command`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -860,24 +915,7 @@ document.getElementById('btnSimulate').addEventListener('click', async () => {
 
             if (!resNavigate.ok) {
                 const errText = await resNavigate.text();
-                throw new Error(`Lỗi Gửi Navigate qua Backend (${resNavigate.status}): ${errText}`);
-            }
-
-            // 2. Kéo lộ trình về để hiển thị UI
-            const resRoute = await fetch(`${BASE_URL}/api/Navigation/route`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': '69420'
-                },
-                body: JSON.stringify({
-                    startNodeId: parseInt(navStartNodeId),
-                    endNodeId: parseInt(navEndNodeId)
-                })
-            });
-
-            if (resRoute.ok) {
-                routeData = await resRoute.json();
+                throw new Error(`Lỗi Gửi Navigate qua MQTT Backend (${resNavigate.status}): ${errText}`);
             }
         }
 
