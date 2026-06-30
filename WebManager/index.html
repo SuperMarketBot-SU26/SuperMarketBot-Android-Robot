@@ -48,6 +48,23 @@
         /* Collapsible details */
         details summary::-webkit-details-marker { display: none; }
         details[open] summary .group-open\:rotate-180 { transform: rotate(180deg); }
+
+        /* Sidebar Tab-based display */
+        .sidebar-tab-map #contentMapSection { display: block; }
+        .sidebar-tab-map #contentRouteSection { display: none; }
+
+        .sidebar-tab-route #contentMapSection { display: none; }
+        .sidebar-tab-route #contentRouteSection { display: block; }
+        .sidebar-tab-route #btnRunFixedRoute { display: none !important; }
+        .sidebar-tab-route #btnCreateRouteMode, 
+        .sidebar-tab-route .route-item-actions { display: flex !important; }
+
+        .sidebar-tab-run #contentMapSection { display: none; }
+        .sidebar-tab-run #contentRouteSection { display: block; }
+        .sidebar-tab-run #btnRunFixedRoute { display: flex !important; }
+        .sidebar-tab-run #btnCreateRouteMode,
+        .sidebar-tab-run #routeEditForm,
+        .sidebar-tab-run .route-item-actions { display: none !important; }
     </style>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col">
@@ -79,125 +96,206 @@
         </div>
     </header>
 
-    <!-- Main Content -->
     <main class="flex-1 flex overflow-hidden">
-        
-        <!-- Left Sidebar: Tools -->
-        <aside class="w-72 glass-panel border-r border-slate-700/50 flex flex-col z-10">
-            <div class="p-4 border-b border-slate-700/50">
-                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Bản đồ Làm việc</h2>
-                
-                <!-- Map Upload / Select -->
-                <div class="space-y-3">
-                    <label class="block w-full cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg p-3 transition-colors text-center">
-                        <input type="file" id="mapUpload" accept="image/*" class="hidden">
-                        <div class="flex flex-col items-center gap-2 text-slate-300">
-                            <i data-lucide="upload-cloud" class="w-6 h-6 text-blue-400"></i>
-                            <span class="text-sm font-medium">Tải ảnh mặt bằng (JPG/PNG)</span>
-                        </div>
-                    </label>
-                    
-                    <div class="text-xs text-slate-400 flex items-center justify-between">
-                        <span>Tỷ lệ: <span class="text-blue-400 font-mono">1px = 0.6cm (1 ô lưới = 30cm)</span></span>
-                        <button class="hover:text-white transition-colors" title="Chỉnh sửa tỷ lệ"><i data-lucide="settings-2" class="w-3 h-3"></i></button>
-                    </div>
-                </div>
+        <!-- Left Sidebar: Tools & Fixed Routes -->
+        <aside id="leftSidebar" class="w-80 glass-panel border-r border-slate-700/50 flex flex-col z-10 sidebar-tab-map">
+            <!-- Tabs Navigation -->
+            <div class="flex border-b border-slate-700/50 bg-slate-900/60 font-semibold text-xs shrink-0 select-none">
+                <button id="btnTabMap" class="flex-1 py-3 text-center border-b-2 border-blue-500 text-blue-400 hover:bg-slate-800/40 transition-colors uppercase tracking-wider text-[10px] font-bold outline-none">1. Bản Đồ</button>
+                <button id="btnTabRoute" class="flex-1 py-3 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors uppercase tracking-wider text-[10px] font-bold outline-none">2. Lộ Trình</button>
+                <button id="btnTabRun" class="flex-1 py-3 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors uppercase tracking-wider text-[10px] font-bold outline-none">3. Vận Hành</button>
             </div>
 
-            <!-- Toolbar -->
-            <div class="p-4 flex-1 overflow-y-auto">
-                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Công cụ Chỉnh sửa</h2>
-                
-                <div class="grid grid-cols-2 gap-2 mb-6" id="toolsGroup">
-                    <button class="tool-btn active flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="select">
-                        <i data-lucide="mouse-pointer-2" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Chọn</span>
-                    </button>
-                    <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="node">
-                        <i data-lucide="map-pin" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Thêm Node</span>
-                    </button>
-                    <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="edge">
-                        <i data-lucide="git-commit" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Nối Cạnh</span>
-                    </button>
-                    <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="erase">
-                        <i data-lucide="eraser" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Xóa</span>
-                    </button>
-                    <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="rect">
-                        <i data-lucide="square" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Hình Chữ Nhật</span>
-                    </button>
-                    <button class="tool-btn flex flex-col items-center p-3 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="circle">
-                        <i data-lucide="circle" class="w-5 h-5 mb-1"></i>
-                        <span class="text-xs">Hình Tròn</span>
-                    </button>
+            <!-- Scrollable Content Wrapper -->
+            <div class="flex-1 overflow-y-auto">
+                <div id="contentMapSection">
+                    <!-- SECTION 1: BẢN ĐỒ LÀM VIỆC (Map Operations) -->
+                    <div class="p-4 border-b border-slate-700/50 space-y-3">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Bản đồ Làm việc</h2>
+                        
+                        <!-- Map Upload -->
+                        <label class="block w-full cursor-pointer bg-slate-800/40 hover:bg-slate-700/40 border border-slate-700/80 rounded-lg p-2.5 transition-colors text-center">
+                            <input type="file" id="mapUpload" accept="image/*" class="hidden">
+                            <div class="flex items-center justify-center gap-2 text-slate-300">
+                                <i data-lucide="upload-cloud" class="w-4 h-4 text-blue-400"></i>
+                                <span class="text-xs font-semibold">Tải ảnh mặt bằng (JPG/PNG)</span>
+                            </div>
+                        </label>
+                        
+                        <!-- Load/Save Server Buttons -->
+                        <div class="flex gap-2">
+                            <button id="btnLoadMapFromServer" class="flex-1 py-2 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-600/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1">
+                                <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> Tải từ Server
+                            </button>
+                            <button id="btnSaveMap" class="flex-1 py-2 bg-blue-600/25 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-600/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1">
+                                <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i> Lưu lên Server
+                            </button>
+                        </div>
+
+                        <div class="text-[10px] text-slate-500 flex items-center justify-between">
+                            <span>Tỷ lệ: 1px = 0.6cm (1 ô = 30cm)</span>
+                            <button class="hover:text-white transition-colors" title="Chỉnh sửa tỷ lệ"><i data-lucide="settings-2" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 2: CÔNG CỤ CHỈNH SỬA (Map Editor tools) -->
+                    <div class="p-4 border-b border-slate-700/50 space-y-3">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Công cụ Chỉnh sửa</h2>
+                        
+                        <div class="grid grid-cols-2 gap-2" id="toolsGroup">
+                            <button class="tool-btn active flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="select">
+                                <i data-lucide="mouse-pointer-2" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Chọn</span>
+                            </button>
+                            <button class="tool-btn flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="node">
+                                <i data-lucide="map-pin" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Thêm Node</span>
+                            </button>
+                            <button class="tool-btn flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="edge">
+                                <i data-lucide="git-commit" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Nối Cạnh</span>
+                            </button>
+                            <button class="tool-btn flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="erase">
+                                <i data-lucide="eraser" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Xóa</span>
+                            </button>
+                            <button class="tool-btn flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="rect">
+                                <i data-lucide="square" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Hình Chữ Nhật</span>
+                            </button>
+                            <button class="tool-btn flex flex-col items-center p-2.5 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition-all" data-tool="circle">
+                                <i data-lucide="circle" class="w-4 h-4 mb-1"></i>
+                                <span class="text-[11px]">Hình Tròn</span>
+                            </button>
+                        </div>
+
+                        <!-- Properties Panel (Dynamic) -->
+                        <div id="propertiesPanel" class="hidden border border-slate-700 bg-slate-900/40 p-3 rounded-lg space-y-3">
+                            <h3 id="propPanelTitle" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thuộc tính Đối tượng</h3>
+                            <div class="space-y-2.5">
+                                <div>
+                                    <label id="propNameLabel" class="text-[10px] text-slate-400 block mb-1">Tên đối tượng</label>
+                                    <input type="text" id="propName" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 focus:outline-none" placeholder="VD: Kệ sữa">
+                                </div>
+                                <div>
+                                    <label id="propTypeLabel" class="text-[10px] text-slate-400 block mb-1">Loại đối tượng</label>
+                                    <select id="propType" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-xs text-white focus:border-blue-500 focus:outline-none">
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Properties / Config (Dynamic) -->
-                <div id="propertiesPanel" class="hidden space-y-4">
-                    <h3 id="propPanelTitle" class="text-xs font-semibold text-slate-400 uppercase">Thuộc tính Đối tượng</h3>
-                    <div class="space-y-3">
+                <div id="contentRouteSection" class="p-4 space-y-3">
+                    <!-- SECTION 3: LỘ TRÌNH CỐ ĐỊNH (Fixed Routes) -->
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        <i data-lucide="milestone" class="text-indigo-400 w-4 h-4"></i> Lộ trình Cố định
+                    </h2>
+                    
+                    <!-- Fixed route list -->
+                    <div id="fixedRouteList" class="space-y-1.5 max-h-56 overflow-y-auto text-xs">
+                        <div class="text-slate-500 italic text-center">Đang tải danh sách lộ trình...</div>
+                    </div>
+
+                    <!-- Run Selected Route Button -->
+                    <button id="btnRunFixedRoute" disabled class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-1.5 disabled:opacity-30 disabled:pointer-events-none shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                        <i data-lucide="play" class="w-4 h-4 fill-white"></i> CHẠY LỘ TRÌNH ĐANG CHỌN
+                    </button>
+
+                    <!-- Create route trigger button -->
+                    <button id="btnCreateRouteMode" class="w-full py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-600/30 rounded-lg text-xs font-semibold transition-colors flex justify-center items-center gap-1">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Tạo Lộ trình Mới
+                    </button>
+
+                    <!-- Route Editor Form (Hidden by default) -->
+                    <div id="routeEditForm" class="hidden border border-indigo-500/30 p-3 rounded-lg bg-slate-900/50 space-y-3">
+                        <h4 class="font-bold text-slate-200 text-[11px] uppercase" id="routeFormTitle">Thiết lập Lộ trình</h4>
                         <div>
-                            <label id="propNameLabel" class="text-xs text-slate-400 block mb-1">Tên Node</label>
-                            <input type="text" id="propName" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="VD: Kệ sữa">
+                            <label class="text-[10px] text-slate-400 block mb-1">Tên lộ trình</label>
+                            <input type="text" id="routeFormName" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs" placeholder="VD: Tuần tra Kệ A1-A3">
                         </div>
                         <div>
-                            <label id="propTypeLabel" class="text-xs text-slate-400 block mb-1">Loại Node</label>
-                            <select id="propType" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                                <!-- Dynamic Options will be injected via JS based on selected object type -->
+                            <label class="text-[10px] text-slate-400 block mb-1">Loại lộ trình</label>
+                            <select id="routeFormType" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs">
+                                <option value="Ad">Quảng cáo (Ad)</option>
+                                <option value="Patrol">Tuần tra kệ hàng (Patrol)</option>
+                                <option value="Guide">Dẫn đường (Guide)</option>
+                                <option value="Custom">Phát sinh (Custom)</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-1">Khu vực (Zone)</label>
+                            <select id="routeFormZone" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs">
+                                <option value="">Không phân khu</option>
+                                <option value="1">Khu rau củ</option>
+                                <option value="2">Khu đồ uống</option>
+                                <option value="3">Khu bánh kẹo</option>
+                                <option value="4">Khu sữa</option>
+                            </select>
+                        </div>
+                        <div class="p-2 bg-slate-950 rounded border border-slate-800 text-[11px]">
+                            <span class="text-slate-400 block mb-1 font-semibold">Nút đã chọn (theo thứ tự):</span>
+                            <div id="routeFormSelectedNodes" class="text-indigo-400 font-mono space-y-0.5 max-h-24 overflow-y-auto">
+                                <div class="text-slate-500 italic">Chưa chọn nút nào...</div>
+                            </div>
+                            <span class="text-[9px] text-slate-500 mt-1 block italic">* Click vào các Node trên bản đồ để nối lộ trình</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="btnSaveRoute" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded font-semibold text-xs">Lưu</button>
+                            <button id="btnCancelRoute" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-1.5 rounded text-xs">Hủy</button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="p-4 border-t border-slate-700/50 space-y-2">
-                <div class="flex items-center space-x-3">
-                    <button id="btnLoadMapFromServer" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center">
-                        <i data-lucide="cloud-download" class="w-4 h-4 mr-1.5"></i> Tải từ Server
-                    </button>
-                    <button id="btnSaveMap" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center">
-                        <i data-lucide="cloud-upload" class="w-4 h-4 mr-1.5"></i> Lưu lên Server
-                    </button>
-                </div>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <button id="btnExportJson" class="py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-all flex justify-center items-center gap-1">
-                        <i data-lucide="download" class="w-3 h-3"></i> Xuất bản đồ JSON
-                    </button>
-                    <label class="py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-all flex justify-center items-center gap-1 cursor-pointer">
-                        <input type="file" id="btnImportJson" accept=".json" class="hidden">
-                        <i data-lucide="upload" class="w-3 h-3"></i> Nhập bản đồ JSON
-                    </label>
-                </div>
-                <div class="border border-slate-700/50 rounded-lg p-3 bg-slate-800/30">
-                    <h3 class="text-xs font-semibold text-slate-300 uppercase mb-2">Điều hướng Robot</h3>
-                    <div class="space-y-2 mb-2">
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="text-slate-400 font-medium">Mã Robot:</span>
-                            <input type="text" id="inpRobotCode" value="RB001" class="w-16 bg-slate-900 text-white text-xs px-2 py-1 rounded border border-slate-600 text-center" />
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400 font-medium">Điểm bắt đầu:</span>
-                                <span id="lblStartNode" class="text-indigo-400 font-medium truncate">Chưa chọn</span>
+            <!-- SECTION 4: NÂNG CAO - DIJKSTRA SIMULATOR & JSON (Collapsible) -->
+            <div class="p-4 mt-auto border-t border-slate-700/50 space-y-2">
+                <details class="group bg-slate-800/10 rounded-lg border border-slate-700/20 p-2">
+                    <summary class="text-[10px] font-bold text-slate-400 uppercase cursor-pointer flex justify-between items-center select-none">
+                        <span>Cấu hình nâng cao</span>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 transition-transform group-open:rotate-180 text-slate-400"></i>
+                    </summary>
+                    
+                    <div class="mt-3 space-y-3 text-xs">
+                        <!-- Dijkstra simulation -->
+                        <div class="border border-slate-700/40 rounded-lg p-2.5 bg-slate-950/20">
+                            <h3 class="text-[10px] font-bold text-slate-300 uppercase mb-2">Mô phỏng Dijkstra</h3>
+                            <div class="space-y-1.5 mb-2">
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-400">Mã Robot:</span>
+                                    <input type="text" id="inpRobotCode" value="RB001" class="w-12 bg-slate-900 text-white text-[10px] px-1 py-0.5 rounded border border-slate-700 text-center" />
+                                </div>
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-400">Bắt đầu:</span>
+                                    <span id="lblStartNode" class="text-indigo-400 font-medium truncate max-w-[120px]">Chưa chọn</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-400">Đích đến:</span>
+                                    <span id="lblEndNode" class="text-emerald-400 font-medium truncate max-w-[120px]">Chưa chọn</span>
+                                </div>
                             </div>
-                            <button id="btnSetStart" class="w-full py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded text-[11px] transition-colors border border-indigo-600/30">Đặt làm Điểm xuất phát</button>
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-slate-400 font-medium">Điểm đích đến:</span>
-                                <span id="lblEndNode" class="text-emerald-400 font-medium truncate">Chưa chọn</span>
+                            <div class="flex gap-1.5 mb-2">
+                                <button id="btnSetStart" class="flex-1 py-1 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded text-[10px] transition-colors border border-indigo-600/20">Set Start</button>
+                                <button id="btnSetEnd" class="flex-1 py-1 bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded text-[10px] transition-colors border border-emerald-600/20">Set End</button>
                             </div>
-                            <button id="btnSetEnd" class="w-full py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded text-[11px] transition-colors border border-emerald-600/30">Đặt làm Điểm đích đến</button>
+                            <button id="btnSimulate" class="w-full py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/30 rounded text-xs font-semibold transition-colors flex justify-center items-center gap-1.5">
+                                <i data-lucide="play" class="w-3 h-3"></i> Chạy Dijkstra
+                            </button>
+                        </div>
+
+                        <!-- Backup JSON -->
+                        <div class="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-700/20">
+                            <button id="btnExportJson" class="py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition-all flex justify-center items-center gap-1 border border-slate-700/40">
+                                <i data-lucide="download" class="w-3 h-3"></i> Export JSON
+                            </button>
+                            <label class="py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition-all flex justify-center items-center gap-1 cursor-pointer border border-slate-700/40">
+                                <input type="file" id="btnImportJson" accept=".json" class="hidden">
+                                <i data-lucide="upload" class="w-3 h-3"></i> Import JSON
+                            </label>
                         </div>
                     </div>
-                    <button id="btnSimulate" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-semibold transition-colors disabled:opacity-50 flex justify-center items-center gap-2">
-                        <i data-lucide="play" class="w-4 h-4"></i> Bắt đầu di chuyển
-                    </button>
-                </div>
+                </details>
             </div>
         </aside>
 
@@ -286,63 +384,6 @@
                             <span id="robotStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-850 text-blue-400 border border-blue-500/20 uppercase flex items-center gap-1">
                                 <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> CHỜ
                             </span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fixed Routes Management -->
-                <div class="bg-slate-800/30 p-3 rounded-lg border border-slate-700/30 space-y-3">
-                    <h3 class="text-xs font-semibold text-slate-300 uppercase mb-2 flex items-center gap-2">
-                        <i data-lucide="milestone" class="w-4 h-4 text-indigo-400"></i> Lộ trình Cố định
-                    </h3>
-                    
-                    <!-- Fixed route list -->
-                    <div id="fixedRouteList" class="space-y-1.5 max-h-36 overflow-y-auto text-xs">
-                        <div class="text-slate-500 italic">Đang tải danh sách lộ trình...</div>
-                    </div>
-
-                    <!-- Run Selected Route Button -->
-                    <button id="btnRunFixedRoute" disabled class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition-colors flex justify-center items-center gap-1 disabled:opacity-40">
-                        <i data-lucide="play" class="w-4 h-4"></i> Chạy Lộ trình Đang Chọn
-                    </button>
-
-                    <!-- Create route trigger button -->
-                    <button id="btnCreateRouteMode" class="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold transition-colors flex justify-center items-center gap-1">
-                        <i data-lucide="plus-circle" class="w-4 h-4"></i> Tạo Lộ trình Mới
-                    </button>
-
-                    <!-- Route Editor Form (Hidden by default) -->
-                    <div id="routeEditForm" class="hidden border border-indigo-500/30 p-3 rounded bg-slate-900/50 space-y-3">
-                        <h4 class="font-bold text-slate-200 text-[11px] uppercase" id="routeFormTitle">Thiết lập Lộ trình</h4>
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-1">Tên lộ trình</label>
-                            <input type="text" id="routeFormName" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs" placeholder="VD: Tuần tra Kệ A1-A3">
-                        </div>
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-1">Loại lộ trình</label>
-                            <select id="routeFormType" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs">
-                                <option value="Ad">Quảng cáo (Ad)</option>
-                                <option value="Patrol">Tuần tra kệ hàng (Patrol)</option>
-                                <option value="Guide">Dẫn đường (Guide)</option>
-                                <option value="Custom">Phát sinh (Custom)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] text-slate-400 block mb-1">Khu vực (Zone)</label>
-                            <select id="routeFormZone" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-white text-xs">
-                                <option value="">Không phân khu</option>
-                            </select>
-                        </div>
-                        <div class="p-2 bg-slate-950 rounded border border-slate-800 text-[11px]">
-                            <span class="text-slate-400 block mb-1 font-semibold">Nút đã chọn (theo thứ tự):</span>
-                            <div id="routeFormSelectedNodes" class="text-indigo-400 font-mono space-y-0.5 max-h-20 overflow-y-auto">
-                                <div class="text-slate-500 italic">Chưa chọn nút nào...</div>
-                            </div>
-                            <span class="text-[9px] text-slate-500 mt-1 block italic">* Click vào các Node trên bản đồ để nối lộ trình</span>
-                        </div>
-                        <div class="flex gap-2">
-                            <button id="btnSaveRoute" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-1 rounded text-xs font-semibold">Lưu</button>
-                            <button id="btnCancelRoute" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-1 rounded text-xs">Hủy</button>
                         </div>
                     </div>
                 </div>
@@ -531,11 +572,12 @@
             </div>
  
             <!-- Tab Headers -->
-            <div class="flex border-b border-slate-700/50 mb-4 text-xs font-semibold">
+            <div class="flex border-b border-slate-700/50 mb-4 text-xs font-semibold overflow-x-auto whitespace-nowrap scrollbar-none select-none">
                 <button id="tabBtnConnection" class="flex-1 py-2 text-blue-400 border-b-2 border-blue-500 focus:outline-none" onclick="switchSettingsTab('connection')">Kết nối</button>
                 <button id="tabBtnSensors" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('sensors')">Cảm biến</button>
                 <button id="tabBtnMotors" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('motors')">Động cơ</button>
                 <button id="tabBtnSpeed" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('speed')">Tốc độ</button>
+                <button id="tabBtnAuto" class="flex-1 py-2 text-slate-400 hover:text-white border-b-2 border-transparent focus:outline-none" onclick="switchSettingsTab('auto')">Tự Hành</button>
             </div>
  
             <!-- Tab Contents -->
@@ -611,6 +653,23 @@
                             <option value="0">Cổng Serial 1 (Mặc định)</option>
                             <option value="1">Cổng Serial 2</option>
                         </select>
+                    </div>
+                    
+                    <!-- IMU Calibration -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800 space-y-2">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">Bù góc xoay vật lý (IMU Yaw Scale)</span>
+                        <p class="text-[10px] text-slate-500 leading-relaxed">Hiệu chỉnh tỉ lệ góc xoay thực tế so với cảm biến tích lũy. Nếu robot quay thiếu góc (chưa đủ 90°), hãy TĂNG hệ số. Nếu quay thừa góc (quá 90°), hãy GIẢM hệ số.</p>
+                        
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-400 font-medium">Hệ số tỷ lệ (Yaw Scale)</span>
+                            <span id="yawScaleVal" class="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">100%</span>
+                        </div>
+                        <input type="range" id="yawScaleSlider" min="50" max="150" value="100" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>50%</span>
+                            <span>100% (Mặc định)</span>
+                            <span>150%</span>
+                        </div>
                     </div>
                 </div>
  
@@ -696,6 +755,20 @@
                             <span>Phải</span>
                         </div>
                     </div>
+
+                    <!-- Rotate Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Xoay hướng (Rotate)</span>
+                            <span id="rotVal" class="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">30%</span>
+                        </div>
+                        <input type="range" id="rotSlider" min="0" max="100" value="30" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>Chậm (0%)</span>
+                            <span>30%</span>
+                            <span>Nhanh (100%)</span>
+                        </div>
+                    </div>
  
                     <!-- Auto Speed -->
                     <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
@@ -725,6 +798,68 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Tab: Auto Tuning Parameters -->
+                <div id="tabContentAuto" class="space-y-4 hidden">
+                    <p class="text-[10px] text-slate-400 leading-relaxed">Cấu hình các tham số tinh chỉnh chế độ tự hành (Né vật cản, căn chỉnh góc xoay, bám vạch PID) trực tiếp thời gian thực.</p>
+                    
+                    <!-- Section: Alignment and Turning -->
+                    <div class="space-y-2.5">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">1. Xoay & Căn chỉnh Góc</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Ngưỡng góc căn chỉnh (độ)</label>
+                                <input type="number" id="cfgAlignThreshold" min="2" max="30" value="10" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Tốc độ xoay tối thiểu (%)</label>
+                                <input type="number" id="cfgRotateSpeedMin" min="5" max="50" value="10" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section: Obstacle Avoidance (HC-SR04) -->
+                    <div class="space-y-2.5">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">2. Khoảng cách Né vật cản (Siêu âm)</span>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Khoảng cách Dừng (cm)</label>
+                                <input type="number" id="cfgUsStopCm" min="15" max="80" value="30" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Khoảng cách Né OA (cm)</label>
+                                <input type="number" id="cfgUsOaDetectCm" min="20" max="100" value="42" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Khoảng cách Hết cản (cm)</label>
+                                <input type="number" id="cfgUsPathClearCm" min="25" max="120" value="48" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Chu kỳ xác nhận Hết cản</label>
+                                <input type="number" id="cfgUsPathClearStreak" min="5" max="50" value="18" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section: Yaw Steering PID -->
+                    <div class="space-y-2.5">
+                        <span class="text-xs font-semibold text-slate-300 block border-b border-slate-700/30 pb-1">3. Bộ điều khiển bám thẳng (Yaw PID)</span>
+                        <div class="grid grid-cols-3 gap-1.5 text-xs">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Hệ số P (Kp)</label>
+                                <input type="number" step="0.1" id="cfgYawKp" value="40.0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Hệ số I (Ki)</label>
+                                <input type="number" step="0.01" id="cfgYawKi" value="0.0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">Hệ số D (Kd)</label>
+                                <input type="number" step="0.1" id="cfgYawKd" value="2.0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
  
             <div class="flex justify-end gap-2 mt-6 border-t border-slate-700/50 pt-4">
@@ -737,6 +872,39 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.min.js"></script>
     <script src="app.js?v=4"></script>
     <script>
+        // Tab Switching logic for Left Sidebar
+        (function() {
+            const leftSidebar = document.getElementById("leftSidebar");
+            const btnTabMap = document.getElementById("btnTabMap");
+            const btnTabRoute = document.getElementById("btnTabRoute");
+            const btnTabRun = document.getElementById("btnTabRun");
+
+            window.setTab = function(tabName) {
+                if (!leftSidebar) return;
+                // Reset classes
+                leftSidebar.classList.remove("sidebar-tab-map", "sidebar-tab-route", "sidebar-tab-run");
+                btnTabMap.className = btnTabMap.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
+                btnTabRoute.className = btnTabRoute.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
+                btnTabRun.className = btnTabRun.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
+
+                // Set active
+                if (tabName === "map") {
+                    leftSidebar.classList.add("sidebar-tab-map");
+                    btnTabMap.className = btnTabMap.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                } else if (tabName === "route") {
+                    leftSidebar.classList.add("sidebar-tab-route");
+                    btnTabRoute.className = btnTabRoute.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                } else if (tabName === "run") {
+                    leftSidebar.classList.add("sidebar-tab-run");
+                    btnTabRun.className = btnTabRun.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                }
+            };
+
+            if (btnTabMap) btnTabMap.addEventListener("click", () => setTab("map"));
+            if (btnTabRoute) btnTabRoute.addEventListener("click", () => setTab("route"));
+            if (btnTabRun) btnTabRun.addEventListener("click", () => setTab("run"));
+        })();
+
         lucide.createIcons();
     </script>
 </body>

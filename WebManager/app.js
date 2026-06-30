@@ -682,6 +682,7 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         setTimeout(() => {
             overlay.classList.replace('flex', 'hidden');
             alert('Lưu dữ liệu lên Server thành công!');
+            if (window.setTab) window.setTab('route');
         }, 800);
     } catch (err) {
         console.error(err);
@@ -1151,6 +1152,19 @@ function connectRobotWs() {
                     alert('Lỗi cấu hình động cơ: ' + (data.msg || 'không hợp lệ'));
                     return;
                 }
+                if (data.t === 'cfg') {
+                    document.getElementById('cfgAlignThreshold').value = data.align;
+                    document.getElementById('cfgRotateSpeedMin').value = data.minRot;
+                    document.getElementById('cfgUsStopCm').value = data.stop;
+                    document.getElementById('cfgUsOaDetectCm').value = data.detect;
+                    document.getElementById('cfgUsPathClearCm').value = data.clear;
+                    document.getElementById('cfgUsPathClearStreak').value = data.streak;
+                    document.getElementById('cfgYawKp').value = data.kp;
+                    document.getElementById('cfgYawKi').value = data.ki;
+                    document.getElementById('cfgYawKd').value = data.kd;
+                    appendSerialLog('[WS-Direct] Đã đồng bộ cấu hình tự hành từ Robot.');
+                    return;
+                }
                 
                 if (data.type === 'log') {
                     appendSerialLog(`[WS-Direct] ${data.message}`);
@@ -1267,17 +1281,19 @@ function wireSlider(sliderId, valId, command, wsType) {
     });
 }
 
-// Wire up the 4 sliders
+// Wire up the 6 sliders
 wireSlider('spdSlider', 'spdVal', 'set_speed_manual', 'spd');
 wireSlider('strSlider', 'strVal', 'set_strafe', 'joy');
+wireSlider('rotSlider', 'rotVal', 'set_speed_rotate', 'spdRotate');
 wireSlider('spdAutoSlider', 'spdAutoVal', 'set_speed_auto', 'spdAuto');
 wireSlider('spdSwerveSlider', 'spdSwerveVal', 'set_speed_swerve', 'spdSwerve');
+wireSlider('yawScaleSlider', 'yawScaleVal', 'set_yaw_scale', 'yawScale');
 
 
 
 // Settings modal tab switcher
 window.switchSettingsTab = function(tabId) {
-    const tabs = ['connection', 'sensors', 'motors', 'speed'];
+    const tabs = ['connection', 'sensors', 'motors', 'speed', 'auto'];
     tabs.forEach(t => {
         const content = document.getElementById('tabContent' + t.charAt(0).toUpperCase() + t.slice(1));
         const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -1526,9 +1542,7 @@ function applyLiveTelemetry(d) {
             }
         }
         
-        if (lastKnownMode !== modeStr && lastKnownMode !== null) {
-            appendSerialLog(`[Hệ thống] Chế độ vận hành: ${lastKnownMode} ➔ ${modeStr}`);
-        }
+
         lastKnownMode = modeStr;
     }
 
@@ -1580,14 +1594,7 @@ function applyLiveTelemetry(d) {
         robotStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span> ${displayStatus}`;
         robotStatusBadge.className = badgeClass;
         
-        if (lastKnownWpStatus !== wpStatusStr && lastKnownWpStatus !== null) {
-            let msgType = 'info';
-            if (wpStatusStr === 'done') msgType = 'success';
-            if (wpStatusStr === 'aborted' || wpStatusStr === 'reroute_needed') msgType = 'error';
-            if (wpStatusStr === 'oa_active') msgType = 'warning';
-            
-            appendSerialLog(`[Hệ thống] Trạng thái FSM: ${lastKnownWpStatus.toUpperCase()} ➔ ${displayStatus}`);
-        }
+
         lastKnownWpStatus = wpStatusStr;
     }
 }
@@ -1611,6 +1618,7 @@ if (btnSettings && settingsModal) {
             try {
                 robotWs.send(JSON.stringify({ t: 'layoutGet' }));
                 robotWs.send(JSON.stringify({ t: 'motorLayoutGet' }));
+                robotWs.send(JSON.stringify({ t: 'cfgGet' }));
             } catch (err) {
                 console.error('[RobotWS] Failed to query layouts on modal open:', err);
             }
@@ -1676,10 +1684,32 @@ if (btnSettings && settingsModal) {
                 return;
             }
             
+            const cfgAlign = parseFloat(document.getElementById('cfgAlignThreshold').value);
+            const cfgMinRot = parseInt(document.getElementById('cfgRotateSpeedMin').value, 10);
+            const cfgStop = parseInt(document.getElementById('cfgUsStopCm').value, 10);
+            const cfgDetect = parseInt(document.getElementById('cfgUsOaDetectCm').value, 10);
+            const cfgClear = parseInt(document.getElementById('cfgUsPathClearCm').value, 10);
+            const cfgStreak = parseInt(document.getElementById('cfgUsPathClearStreak').value, 10);
+            const cfgKp = parseFloat(document.getElementById('cfgYawKp').value);
+            const cfgKi = parseFloat(document.getElementById('cfgYawKi').value);
+            const cfgKd = parseFloat(document.getElementById('cfgYawKd').value);
+            
             try {
                 robotWs.send(JSON.stringify({ t: 'layout', us, enc, lidF }));
                 robotWs.send(JSON.stringify({ t: 'motLayout', mapMot, motInv }));
-                appendSerialLog('[WS-Direct] Đang gửi cấu hình Sensor Layout & Motor Layout mới xuống Robot...');
+                robotWs.send(JSON.stringify({
+                    t: 'cfg',
+                    align: cfgAlign,
+                    minRot: cfgMinRot,
+                    stop: cfgStop,
+                    detect: cfgDetect,
+                    clear: cfgClear,
+                    streak: cfgStreak,
+                    kp: cfgKp,
+                    ki: cfgKi,
+                    kd: cfgKd
+                }));
+                appendSerialLog('[WS-Direct] Đang gửi cấu hình Sensor, Motor & Tự Hành mới xuống Robot...');
             } catch (err) {
                 appendSerialLog('[WS-Direct] Lỗi gửi cấu hình: ' + err.message);
                 alert('Không thể gửi cấu hình xuống Robot: ' + err.message);
@@ -1797,14 +1827,6 @@ function connectSignalR() {
         if (telemetry.robotCode === currentRobotCode) {
             robotLiveX = telemetry.xCoord;
             robotLiveY = telemetry.yCoord;
-            const statusEl = document.getElementById('robotStatus') || document.getElementById('robotStatusBadge');
-            if (statusEl) {
-                if (statusEl.id === 'robotStatusBadge') {
-                    statusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ${telemetry.status}`;
-                } else {
-                    statusEl.textContent = telemetry.status;
-                }
-            }
             if (telemetry.xCoord !== null) document.getElementById('robotX').textContent = telemetry.xCoord.toFixed(2) + 'm';
             if (telemetry.yCoord !== null) document.getElementById('robotY').textContent = telemetry.yCoord.toFixed(2) + 'm';
             
@@ -2187,7 +2209,7 @@ function renderFixedRoutesList() {
                     ${route.zoneName ? `<span>•</span> <span class="truncate">${route.zoneName}</span>` : ''}
                 </div>
             </div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 route-item-actions">
                 <button onclick="editFixedRoute(${route.robotRouteId})" class="p-1 hover:bg-slate-700 text-slate-400 hover:text-white rounded" title="Chỉnh sửa">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"></path></svg>
                 </button>
@@ -2438,6 +2460,7 @@ document.getElementById('btnSaveRoute')?.addEventListener('click', async () => {
         
         loadFixedRoutes();
         draw();
+        if (window.setTab) window.setTab('run');
     } catch (e) {
         console.error('[FixedRoutes] Lỗi lưu lộ trình:', e);
         alert('Lỗi lưu lộ trình: ' + e.message);
