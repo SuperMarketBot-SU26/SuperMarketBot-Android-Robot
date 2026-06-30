@@ -111,6 +111,18 @@ graphCanvas.addEventListener('mousedown', (e) => {
     const worldX = (mouseX - offsetX) / scale;
     const worldY = (mouseY - offsetY) / scale;
 
+    if (isRouteMode) {
+        const clickedNode = findNodeAt(worldX, worldY);
+        if (clickedNode) {
+            if (!routeSelectedNodes.includes(clickedNode.id)) {
+                routeSelectedNodes.push(clickedNode.id);
+                updateRouteSelectedNodesUI();
+                draw();
+            }
+        }
+        return;
+    }
+
     if (currentTool === 'select') {
         const clickedNode = findNodeAt(worldX, worldY);
         const clickedShape = findShapeAt(worldX, worldY);
@@ -372,6 +384,50 @@ function draw() {
         ctx.textBaseline = 'middle';
         ctx.fillText(`${edge.distance}m`, midX, midY);
     });
+
+    // Draw active preview route or routeSelectedNodes in editing mode
+    let nodesToDrawRoute = [];
+    if (isRouteMode && routeSelectedNodes.length > 0) {
+        nodesToDrawRoute = routeSelectedNodes.map(id => nodes.find(n => n.id === id)).filter(Boolean);
+    } else if (activePreviewRoute && activePreviewRoute.waypoints && activePreviewRoute.waypoints.length > 0) {
+        nodesToDrawRoute = activePreviewRoute.waypoints.map(wp => nodes.find(n => n.id === wp.nodeId)).filter(Boolean);
+    }
+
+    if (nodesToDrawRoute.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(nodesToDrawRoute[0].x, nodesToDrawRoute[0].y);
+        for (let i = 1; i < nodesToDrawRoute.length; i++) {
+            ctx.lineTo(nodesToDrawRoute[i].x, nodesToDrawRoute[i].y);
+        }
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.9)'; // Amber orange color
+        ctx.lineWidth = 6 / scale;
+        ctx.setLineDash([8 / scale, 6 / scale]); // Dashed line
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+        ctx.restore();
+
+        // Draw directional arrows
+        for (let i = 0; i < nodesToDrawRoute.length - 1; i++) {
+            const p1 = nodesToDrawRoute[i];
+            const p2 = nodesToDrawRoute[i + 1];
+            const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            
+            ctx.save();
+            ctx.translate(midX, midY);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(-6 / scale, -4 / scale);
+            ctx.lineTo(6 / scale, 0);
+            ctx.lineTo(-6 / scale, 4 / scale);
+            ctx.closePath();
+            ctx.fillStyle = '#f59e0b';
+            ctx.fill();
+            ctx.restore();
+        }
+    }
 
     // Draw Shapes
     shapes.forEach(shape => {
@@ -706,6 +762,7 @@ document.getElementById('btnLoadMapFromServer').addEventListener('click', async 
         document.getElementById('lblEndNode').removeAttribute('title');
         
         hideProperties();
+        loadFixedRoutes();
         draw();
 
         setTimeout(() => {
@@ -2060,6 +2117,389 @@ document.getElementById('btnResetOdom')?.addEventListener('click', () => {
     console.log('[Control] Resetting Odometry');
     sendRobotCommand('odom_reset', 'odomReset', 1);
     appendSerialLog('[Hệ thống] 🔄 Đã gửi lệnh Reset Odometry.');
+});
+
+// ============================================================================
+// FIXED ROUTE MANAGEMENT WORKFLOW
+// ============================================================================
+let isRouteMode = false;
+let routeSelectedNodes = [];
+let editingRouteId = null;
+let fixedRoutesList = [];
+let activePreviewRoute = null;
+
+// Load fixed routes on start
+setTimeout(loadFixedRoutes, 1000);
+
+async function loadFixedRoutes() {
+    const listEl = document.getElementById('fixedRouteList');
+    if (!listEl) return;
+
+    try {
+        const res = await fetch(`${BASE_URL}/api/v1/routes?mapId=1`, {
+            method: 'GET',
+            headers: { 
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': '69420'
+            }
+        });
+
+        if (!res.ok) throw new Error(`API Error ${res.status}`);
+        
+        fixedRoutesList = await res.json();
+        renderFixedRoutesList();
+    } catch (e) {
+        console.error('[FixedRoutes] Lỗi load lộ trình cố định:', e);
+        listEl.innerHTML = `<div class="text-rose-400 italic">Không thể tải lộ trình từ server: ${e.message}</div>`;
+    }
+}
+
+function renderFixedRoutesList() {
+    const listEl = document.getElementById('fixedRouteList');
+    if (!listEl) return;
+
+    if (fixedRoutesList.length === 0) {
+        listEl.innerHTML = '<div class="text-slate-500 italic">Chưa có lộ trình nào được tạo.</div>';
+        document.getElementById('btnRunFixedRoute').disabled = true;
+        return;
+    }
+
+    listEl.innerHTML = '';
+    fixedRoutesList.forEach(route => {
+        const isSelected = activePreviewRoute && activePreviewRoute.robotRouteId === route.robotRouteId;
+        const item = document.createElement('div');
+        item.className = `flex justify-between items-center p-2 rounded border border-slate-700/50 hover:bg-slate-800/60 transition-all ${isSelected ? 'bg-indigo-950/40 border-indigo-500/50' : 'bg-slate-900/30'}`;
+        
+        let badgeColor = 'bg-slate-800 text-slate-400 border-slate-700';
+        if (route.routeType === 'Ad') badgeColor = 'bg-rose-950 text-rose-400 border-rose-800/40';
+        if (route.routeType === 'Patrol') badgeColor = 'bg-blue-950 text-blue-400 border-blue-800/40';
+        if (route.routeType === 'Guide') badgeColor = 'bg-emerald-950 text-emerald-400 border-emerald-800/40';
+        if (route.routeType === 'Custom') badgeColor = 'bg-amber-950 text-amber-400 border-amber-800/40';
+
+        item.innerHTML = `
+            <div class="flex flex-col flex-1 min-w-0 mr-2 cursor-pointer text-left" onclick="selectFixedRouteForPreview(${route.robotRouteId})">
+                <div class="flex items-center gap-1.5">
+                    <span class="font-semibold text-slate-200 truncate ${isSelected ? 'text-indigo-300' : ''}">${route.routeName}</span>
+                    <span class="px-1 py-0.5 rounded text-[8px] border font-bold uppercase ${badgeColor}">${route.routeType}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                    <span>${route.waypointCount} điểm</span>
+                    ${route.zoneName ? `<span>•</span> <span class="truncate">${route.zoneName}</span>` : ''}
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <button onclick="editFixedRoute(${route.robotRouteId})" class="p-1 hover:bg-slate-700 text-slate-400 hover:text-white rounded" title="Chỉnh sửa">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"></path></svg>
+                </button>
+                <button onclick="deleteFixedRoute(${route.robotRouteId})" class="p-1 hover:bg-rose-900/60 text-rose-400 rounded" title="Xóa">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        `;
+        listEl.appendChild(item);
+    });
+}
+
+window.selectFixedRouteForPreview = async function(routeId) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/v1/routes/${routeId}`, {
+            method: 'GET',
+            headers: { 
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': '69420'
+            }
+        });
+
+        if (!res.ok) throw new Error(`API Error ${res.status}`);
+        
+        activePreviewRoute = await res.json();
+        document.getElementById('btnRunFixedRoute').disabled = false;
+        
+        renderFixedRoutesList();
+        draw();
+
+        // Populate Right Sidebar waypoints list
+        const routeListEl = document.getElementById('routeList');
+        if (routeListEl && activePreviewRoute.waypoints) {
+            routeListEl.innerHTML = '';
+            activePreviewRoute.waypoints.forEach((wp, index) => {
+                const nodeItem = document.createElement('div');
+                nodeItem.className = 'relative flex items-center gap-3 text-xs';
+                nodeItem.innerHTML = `
+                    <div class="z-10 w-5 h-5 rounded-full bg-indigo-900 border-2 border-indigo-500 flex items-center justify-center font-mono font-bold text-[9px] text-indigo-300">
+                        ${index + 1}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-slate-200 truncate text-left">${wp.nodeName || `Điểm ${wp.nodeId}`}</div>
+                        <div class="text-[10px] text-slate-400 font-mono text-left">(${wp.xCoord.toFixed(2)}m, ${wp.yCoord.toFixed(2)}m)</div>
+                    </div>
+                `;
+                routeListEl.appendChild(nodeItem);
+            });
+        }
+    } catch (e) {
+        console.error('[FixedRoutes] Lỗi tải chi tiết lộ trình:', e);
+        alert('Lỗi tải chi tiết lộ trình: ' + e.message);
+    }
+};
+
+window.editFixedRoute = async function(routeId) {
+    try {
+        const res = await fetch(`${BASE_URL}/api/v1/routes/${routeId}`, {
+            method: 'GET',
+            headers: { 
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': '69420'
+            }
+        });
+
+        if (!res.ok) throw new Error(`API Error ${res.status}`);
+        
+        const route = await res.json();
+        
+        isRouteMode = true;
+        editingRouteId = route.robotRouteId;
+        
+        document.getElementById('routeFormTitle').textContent = "Cập nhật Lộ trình";
+        document.getElementById('routeFormName').value = route.routeName;
+        document.getElementById('routeFormType').value = route.routeType;
+        document.getElementById('routeFormZone').value = route.zoneId || "";
+        
+        routeSelectedNodes = route.waypoints.map(wp => wp.nodeId);
+        updateRouteSelectedNodesUI();
+        
+        document.getElementById('routeEditForm').classList.remove('hidden');
+        document.getElementById('btnCreateRouteMode').classList.add('hidden');
+        
+        selectedNodeId = null;
+        selectedShapeId = null;
+        hideProperties();
+        
+        draw();
+    } catch (e) {
+        console.error('[FixedRoutes] Lỗi sửa lộ trình:', e);
+        alert('Lỗi tải lộ trình chỉnh sửa: ' + e.message);
+    }
+};
+
+window.deleteFixedRoute = async function(routeId) {
+    if (!confirm('Bạn có chắc chắn muốn xóa lộ trình cố định này không?')) return;
+
+    try {
+        const res = await fetch(`${BASE_URL}/api/v1/routes/${routeId}`, {
+            method: 'DELETE',
+            headers: { 
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': '69420'
+            }
+        });
+
+        if (!res.ok) throw new Error(`API Error ${res.status}`);
+        
+        alert('Xóa lộ trình thành công!');
+        if (activePreviewRoute && activePreviewRoute.robotRouteId === routeId) {
+            activePreviewRoute = null;
+            document.getElementById('btnRunFixedRoute').disabled = true;
+            document.getElementById('routeList').innerHTML = '<div class="text-xs text-slate-400 italic">Chưa có lộ trình di chuyển.</div>';
+        }
+        
+        loadFixedRoutes();
+        draw();
+    } catch (e) {
+        console.error('[FixedRoutes] Lỗi xóa lộ trình:', e);
+        alert('Lỗi khi xóa lộ trình: ' + e.message);
+    }
+};
+
+function updateRouteSelectedNodesUI() {
+    const container = document.getElementById('routeFormSelectedNodes');
+    if (!container) return;
+
+    if (routeSelectedNodes.length === 0) {
+        container.innerHTML = '<div class="text-slate-500 italic">Chưa chọn nút nào...</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    routeSelectedNodes.forEach((nodeId, index) => {
+        const node = nodes.find(n => n.id === nodeId);
+        const name = node ? node.name : `Node ${nodeId}`;
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center bg-slate-900 p-1.5 rounded border border-slate-800 text-[10px] mt-1';
+        item.innerHTML = `
+            <span class="truncate text-slate-300 font-semibold">${index + 1}. ${name}</span>
+            <button onclick="removeNodeFromRouteList(${nodeId})" class="text-rose-500 hover:text-rose-400 ml-1 font-bold">X</button>
+        `;
+        container.appendChild(item);
+    });
+}
+
+window.removeNodeFromRouteList = function(nodeId) {
+    routeSelectedNodes = routeSelectedNodes.filter(id => id !== nodeId);
+    updateRouteSelectedNodesUI();
+    draw();
+};
+
+// Event Listeners for Route Form
+document.getElementById('btnCreateRouteMode')?.addEventListener('click', () => {
+    isRouteMode = true;
+    editingRouteId = null;
+    routeSelectedNodes = [];
+    
+    document.getElementById('routeFormTitle').textContent = "Tạo Lộ trình Mới";
+    document.getElementById('routeFormName').value = "";
+    document.getElementById('routeFormType').value = "Patrol";
+    document.getElementById('routeFormZone').value = "";
+    
+    updateRouteSelectedNodesUI();
+    
+    document.getElementById('routeEditForm').classList.remove('hidden');
+    document.getElementById('btnCreateRouteMode').classList.add('hidden');
+    
+    selectedNodeId = null;
+    selectedShapeId = null;
+    hideProperties();
+    draw();
+});
+
+document.getElementById('btnCancelRoute')?.addEventListener('click', () => {
+    isRouteMode = false;
+    editingRouteId = null;
+    routeSelectedNodes = [];
+    
+    document.getElementById('routeEditForm').classList.add('hidden');
+    document.getElementById('btnCreateRouteMode').classList.remove('hidden');
+    draw();
+});
+
+document.getElementById('btnSaveRoute')?.addEventListener('click', async () => {
+    const name = document.getElementById('routeFormName').value.trim();
+    if (!name) return alert('Vui lòng nhập tên lộ trình!');
+    
+    if (routeSelectedNodes.length === 0) {
+        return alert('Vui lòng chọn ít nhất 1 nút trên bản đồ!');
+    }
+
+    const type = document.getElementById('routeFormType').value;
+    const zoneVal = document.getElementById('routeFormZone').value;
+    const zoneId = zoneVal ? parseInt(zoneVal) : null;
+    
+    const bodyData = {
+        routeName: name,
+        routeType: type,
+        description: "Lộ trình được cấu hình từ Web Manager",
+        zoneId: zoneId,
+        nodeIds: routeSelectedNodes
+    };
+
+    try {
+        let res;
+        if (editingRouteId !== null) {
+            // Update
+            res = await fetch(`${BASE_URL}/api/v1/routes/${editingRouteId}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify(bodyData)
+            });
+        } else {
+            // Create
+            res = await fetch(`${BASE_URL}/api/v1/routes`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify({
+                    mapId: 1,
+                    robotId: 1, // Default robot
+                    ...bodyData
+                })
+            });
+        }
+
+        if (!res.ok) {
+            const errText = await res.json();
+            throw new Error(errText.message || `Lỗi ${res.status}`);
+        }
+
+        alert(editingRouteId !== null ? 'Cập nhật lộ trình thành công!' : 'Tạo lộ trình mới thành công!');
+        
+        // Hide form and reload list
+        document.getElementById('routeEditForm').classList.add('hidden');
+        document.getElementById('btnCreateRouteMode').classList.remove('hidden');
+        isRouteMode = false;
+        editingRouteId = null;
+        routeSelectedNodes = [];
+        
+        loadFixedRoutes();
+        draw();
+    } catch (e) {
+        console.error('[FixedRoutes] Lỗi lưu lộ trình:', e);
+        alert('Lỗi lưu lộ trình: ' + e.message);
+    }
+});
+
+// Run fixed route button click handler
+document.getElementById('btnRunFixedRoute')?.addEventListener('click', async () => {
+    if (!activePreviewRoute || !activePreviewRoute.waypoints || activePreviewRoute.waypoints.length === 0) {
+        return alert('Vui lòng chọn lộ trình trước khi gửi lệnh!');
+    }
+
+    const robotCode = document.getElementById('inpRobotCode').value.trim() || 'RB001';
+    const btn = document.getElementById('btnRunFixedRoute');
+    const oldHtml = btn.innerHTML;
+    
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mr-2"></i> Đang Gửi...';
+    btn.disabled = true;
+
+    try {
+        const waypoints = activePreviewRoute.waypoints.map(wp => ({
+            x: parseFloat(wp.xCoord),
+            y: parseFloat(wp.yCoord),
+            nodeId: parseInt(wp.nodeId)
+        }));
+
+        const navigatePayload = JSON.stringify({ waypoints });
+        
+        if (isRobotWsConnected) {
+            sendRobotCommand(null, 'navigate', navigatePayload);
+            appendSerialLog(`[Hệ thống] 🚀 Đã gửi lộ trình "${activePreviewRoute.routeName}" (${waypoints.length} điểm) trực tiếp qua WebSocket.`);
+        } else {
+            const payload = {
+                robotCode: robotCode,
+                command: 'navigate',
+                payload: navigatePayload
+            };
+            
+            const res = await fetch(`${BASE_URL}/api/robots/command`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                throw new Error(`Mã lỗi ${res.status}`);
+            }
+
+            appendSerialLog(`[Hệ thống] 🚀 Đã gửi lộ trình "${activePreviewRoute.routeName}" (${waypoints.length} điểm) từ xa qua MQTT.`);
+        }
+        
+        alert(`Đã ra lệnh cho robot chạy lộ trình cố định "${activePreviewRoute.routeName}" thành công!`);
+    } catch (e) {
+        console.error('[FixedRouteRun] Lỗi phát lệnh:', e);
+        alert('Lỗi phát lệnh chạy lộ trình: ' + e.message);
+    } finally {
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
+    }
 });
 
 

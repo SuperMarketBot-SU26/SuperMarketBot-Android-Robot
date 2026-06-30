@@ -30,9 +30,10 @@ interface Props {
 
 function routeTypeColor(t: string): { bg: string; fg: string } {
   switch (t) {
-    case 'Patrol':   return { bg: '#1e3a5f', fg: '#60a5fa' };
-    case 'Delivery': return { bg: '#1f2937', fg: '#fbbf24' };
-    case 'Guide':    return { bg: '#134e4a', fg: '#2dd4bf' };
+    case 'Ad':       return { bg: '#4c0519', fg: '#fda4af' }; // Deep rose / rose
+    case 'Patrol':   return { bg: '#1e3a5f', fg: '#60a5fa' }; // Blue
+    case 'Guide':    return { bg: '#134e4a', fg: '#2dd4bf' }; // Emerald
+    case 'Custom':   return { bg: '#451a03', fg: '#fcd34d' }; // Amber
     default:         return { bg: '#2d3a4d', fg: '#94a3b8' };
   }
 }
