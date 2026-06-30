@@ -16,8 +16,16 @@
 
 const ESP32_WS_CONTROL = 'ws://192.168.4.1:81';
 const RECONNECT_INTERVAL_MS = 3000;
+const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
+const ROBOT_CODE_DEFAULT = 'RB001';
 
 export type ConnectionCallback = (connected: boolean) => void;
+
+export interface NavigateWaypoint {
+  x: number;
+  y: number;
+  nodeId: number;
+}
 
 class RobotControlServiceClass {
   private ws: WebSocket | null = null;
@@ -152,6 +160,104 @@ class RobotControlServiceClass {
 
   onConnection(cb: ConnectionCallback)  { this.connListeners.add(cb); }
   offConnection(cb: ConnectionCallback) { this.connListeners.delete(cb); }
+
+  // ─── Navigate Route (Fixed Routes) ─────────────────────────────────────────
+
+  /**
+   * Gửi lệnh navigate trực tiếp qua WebSocket port 81.
+   * Schema ESP32 mong đợi (CtrlJson.h:109):
+   *   { "t": "navigate", "payload": "{\"waypoints\":[{x,y,nodeId}, ...]}" }
+   *
+   * @returns true nếu WS đang mở & đã gửi, false nếu WS đang đóng.
+   */
+  sendNavigate(waypoints: NavigateWaypoint[]): boolean {
+    if (!waypoints || waypoints.length === 0) {
+      console.warn('[RobotControl.sendNavigate] Empty waypoints');
+      return false;
+    }
+    const payloadStr = JSON.stringify({ waypoints });
+    const sent = this._sendRaw({ t: 'navigate', payload: payloadStr });
+    if (sent) {
+      console.log(
+        `[RobotControl.sendNavigate] WS port 81 → ${waypoints.length} waypoints`,
+      );
+    } else {
+      console.warn('[RobotControl.sendNavigate] WS not open');
+    }
+    return sent;
+  }
+
+  /**
+   * Fallback: gửi lệnh navigate qua Backend REST → BE publish MQTT.
+   * Endpoint: POST ${API_BASE}/api/robots/command
+   * Body: { robotCode, command: "navigate", payload: "<json escaped>" }
+   *
+   * @returns true nếu HTTP 2xx.
+   */
+  async sendNavigateViaBackend(
+    waypoints: NavigateWaypoint[],
+    robotCode: string = ROBOT_CODE_DEFAULT,
+  ): Promise<boolean> {
+    if (!waypoints || waypoints.length === 0) {
+      console.warn('[RobotControl.sendNavigateViaBackend] Empty waypoints');
+      return false;
+    }
+    if (!API_BASE) {
+      console.warn('[RobotControl.sendNavigateViaBackend] EXPO_PUBLIC_API_URL chưa set');
+      return false;
+    }
+    const url = `${API_BASE}/api/robots/command`;
+    try {
+      const payloadStr = JSON.stringify({ waypoints });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({
+          robotCode,
+          command: 'navigate',
+          payload: payloadStr,
+        }),
+      });
+      const ok = res.ok;
+      console.log(
+        `[RobotControl.sendNavigateViaBackend] ${ok ? 'OK' : 'FAIL'} ${res.status} → ${waypoints.length} waypoints`,
+      );
+      return ok;
+    } catch (e) {
+      console.warn('[RobotControl.sendNavigateViaBackend] Lỗi:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Composite: thử WS port 81 trước (độ trễ thấp), nếu fail thì fallback BE.
+   *
+   * @returns object { sent, channel } để UI biết đã đi kênh nào.
+   */
+  async sendNavigateWithFallback(
+    waypoints: NavigateWaypoint[],
+  ): Promise<{ sent: boolean; channel: 'ws' | 'be' | 'none' }> {
+    if (this.sendNavigate(waypoints)) {
+      return { sent: true, channel: 'ws' };
+    }
+    const ok = await this.sendNavigateViaBackend(waypoints);
+    return { sent: ok, channel: ok ? 'be' : 'none' };
+  }
+
+  /**
+   * _send variant: trả về true/false thay vì silent no-op.
+   * Dùng cho sendNavigate — các method cũ (joy, mode, spd...) giữ _send cũ.
+   */
+  private _sendRaw(obj: object): boolean {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(obj));
+      return true;
+    }
+    return false;
+  }
 }
 
 export const RobotControlService = new RobotControlServiceClass();

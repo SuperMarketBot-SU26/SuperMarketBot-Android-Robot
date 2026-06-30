@@ -6,6 +6,7 @@ import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { RobotAuthProvider } from '../context/RobotAuthContext';
 import { MapViewerProvider } from '../context/MapViewerContext';
 import { RobotControlProvider } from '../context/RobotControlContext';
+import { RouteProvider } from '../context/RouteContext';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -26,9 +27,11 @@ export default function RootLayout() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <RobotAuthProvider>
         <MapViewerProvider>
-          <RobotControlProvider>
-            <RootLayoutContent />
-          </RobotControlProvider>
+          <RouteProvider>
+            <RobotControlProvider>
+              <RootLayoutContent />
+            </RobotControlProvider>
+          </RouteProvider>
         </MapViewerProvider>
       </RobotAuthProvider>
     </TamaguiProvider>
