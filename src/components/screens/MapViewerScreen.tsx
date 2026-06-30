@@ -1,11 +1,14 @@
 /**
  * MapViewerScreen.tsx
  *
- * Màn hình hiển thị bản đồ robot (CHỈ XEM - View Only).
+ * Màn hình hiển thị bản đồ robot (Xem + Điều khiển lộ trình).
  * Tablet nhận dữ liệu LiDAR từ ESP32 qua WebSocket cục bộ,
  * vẽ vị trí robot + các tia quét lên nền bản đồ tải từ Backend.
  *
- * Quản lý bản đồ / waypoint / lộ trình → THUỘC VỀ WEB MANAGER.
+ * Hỗ trợ chọn Fixed Route → vẽ polyline → gửi mảng waypoints xuống ESP32
+ * qua WebSocket port 81 (fallback POST /api/robots/command khi WS đóng).
+ *
+ * Quản lý bản đồ / CRUD route → THUỘC VỀ WEB MANAGER.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -16,13 +19,17 @@ import {
 import { Canvas, Circle, Line, Group, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MapPin, Wifi, WifiOff, ChevronLeft, Maximize2 } from 'lucide-react-native';
+import { MapPin, Wifi, WifiOff, ChevronLeft, Maximize2, List, Play, CircleAlert } from 'lucide-react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring,
 } from 'react-native-reanimated';
 
 import { useMapViewer } from '../../context/MapViewerContext';
+import { useRoute } from '../../context/RouteContext';
+import { RobotControlService } from '../../services/RobotControlService';
 import { LidarPoint } from '../../services/LidarService';
+import RoutePolyline from '../route/RoutePolyline';
+import RoutePickerSheet from '../route/RoutePickerSheet';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -69,9 +76,16 @@ export default function MapViewerScreen() {
     startLidar, stopLidar,
   } = useMapViewer();
 
+  const { selectedRoute, isMock } = useRoute();
+
   const [isFullscreen, setFullscreen] = useState(false);
   const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
   const [viewScale, setViewScale] = useState(1.0);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [sendStatus, setSendStatus] = useState<{
+    type: 'success' | 'error' | 'info' | null;
+    text: string;
+  }>({ type: null, text: '' });
 
   // Tải bản đồ mặc định (MapID=1) khi vào màn hình
   useEffect(() => {
@@ -137,6 +151,9 @@ export default function MapViewerScreen() {
               {isLidarConnected ? 'LiDAR' : 'Mất kết nối'}
             </Text>
           </View>
+          <TouchableOpacity onPress={() => setPickerOpen(true)} hitSlop={8}>
+            <List size={20} color="#2dd4bf" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setFullscreen(v => !v)}>
             <Maximize2 size={18} color="#8a97ab" />
           </TouchableOpacity>
@@ -170,6 +187,18 @@ export default function MapViewerScreen() {
                     color="rgba(30,40,54,0.6)" strokeWidth={0.5} />
                 ))}
               </>
+            )}
+
+            {/* Polyline lộ trình đang chọn (vẽ trên map, dưới LiDAR/robot) */}
+            {currentMap && selectedRoute && selectedRoute.waypoints.length > 0 && (
+              <RoutePolyline
+                waypoints={selectedRoute.waypoints}
+                mapInfo={{
+                  originX: currentMap.originX,
+                  originY: currentMap.originY,
+                  scalePixelPerMeter: currentMap.scalePixelPerMeter,
+                }}
+              />
             )}
 
             {/* Tia LiDAR */}
@@ -250,10 +279,85 @@ export default function MapViewerScreen() {
           ))}
         </View>
 
+        {/* Hàng điều khiển lộ trình cố định */}
+        <View style={styles.routeRow}>
+          <TouchableOpacity
+            style={styles.routeSelectBtn}
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.7}
+          >
+            <MapPin size={16} color="#2dd4bf" />
+            <Text
+              style={styles.routeSelectText}
+              numberOfLines={1}
+            >
+              {selectedRoute?.routeName ?? 'Chọn lộ trình...'}
+            </Text>
+            {isMock ? (
+              <View style={styles.mockChip}>
+                <CircleAlert size={10} color="#f59e0b" />
+                <Text style={styles.mockChipText}>MOCK</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.startBtn,
+              !selectedRoute && styles.startBtnDisabled,
+            ]}
+            disabled={!selectedRoute}
+            activeOpacity={0.8}
+            onPress={async () => {
+              if (!selectedRoute) return;
+              const waypoints = selectedRoute.waypoints
+                .slice()
+                .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
+                .map((w) => ({ x: w.x, y: w.y, nodeId: w.nodeId }));
+              const result = await RobotControlService.sendNavigateWithFallback(waypoints);
+              if (result.sent) {
+                const ch = result.channel === 'ws' ? 'WebSocket :81' : 'BE → MQTT';
+                setSendStatus({
+                  type: 'success',
+                  text: `Đã gửi ${waypoints.length} waypoint qua ${ch}`,
+                });
+              } else {
+                setSendStatus({
+                  type: 'error',
+                  text: 'Không gửi được — WS & BE đều lỗi',
+                });
+              }
+              setTimeout(() => setSendStatus({ type: null, text: '' }), 3500);
+            }}
+          >
+            <Play size={16} color="#ffffff" fill="#ffffff" />
+            <Text style={styles.startBtnText}>Bắt đầu</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Toast trạng thái gửi */}
+        {sendStatus.type ? (
+          <View
+            style={[
+              styles.toast,
+              sendStatus.type === 'success' && styles.toastSuccess,
+              sendStatus.type === 'error' && styles.toastError,
+            ]}
+          >
+            <Text style={styles.toastText}>{sendStatus.text}</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.viewOnlyNote}>
-          📋 Chế độ Xem — Quản lý lộ trình tại Web Manager
+          📋 Chế độ Xem & Điều khiển — Quản lý lộ trình tại Web Manager
         </Text>
       </View>
+
+      {/* Bottom sheet chọn lộ trình */}
+      <RoutePickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -384,5 +488,88 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+
+  // ── Route row ──
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  routeSelectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#111820',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1e2836',
+  },
+  routeSelectText: {
+    flex: 1,
+    color: '#e8edf4',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  mockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 20,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  mockChipText: {
+    color: '#fbbf24',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#006945',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00A550',
+  },
+  startBtnDisabled: {
+    backgroundColor: '#1e2836',
+    borderColor: '#2d3a4d',
+  },
+  startBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // ── Toast ──
+  toast: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  toastSuccess: {
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderColor: '#22c55e',
+  },
+  toastError: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderColor: '#ef4444',
+  },
+  toastText: {
+    color: '#e8edf4',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

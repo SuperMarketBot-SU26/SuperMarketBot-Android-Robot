@@ -1,0 +1,54 @@
+{
+  "routes": [
+    {
+      "robotRouteId": 9001,
+      "mapId": 1,
+      "robotId": 1,
+      "routeName": "Test nhanh",
+      "routeType": "Guide",
+      "description": "MOCK — Đường đi 2 điểm test nhanh ESP32",
+      "zoneId": null,
+      "zoneName": null,
+      "createdAt": "2026-06-30T10:00:00Z",
+      "waypoints": [
+        { "nodeId": 101, "nodeName": "N-Demo-A", "x": 0.0, "y": 0.0, "sequenceOrder": 0 },
+        { "nodeId": 102, "nodeName": "N-Demo-B", "x": 2.5, "y": 1.2, "sequenceOrder": 1 }
+      ]
+    },
+    {
+      "robotRouteId": 9002,
+      "mapId": 1,
+      "robotId": 1,
+      "routeName": "Tuần tra rau củ",
+      "routeType": "Patrol",
+      "description": "MOCK — Đi dọc khu vực rau củ tầng 1",
+      "zoneId": 3,
+      "zoneName": "Khu rau củ",
+      "createdAt": "2026-06-30T10:01:00Z",
+      "waypoints": [
+        { "nodeId": 201, "nodeName": "N-Rau-01", "x": 1.2, "y": 0.5, "sequenceOrder": 0 },
+        { "nodeId": 202, "nodeName": "N-Rau-02", "x": 1.2, "y": 3.0, "sequenceOrder": 1 },
+        { "nodeId": 203, "nodeName": "N-Rau-03", "x": 4.5, "y": 3.0, "sequenceOrder": 2 },
+        { "nodeId": 204, "nodeName": "N-Rau-04", "x": 4.5, "y": 0.5, "sequenceOrder": 3 }
+      ]
+    },
+    {
+      "robotRouteId": 9003,
+      "mapId": 1,
+      "robotId": 1,
+      "routeName": "Dẫn đường Dãy 1",
+      "routeType": "Guide",
+      "description": "MOCK — Đưa khách đi dọc Dãy 1 (đồ uống)",
+      "zoneId": 5,
+      "zoneName": "Khu đồ uống",
+      "createdAt": "2026-06-30T10:02:00Z",
+      "waypoints": [
+        { "nodeId": 301, "nodeName": "N-D1-01", "x": 0.0, "y": 0.0, "sequenceOrder": 0 },
+        { "nodeId": 302, "nodeName": "N-D1-02", "x": 2.0, "y": 0.0, "sequenceOrder": 1 },
+        { "nodeId": 303, "nodeName": "N-D1-03", "x": 4.0, "y": 0.0, "sequenceOrder": 2 },
+        { "nodeId": 304, "nodeName": "N-D1-04", "x": 6.0, "y": 0.0, "sequenceOrder": 3 },
+        { "nodeId": 305, "nodeName": "N-D1-05", "x": 8.0, "y": 0.0, "sequenceOrder": 4 }
+      ]
+    }
+  ]
+}
