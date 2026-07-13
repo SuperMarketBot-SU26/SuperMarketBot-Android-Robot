@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeInUp, FadeInRight, FadeOutUp, useSharedValue,
 import { useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import RobotAdDisplay from '../robot/RobotAdDisplay';
 
 
 // Dữ liệu mẫu Sản phẩm
@@ -306,6 +307,9 @@ export default function GuestHomeScreen() {
           </Animated.View>
 
         </YStack>
+
+        {/* ROBOT ADS SECTION */}
+        <RobotAdDisplay />
 
         {/* HOT PRODUCTS SECTION */}
         <Animated.View entering={FadeInUp.delay(500).duration(600).springify()}>

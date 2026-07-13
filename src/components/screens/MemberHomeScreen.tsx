@@ -6,8 +6,25 @@ import { Search, Mic, Camera, Tag, Clock, Utensils, TrendingDown, Sparkles, Arro
 import { MemberHeader } from '../layout/MemberHeader';
 import { useVoiceRouter, useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import { useRobotAuth } from '../../context/RobotAuthContext';
+import { MemberService, MemberDealDto, SponsoredRecommendationDto, MemberAlertDto } from '../../services/MemberService';
+import RobotAdDisplay from '../robot/RobotAdDisplay';
 
 export default function MemberHomeScreen() {
+  const { member } = useRobotAuth();
+  const [deals, setDeals] = useState<MemberDealDto[]>([]);
+  const [sponsoredRecs, setSponsoredRecs] = useState<SponsoredRecommendationDto[]>([]);
+  const [alerts, setAlerts] = useState<MemberAlertDto[]>([]);
+
+  useEffect(() => {
+    if (member?.memberId) {
+      const id = Number(member.memberId);
+      MemberService.getMemberDeals(id).then(res => setDeals(res?.deals || []));
+      MemberService.getSponsoredRecommendations(id).then(res => setSponsoredRecs(res?.items || []));
+      MemberService.getMemberAlerts(id).then(res => setAlerts(res?.alerts || []));
+    }
+  }, [member]);
+
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
   const { speak, stop, isSpeaking } = useRobotVoice();
@@ -72,7 +89,7 @@ export default function MemberHomeScreen() {
         {/* WELCOME SECTION */}
         <YStack gap="$2" marginBottom="$6">
           <Text fontSize={16} color="$textSecondary">
-            Chào Duy! Sẵn sàng mua sắm cùng <Text color="#00A550" fontWeight="bold">SmartMarketBot</Text> chứ?
+            Chào {member?.fullName?.split(' ').pop() || 'bạn'}! Sẵn sàng mua sắm cùng <Text color="#00A550" fontWeight="bold">SmartMarketBot</Text> chứ?
           </Text>
           <Text fontSize={16} color="$textSecondary" maxWidth={600}>
             Hôm nay hệ thống đã chuẩn bị sẵn danh sách thực phẩm tươi sống nhất dành riêng cho gia đình bạn.
@@ -252,105 +269,89 @@ export default function MemberHomeScreen() {
           </XStack>
         </YStack>
 
+        {/* ROBOT ADS SECTION */}
+        <RobotAdDisplay robotId={1} robotCode="ROBOT01" />
 
         {/* SMART SUGGESTIONS SECTION */}
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
           <Text fontSize={18} fontWeight="bold" color="$textPrimary">Gợi ý thông minh cho bạn</Text>
-          <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả gợi ý</Text>
+          <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả</Text>
         </XStack>
 
         <YStack gap="$4">
-
-          {/* Suggestion 1: Thói quen */}
-          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
-            <XStack gap="$3">
-              <Image src="https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400" width={100} height={100} borderRadius={12} />
-              <YStack flex={1} gap="$2" justifyContent="space-between">
-                <YStack gap="$1">
-                  <XStack alignItems="center" gap="$1">
-                    <Clock size={12} color="#00A550" />
-                    <Text fontSize={10} fontWeight="bold" color="#00A550">THÓI QUEN MUA SẮM</Text>
-                  </XStack>
-                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Bạn thường mua sữa vào tuần này</Text>
-                </YStack>
-                <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                  Thêm vào danh sách
-                </Button>
-              </YStack>
-            </XStack>
-          </Card>
-
-          {/* Suggestion 2: Món ăn kèm */}
-          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
-            <XStack gap="$3">
-              <Image src="https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=400" width={100} height={100} borderRadius={12} />
-              <YStack flex={1} gap="$2" justifyContent="space-between">
-                <YStack gap="$1">
-                  <XStack alignItems="center" gap="$1">
-                    <Utensils size={12} color="#d97706" />
-                    <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý MÓN ĂN KÈM</Text>
-                  </XStack>
-                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Salad ức gà cho tối nay?</Text>
-                </YStack>
-                <Button size="$3" borderRadius={12} backgroundColor="#fffbeb" color="#d97706" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                  Xem công thức
-                </Button>
-              </YStack>
-            </XStack>
-          </Card>
-
-          {/* Suggestion 3: Giá tốt */}
-          <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
-            <XStack gap="$3">
-              <Image src="https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400" width={100} height={100} borderRadius={12} />
-              <YStack flex={1} gap="$2" justifyContent="space-between">
-                <YStack gap="$1">
-                  <XStack alignItems="center" gap="$1">
-                    <TrendingDown size={12} color="#00A550" />
-                    <Text fontSize={10} fontWeight="bold" color="#00A550">GIÁ TỐT HÔM NAY</Text>
-                  </XStack>
-                  <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>Cam Sành đang giảm giá 20%</Text>
-                </YStack>
-                <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                  Mua ngay
-                </Button>
-              </YStack>
-            </XStack>
-          </Card>
-
-          {/* Suggestion 4: AI Phân tích */}
-          <Card size="$4" borderRadius={16} flex={1} backgroundColor="#fcfdfd" borderColor="#00A550" borderWidth={2} overflow="hidden">
-            <View position="absolute" top={0} left={0} right={0} height={4} backgroundColor="#00A550" />
-            <YStack padding="$4" gap="$3" flex={1} justifyContent="center" alignItems="center">
-
-              <View width={40} height={40} borderRadius={20} backgroundColor="#e6f5ea" justifyContent="center" alignItems="center">
-                <Sparkles size={20} color="#00A550" />
-              </View>
-
-              <Text fontSize={11} fontWeight="bold" color="#00A550">AI PHÂN TÍCH</Text>
-
-              <Text fontSize={14} fontWeight="bold" color="$textPrimary" textAlign="center" lineHeight={20}>
-                Dựa trên 3 món bạn vừa chọn, bạn có thể cần thêm Hành
-              </Text>
-
-              <XStack alignItems="center" gap="$2" backgroundColor="white" paddingHorizontal="$3" paddingVertical="$2" borderRadius={20} borderWidth={1} borderColor="#f0f0f0">
-                <YStack>
-                  <XStack alignItems="center" gap="$2">
-                    <Text fontSize={10} fontWeight="bold" color="$textPrimary">SmartBot v2.4</Text>
-                    <View backgroundColor="#e6f5ea" paddingHorizontal="$1" borderRadius={4}>
-                      <Text fontSize={8} color="#00A550" fontWeight="bold">85%</Text>
-                    </View>
-                  </XStack>
-                  <Text fontSize={9} color="$textSecondary">Vị trí: Khu vực Thực phẩm khô</Text>
+          {/* Member Deals */}
+          {deals.slice(0, 2).map((deal, index) => (
+            <Card key={`deal-${index}`} size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+              <XStack gap="$3">
+                <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                <YStack flex={1} gap="$2" justifyContent="space-between">
+                  <YStack gap="$1">
+                    <XStack alignItems="center" gap="$1">
+                      <TrendingDown size={12} color="#00A550" />
+                      <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">{deal.dealType || 'GIÁ TỐT'}</Text>
+                    </XStack>
+                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{deal.productName}</Text>
+                  </YStack>
+                  {deal.reason ? <Text fontSize={12} color="#d97706">{deal.reason}</Text> : null}
+                  <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                    Chỉ {deal.discountedPrice.toLocaleString()}đ
+                  </Button>
                 </YStack>
               </XStack>
+            </Card>
+          ))}
 
-              <Button size="$3" width="100%" borderRadius={20} backgroundColor="#00A550" color="white" fontWeight="bold" fontSize={13} marginTop="$2">
-                Đồng ý, thêm ngay
-              </Button>
+          {/* Sponsored Recommendations */}
+          {sponsoredRecs.slice(0, 2).map((rec, index) => (
+            <Card key={`rec-${index}`} size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+              <XStack gap="$3">
+                <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                <YStack flex={1} gap="$2" justifyContent="space-between">
+                  <YStack gap="$1">
+                    <XStack alignItems="center" gap="$1">
+                      <Sparkles size={12} color="#d97706" />
+                      <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý TỪ {rec.brandName?.toUpperCase()}</Text>
+                    </XStack>
+                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{rec.productName}</Text>
+                  </YStack>
+                  <Button size="$3" borderRadius={12} backgroundColor="#fffbeb" color="#d97706" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                    {rec.promotionPrice ? `Chỉ ${rec.promotionPrice.toLocaleString()}đ` : `Giá ${rec.unitPrice.toLocaleString()}đ`}
+                  </Button>
+                </YStack>
+              </XStack>
+            </Card>
+          ))}
 
-            </YStack>
-          </Card>
+          {/* Member Alerts */}
+          {alerts.filter(a => !a.isRead).slice(0, 1).map((alert, index) => (
+            <Card key={`alert-${index}`} size="$4" borderRadius={16} flex={1} backgroundColor="#fcfdfd" borderColor="#ef4444" borderWidth={2} overflow="hidden">
+              <View position="absolute" top={0} left={0} right={0} height={4} backgroundColor="#ef4444" />
+              <YStack padding="$4" gap="$3" flex={1} justifyContent="center" alignItems="center">
+                <View width={40} height={40} borderRadius={20} backgroundColor="#fef2f2" justifyContent="center" alignItems="center">
+                  <Sparkles size={20} color="#ef4444" />
+                </View>
+                <Text fontSize={11} fontWeight="bold" color="#ef4444" textTransform="uppercase">{alert.alertType}</Text>
+                <Text fontSize={14} fontWeight="bold" color="$textPrimary" textAlign="center" lineHeight={20}>
+                  {alert.alertMessage}
+                </Text>
+                <Button 
+                  size="$3" width="100%" borderRadius={20} backgroundColor="#ef4444" color="white" fontWeight="bold" fontSize={13} marginTop="$2" 
+                  onPress={() => {
+                    MemberService.markAlertsAsRead(Number(member?.memberId));
+                    setAlerts(prev => prev.map(a => a.alertId === alert.alertId ? {...a, isRead: true} : a));
+                  }}
+                >
+                  Đã hiểu
+                </Button>
+              </YStack>
+            </Card>
+          ))}
+          
+          {deals.length === 0 && sponsoredRecs.length === 0 && alerts.filter(a => !a.isRead).length === 0 && (
+             <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$4" alignItems="center">
+                <Text fontSize={14} color="$textSecondary">Chưa có gợi ý nào cho bạn lúc này.</Text>
+             </Card>
+          )}
 
         </YStack>
 
