@@ -650,9 +650,14 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         };
     });
 
+    const w = mapImage ? mapImage.width : graphCanvas.width;
+    const h = mapImage ? mapImage.height : graphCanvas.height;
+    
     const data = {
         floorId: 1,
         mapName: "Bản đồ Web Manager",
+        widthMeters: parseFloat((w * PIXEL_TO_METER).toFixed(2)),
+        heightMeters: parseFloat((h * PIXEL_TO_METER).toFixed(2)),
         mapData: JSON.stringify({ version: "1.0", nodes, edges, shapes }),
         nodes: beNodes,
         edges: beEdgesFiltered,
