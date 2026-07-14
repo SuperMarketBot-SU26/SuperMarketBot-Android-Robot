@@ -1144,6 +1144,9 @@ function connectRobotWs() {
                         if (sm && data.mapMot && data.mapMot[i] !== undefined) sm.value = String(data.mapMot[i]);
                         if (si && data.motInv && data.motInv[i] !== undefined) si.checked = !!data.motInv[i];
                     }
+                    const swm = document.getElementById('cfgWheelMode');
+                    if (swm && data.wheelMode !== undefined) swm.value = String(data.wheelMode);
+                    
                     appendSerialLog('[WS-Direct] Đã đồng bộ cấu hình động cơ từ Robot.');
                     return;
                 }
@@ -1400,6 +1403,14 @@ function applyLiveTelemetry(d) {
     if (valImuHeading && d.HeadingRad !== undefined) {
         const headingDeg = Math.round(d.HeadingRad * 180 / Math.PI);
         valImuHeading.textContent = headingDeg + '°';
+    }
+    
+    const valWheelMode = document.getElementById('valWheelMode');
+    if (valWheelMode && d.wheelMode !== undefined) {
+        valWheelMode.textContent = d.wheelMode === 1 ? 'BÁNH THƯỜNG (4WD)' : 'MECANUM (ĐA HƯỚNG)';
+        valWheelMode.className = d.wheelMode === 1 
+            ? 'font-bold text-emerald-400 font-mono' 
+            : 'font-bold text-sky-400 font-mono';
     }
     
     const valSysBat = document.getElementById('valSysBat');
@@ -1695,8 +1706,9 @@ if (btnSettings && settingsModal) {
             const cfgKd = parseFloat(document.getElementById('cfgYawKd').value);
             
             try {
+                const wheelMode = parseInt(document.getElementById('cfgWheelMode').value, 10);
                 robotWs.send(JSON.stringify({ t: 'layout', us, enc, lidF }));
-                robotWs.send(JSON.stringify({ t: 'motLayout', mapMot, motInv }));
+                robotWs.send(JSON.stringify({ t: 'motLayout', mapMot, motInv, wheelMode }));
                 robotWs.send(JSON.stringify({
                     t: 'cfg',
                     align: cfgAlign,
