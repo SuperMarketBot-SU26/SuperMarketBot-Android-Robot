@@ -1629,15 +1629,28 @@ if (btnSettings && settingsModal) {
         cfgBackendUrl.value = BASE_URL;
         cfgRobotIp.value = ROBOT_IP;
         settingsModal.classList.replace('hidden', 'flex');
-        
+
+        // [P1-5 FIX] Gửi query layout/cfg mỗi 500ms × 6 lần (3 giây) thay vì chỉ 1 lần.
+        // Robot vừa restart / WS vừa reconnect có thể chưa sẵn sàng nhận.
+        // Nếu response đến sớm thì handler sẽ populate form, các lần sau gửi trùng
+        // nhưng Robot sẽ reply với giá trị hiện tại — idempotent, an toàn.
         if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
-            try {
-                robotWs.send(JSON.stringify({ t: 'layoutGet' }));
-                robotWs.send(JSON.stringify({ t: 'motorLayoutGet' }));
-                robotWs.send(JSON.stringify({ t: 'cfgGet' }));
-            } catch (err) {
-                console.error('[RobotWS] Failed to query layouts on modal open:', err);
-            }
+            let attempts = 0;
+            const queryTimer = setInterval(() => {
+                attempts++;
+                if (attempts > 6 || !isRobotWsConnected ||
+                    !robotWs || robotWs.readyState !== WebSocket.OPEN) {
+                    clearInterval(queryTimer);
+                    return;
+                }
+                try {
+                    robotWs.send(JSON.stringify({ t: 'layoutGet' }));
+                    robotWs.send(JSON.stringify({ t: 'motorLayoutGet' }));
+                    robotWs.send(JSON.stringify({ t: 'cfgGet' }));
+                } catch (err) {
+                    console.error('[RobotWS] Failed to query layouts on modal open:', err);
+                }
+            }, 500);
         }
     });
 
