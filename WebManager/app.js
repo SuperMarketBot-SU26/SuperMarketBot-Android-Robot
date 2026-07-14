@@ -2304,36 +2304,70 @@ window.selectFixedRouteForPreview = async function(routeId) {
 
 window.editFixedRoute = async function(routeId) {
     try {
+        // Tải map từ server trước (nếu chưa có) để đảm bảo `nodes` có đầy đủ nodeId thực tế,
+        // tránh lỗi Route_InvalidNodeIds khi edit các route cũ có nodeId không còn tồn tại.
+        if (nodes.length === 0) {
+            try {
+                const r = await fetch(`${BASE_URL}/api/v1/maps/latest?floorId=1`, {
+                    headers: { 'Accept': 'application/json', 'ngrok-skip-browser-warning': '69420' }
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    if (Array.isArray(data.nodes)) {
+                        nodes = data.nodes.map(n => ({
+                            id: n.nodeId, name: n.nodeName, type: n.nodeType,
+                            x: n.xCoord / PIXEL_TO_METER, y: n.yCoord / PIXEL_TO_METER
+                        }));
+                    }
+                }
+            } catch (loadErr) {
+                console.warn('[editFixedRoute] Không tải được map từ server, tiếp tục với nodes rỗng.', loadErr);
+            }
+        }
+
         const res = await fetch(`${BASE_URL}/api/v1/routes/${routeId}`, {
             method: 'GET',
-            headers: { 
+            headers: {
                 'Accept': 'application/json',
                 'ngrok-skip-browser-warning': '69420'
             }
         });
 
         if (!res.ok) throw new Error(`API Error ${res.status}`);
-        
+
         const route = await res.json();
-        
+
         isRouteMode = true;
         editingRouteId = route.robotRouteId;
-        
+
         document.getElementById('routeFormTitle').textContent = "Cập nhật Lộ trình";
         document.getElementById('routeFormName').value = route.routeName;
         document.getElementById('routeFormType').value = route.routeType;
         document.getElementById('routeFormZone').value = route.zoneId || "";
-        
-        routeSelectedNodes = route.waypoints.map(wp => wp.nodeId);
+
+        const rawIds = (route.waypoints || []).map(wp => wp.nodeId);
+        routeSelectedNodes = rawIds;
+
+        // Nếu `nodes` đã có dữ liệu, lọc bỏ các NodeId không còn trên bản đồ (stale)
+        if (nodes.length > 0) {
+            const validSet = new Set(nodes.map(n => n.id));
+            const stale = rawIds.filter(id => !validSet.has(id));
+            if (stale.length > 0) {
+                console.warn(`[editFixedRoute] Lọc ${stale.length} NodeId lỗi khỏi route ${routeId}:`, stale);
+                routeSelectedNodes = rawIds.filter(id => validSet.has(id));
+                alert(`Lộ trình này có ${stale.length} NodeId đã không còn trên bản đồ (đã bị xoá/trước đó lưu thủ công). Hệ thống sẽ tự động loại bỏ trước khi lưu.`);
+            }
+        }
+
         updateRouteSelectedNodesUI();
-        
+
         document.getElementById('routeEditForm').classList.remove('hidden');
         document.getElementById('btnCreateRouteMode').classList.add('hidden');
-        
+
         selectedNodeId = null;
         selectedShapeId = null;
         hideProperties();
-        
+
         draw();
     } catch (e) {
         console.error('[FixedRoutes] Lỗi sửa lộ trình:', e);
@@ -2434,9 +2468,35 @@ document.getElementById('btnCancelRoute')?.addEventListener('click', () => {
 document.getElementById('btnSaveRoute')?.addEventListener('click', async () => {
     const name = document.getElementById('routeFormName').value.trim();
     if (!name) return alert('Vui lòng nhập tên lộ trình!');
-    
+
+    // Nếu chưa load map mà route lại có nodeId → cảnh báo buộc load trước khi lưu
+    if (nodes.length === 0) {
+        return alert('Bạn chưa tải Map từ Server. Vui lòng bấm "Tải Map từ Server" trước khi tạo/sửa lộ trình để đảm bảo các NodeId khớp với DB!');
+    }
+
+    // Lọc bỏ NodeId không tồn tại trong `nodes` hiện tại (phòng trường hợp edit
+    // route đã lưu từ trước khi các node bị xóa, hoặc route được tạo thủ công trong console)
+    const validNodeIdsOnMap = new Set(nodes.map(n => n.id));
+    const staleIds = routeSelectedNodes.filter(id => !validNodeIdsOnMap.has(id));
+    if (staleIds.length > 0) {
+        const proceed = confirm(
+            `Có ${staleIds.length} NodeId không còn tồn tại trên bản đồ hiện tại:\n` +
+            `[${staleIds.join(', ')}]\n\n` +
+            `Có thể do:\n` +
+            `• Map đã được đồng bộ lại (các node này đã bị xóa).\n` +
+            `• Route cũ được tạo từ phiên làm việc trước.\n\n` +
+            `Bấm OK để tự động loại bỏ các NodeId lỗi và lưu lộ trình.\n` +
+            `Bấm Cancel để hủy và chọn lại node trên bản đồ.`
+        );
+        if (!proceed) return;
+        routeSelectedNodes = routeSelectedNodes.filter(id => validNodeIdsOnMap.has(id));
+        updateRouteSelectedNodesUI();
+        draw();
+        alert(`Đã loại bỏ ${staleIds.length} NodeId lỗi. Còn lại ${routeSelectedNodes.length} node hợp lệ.`);
+    }
+
     if (routeSelectedNodes.length === 0) {
-        return alert('Vui lòng chọn ít nhất 1 nút trên bản đồ!');
+        return alert('Sau khi lọc, lộ trình không còn node hợp lệ nào. Vui lòng chọn lại node trên bản đồ!');
     }
 
     const type = document.getElementById('routeFormType').value;
