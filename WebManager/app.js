@@ -1651,15 +1651,22 @@ if (btnSettings && settingsModal) {
     btnSaveSettings.addEventListener('click', () => {
         const newUrl = cfgBackendUrl.value.trim();
         const newIp = cfgRobotIp.value.trim();
+        const oldUrl = localStorage.getItem('smb_backend_url') || '';
+        const oldIp = localStorage.getItem('smb_robot_ip') || '';
 
-        if (newUrl) {
+        if (newUrl && newUrl !== oldUrl) {
             BASE_URL = newUrl;
             localStorage.setItem('smb_backend_url', newUrl);
         }
-        if (newIp) {
+        
+        let ipChanged = false;
+        if (newIp && newIp !== oldIp) {
             ROBOT_IP = newIp;
             localStorage.setItem('smb_robot_ip', newIp);
-            
+            ipChanged = true;
+        }
+
+        if (ipChanged) {
             if (robotWs) {
                 robotWs.close();
             } else {
@@ -1667,7 +1674,7 @@ if (btnSettings && settingsModal) {
             }
         }
         
-        if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
+        if (!ipChanged && isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
             const us = [];
             const enc = [];
             const mapMot = [];
