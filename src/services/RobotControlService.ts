@@ -118,6 +118,13 @@ class RobotControlServiceClass {
     this._send({ t: 'mode', m: mode });
   }
 
+  /** Chuyển loại bánh xe.
+   * @param wheelMode  0=Mecanum (đa hướng), 1=Normal (4WD vi sai)
+   */
+  sendWheelMode(wheelMode: 0 | 1) {
+    this._send({ t: 'wheelMode', m: wheelMode });
+  }
+
   /** Đặt tốc độ nền lái tay.
    * @param manualSpeedPct  0..100
    */
