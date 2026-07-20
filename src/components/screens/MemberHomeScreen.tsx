@@ -8,22 +8,54 @@ import { useVoiceRouter, useRobotVoice, isRobotVoiceSpeaking } from '../../hooks
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { MemberService, MemberDealDto, SponsoredRecommendationDto, MemberAlertDto } from '../../services/MemberService';
+import { CartService, CartDto } from '../../services/CartService';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
+import { ShoppingCart } from 'lucide-react-native';
+import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
+import { ProductDetailSheet } from '../ui/ProductDetailSheet';
 
 export default function MemberHomeScreen() {
-  const { member } = useRobotAuth();
+  const { member, token } = useRobotAuth();
   const [deals, setDeals] = useState<MemberDealDto[]>([]);
   const [sponsoredRecs, setSponsoredRecs] = useState<SponsoredRecommendationDto[]>([]);
   const [alerts, setAlerts] = useState<MemberAlertDto[]>([]);
+  const [personalizedProducts, setPersonalizedProducts] = useState<any[]>([]);
+  const [personalizedMeals, setPersonalizedMeals] = useState<any[]>([]);
+  const [cart, setCart] = useState<CartDto | null>(null);
+  const [systemDeals, setSystemDeals] = useState<MobileProductSearchResultDto[]>([]);
+
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedIsRecipe, setSelectedIsRecipe] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
     if (member?.memberId) {
       const id = Number(member.memberId);
-      MemberService.getMemberDeals(id).then(res => setDeals(res?.deals || []));
-      MemberService.getSponsoredRecommendations(id).then(res => setSponsoredRecs(res?.items || []));
-      MemberService.getMemberAlerts(id).then(res => setAlerts(res?.alerts || []));
+      MemberService.getMemberDeals(id).then(res => { if (mounted) setDeals(res?.deals || []) });
+      MemberService.getSponsoredRecommendations(id).then(res => { if (mounted) setSponsoredRecs(res?.items || []) });
+      MemberService.getMemberAlerts(id).then(res => { if (mounted) setAlerts(res?.alerts || []) });
+      MemberService.getPersonalizedProducts(token || '').then(res => { if (mounted) setPersonalizedProducts(res || []) });
+      MemberService.getPersonalizedMeals(token || '').then(res => { if (mounted) setPersonalizedMeals(res || []) });
+      SearchService.getDeals(id).then(res => { if (mounted) setSystemDeals(res || []) }).catch(console.error);
     }
-  }, [member]);
+    
+    // Auto sync cart
+    const fetchCart = () => {
+      if (token) {
+        CartService.getCart(token).then(res => { if (mounted) setCart(res) }).catch(e => console.log('Cart Error:', e));
+      }
+    };
+
+    fetchCart();
+    const interval = setInterval(fetchCart, 3000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [member, token]);
 
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
@@ -51,30 +83,12 @@ export default function MemberHomeScreen() {
     };
   }, []);
 
-  // Animated values for Card 4 (Ưu đãi cho bạn)
-  const scale = useSharedValue(1);
-  const borderCol = useSharedValue('#f0fcf4');
-  const progressWidth = useSharedValue(0);
-
   // Animated values for Card 1 (Tìm kiếm sản phẩm)
   const card1Scale = useSharedValue(1);
-
-  const animatedCardStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      borderColor: borderCol.value,
-    };
-  });
 
   const animatedCard1Style = useAnimatedStyle(() => {
     return {
       transform: [{ scale: card1Scale.value }],
-    };
-  });
-
-  const animatedProgressStyle = useAnimatedStyle(() => {
-    return {
-      width: `${progressWidth.value}%`,
     };
   });
 
@@ -197,33 +211,15 @@ export default function MemberHomeScreen() {
             </Card>
           </Pressable>
 
-          {/* Card 4: Ưu đãi (Click: /member-offers | Long Press: /member-campaign) */}
+          {/* Card 4: Ưu đãi (Click: /member-offers) */}
           <Pressable
-            onPressIn={() => {
-              scale.value = withSpring(0.93);
-              progressWidth.value = withTiming(100, { duration: 800 });
-              borderCol.value = withTiming('#00A550', { duration: 300 });
-            }}
-            onPressOut={() => {
-              scale.value = withSpring(1);
-              progressWidth.value = withTiming(0, { duration: 150 });
-              borderCol.value = withTiming('#f0fcf4', { duration: 200 });
-            }}
             onPress={() => {
               // Click: navigate to Voucher list
               router.push('/member-offers' as any);
             }}
-            onLongPress={() => {
-              // Long Press: bounce animate and navigate to Attractive Promotions Campaign
-              scale.value = withSpring(1.06, {}, () => {
-                scale.value = withSpring(1);
-              });
-              router.push('/member-campaign' as any);
-            }}
-            delayLongPress={800}
             style={{ flex: 1 }}
           >
-            <AnimatedView
+            <View
               style={[{
                 flex: 1,
                 borderWidth: 1,
@@ -237,18 +233,9 @@ export default function MemberHomeScreen() {
                 elevation: 2,
                 overflow: 'hidden',
                 position: 'relative',
-              }, animatedCardStyle]}
+                borderColor: '#f0fcf4',
+              }]}
             >
-              {/* Visual Loading bar to give feedback for long press */}
-              <Animated.View
-                style={[{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  height: 4,
-                  backgroundColor: '#00A550',
-                }, animatedProgressStyle]}
-              />
 
               <YStack justifyContent="space-between" flex={1} gap="$4">
                 <View width={50} height={50} borderRadius={25} backgroundColor="#ecfccb" justifyContent="center" alignItems="center">
@@ -264,7 +251,7 @@ export default function MemberHomeScreen() {
                   <ArrowRight size={16} color="#00A550" />
                 </XStack>
               </YStack>
-            </AnimatedView>
+            </View>
           </Pressable>
           </XStack>
         </YStack>
@@ -278,11 +265,85 @@ export default function MemberHomeScreen() {
           <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả</Text>
         </XStack>
 
+        {/* Giỏ hàng nhỏ gọn trên màn hình Robot */}
+        {cart && cart.totalItems > 0 && (
+          <Pressable onPress={() => router.push('/member-cart' as any)}>
+            <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="#f0fdf4" borderColor="#bbf7d0" padding="$3" marginBottom="$4">
+              <XStack justifyContent="space-between" alignItems="center">
+                <XStack gap="$3" alignItems="center">
+                  <View width={40} height={40} borderRadius={20} backgroundColor="#22c55e" justifyContent="center" alignItems="center">
+                    <ShoppingCart size={20} color="white" />
+                  </View>
+                  <YStack>
+                    <Text fontSize={14} fontWeight="bold" color="#005b2b">Giỏ hàng của bạn</Text>
+                    <Text fontSize={12} color="#166534">{cart.totalItems} sản phẩm đang chờ</Text>
+                  </YStack>
+                </XStack>
+                <XStack alignItems="center" gap="$2">
+                  <Text fontSize={16} fontWeight="900" color="#16a34a">{cart.totalPrice.toLocaleString('vi-VN')}đ</Text>
+                  <ArrowRight size={18} color="#16a34a" />
+                </XStack>
+              </XStack>
+            </Card>
+          </Pressable>
+        )}
+
         <YStack gap="$4">
+          {/* Personalized Products */}
+          {personalizedProducts.slice(0, 2).map((p, index) => (
+            <Pressable key={`personal-${index}`} onPress={() => { setSelectedProductId(p.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+              <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+                <XStack gap="$3">
+                <Image src={p.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                <YStack flex={1} gap="$2" justifyContent="space-between">
+                  <YStack gap="$1">
+                    <XStack alignItems="center" gap="$1">
+                      <Sparkles size={12} color="#00A550" />
+                      <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">PHÙ HỢP VỚI BẠN</Text>
+                    </XStack>
+                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{p.productName}</Text>
+                  </YStack>
+                  <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                    {p.unitPrice.toLocaleString('vi-VN')}đ
+                  </Button>
+                </YStack>
+              </XStack>
+              </Card>
+            </Pressable>
+          ))}
+
+          {/* Personalized Meals */}
+          {personalizedMeals.slice(0, 2).map((meal, index) => (
+            <Pressable key={`meal-${index}`} onPress={() => { setSelectedProductId(meal.recipeId); setSelectedIsRecipe(true); setSheetOpen(true); }}>
+              <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+                <XStack gap="$3">
+                <Image src={meal.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                <YStack flex={1} gap="$2" justifyContent="space-between">
+                  <YStack gap="$1">
+                    <XStack alignItems="center" gap="$1">
+                      <Utensils size={12} color="#f97316" />
+                      <Text fontSize={10} fontWeight="bold" color="#f97316" textTransform="uppercase">MÓN NGON GỢI Ý</Text>
+                    </XStack>
+                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{meal.recipeName}</Text>
+                  </YStack>
+                  <XStack gap="$2" alignItems="center">
+                    <Clock size={12} color="#888" />
+                    <Text fontSize={12} color="#888">{meal.yieldPortions} khẩu phần</Text>
+                  </XStack>
+                  <Button size="$3" borderRadius={12} backgroundColor="#fff7ed" color="#f97316" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
+                    Xem công thức
+                  </Button>
+                </YStack>
+              </XStack>
+              </Card>
+            </Pressable>
+          ))}
+
           {/* Member Deals */}
           {deals.slice(0, 2).map((deal, index) => (
-            <Card key={`deal-${index}`} size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
-              <XStack gap="$3">
+            <Pressable key={`deal-${index}`} onPress={() => { setSelectedProductId(deal.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+              <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+                <XStack gap="$3">
                 <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
                 <YStack flex={1} gap="$2" justifyContent="space-between">
                   <YStack gap="$1">
@@ -298,13 +359,15 @@ export default function MemberHomeScreen() {
                   </Button>
                 </YStack>
               </XStack>
-            </Card>
+              </Card>
+            </Pressable>
           ))}
 
           {/* Sponsored Recommendations */}
           {sponsoredRecs.slice(0, 2).map((rec, index) => (
-            <Card key={`rec-${index}`} size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
-              <XStack gap="$3">
+            <Pressable key={`rec-${index}`} onPress={() => { setSelectedProductId(rec.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+              <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
+                <XStack gap="$3">
                 <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
                 <YStack flex={1} gap="$2" justifyContent="space-between">
                   <YStack gap="$1">
@@ -319,8 +382,49 @@ export default function MemberHomeScreen() {
                   </Button>
                 </YStack>
               </XStack>
-            </Card>
+              </Card>
+            </Pressable>
           ))}
+
+          {/* System Deals */}
+          {systemDeals.length > 0 && (
+            <YStack gap="$2" marginTop="$4">
+              <Text fontSize={16} fontWeight="bold" color="$textPrimary">Khuyến mãi Hệ thống</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+                <XStack gap="$4">
+                  {systemDeals.map((product) => (
+                    <Pressable key={product.productId} onPress={() => { setSelectedProductId(product.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                      <Card width={180} borderRadius={16} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={10} shadowOpacity={0.05} style={{ elevation: 2 }}>
+                        <View position="relative" height={120} backgroundColor="#f5f5f5">
+                        <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
+                        {product.discountPercent ? (
+                          <View position="absolute" top={8} left={8} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={8}>
+                            <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <YStack padding="$3" gap="$2">
+                        <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
+                        <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$1">
+                          <YStack>
+                            {product.promotionPrice ? (
+                              <>
+                                <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                                <Text fontSize={14} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
+                              </>
+                            ) : (
+                              <Text fontSize={14} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                            )}
+                          </YStack>
+                        </XStack>
+                      </YStack>
+                      </Card>
+                    </Pressable>
+                  ))}
+                </XStack>
+              </ScrollView>
+            </YStack>
+          )}
 
           {/* Member Alerts */}
           {alerts.filter(a => !a.isRead).slice(0, 1).map((alert, index) => (
@@ -356,6 +460,13 @@ export default function MemberHomeScreen() {
         </YStack>
 
       </ScrollView>
+
+      <ProductDetailSheet 
+        productId={selectedProductId}
+        isOpen={sheetOpen}
+        onOpenChange={setSheetOpen}
+        isRecipe={selectedIsRecipe}
+      />
     </View>
   );
 }

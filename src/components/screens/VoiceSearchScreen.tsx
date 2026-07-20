@@ -19,9 +19,33 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Text, View, XStack, YStack } from 'tamagui';
 import { isRobotVoiceSpeaking, useRobotVoice } from '../../hooks/useRobotVoice';
+import Voice from '@react-native-voice/voice';
 
 // Import logo robot cute từ thư mục assets
 const logoCuteSource = require('../../../assets/images/logocute.png');
+
+const cleanSearchQuery = (query: string): string => {
+  if (!query) return '';
+  let cleaned = query.trim();
+  const lower = cleaned.toLowerCase();
+  const prefixes = [
+    'tôi muốn mua', 'tôi muốn tìm', 'tìm cho tôi', 'mua cho tôi',
+    'tìm kiếm', 'cho tôi', 'tôi cần', 'bán cho', 'kiếm', 'tìm', 'mua', 'có'
+  ];
+  for (const prefix of prefixes) {
+    if (lower.startsWith(prefix)) {
+      cleaned = cleaned.substring(prefix.length).trim();
+      break;
+    }
+  }
+  const suffixes = [' không', ' nhé', ' nha', ' ạ', ' với'];
+  for (const suffix of suffixes) {
+    if (cleaned.toLowerCase().endsWith(suffix)) {
+      cleaned = cleaned.substring(0, cleaned.length - suffix.length).trim();
+    }
+  }
+  return cleaned || query;
+};
 
 export default function VoiceSearchScreen() {
   const insets = useSafeAreaInsets();
@@ -30,6 +54,7 @@ export default function VoiceSearchScreen() {
 
   // Trạng thái điều hướng khi Robot nói xong
   const [shouldNavigate, setShouldNavigate] = useState(false);
+  const [finalQuery, setFinalQuery] = useState('');
   const speakingStarted = useRef(false);
 
   // Trạng thái của quá trình nhận diện giọng nói
@@ -37,14 +62,6 @@ export default function VoiceSearchScreen() {
   const [status, setStatus] = useState<'initial' | 'listening' | 'processing' | 'success'>('initial');
   const [transcript, setTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
-
-  // Ref để quản lý các timeout của giả lập gõ chữ thời gian thực
-  const voiceTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearVoiceTimeouts = () => {
-    voiceTimeouts.current.forEach(clearTimeout);
-    voiceTimeouts.current = [];
-  };
 
   // Animation values
   const pulseScale1 = useSharedValue(1);
@@ -89,10 +106,37 @@ export default function VoiceSearchScreen() {
       startVoiceListening();
     }, 800);
 
+    // Cài đặt Voice
+    try {
+      Voice.onSpeechStart = () => setStatus('listening');
+      Voice.onSpeechEnd = () => setStatus('processing');
+      Voice.onSpeechPartialResults = (e) => {
+        if (e.value && e.value.length > 0) {
+          setTranscript(e.value[0]);
+        }
+      };
+      Voice.onSpeechResults = (e) => {
+        if (e.value && e.value.length > 0) {
+          const resultText = e.value[0];
+          setTranscript(resultText);
+          handleVoiceRecognition(resultText);
+        }
+      };
+      Voice.onSpeechError = (e) => {
+        setStatus('initial');
+        setTranscript('Không nghe rõ. Nhấn Mic để thử lại.');
+        speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+      };
+    } catch (err) {
+      console.warn("Voice module not available yet", err);
+    }
+
     return () => {
       clearTimeout(startTimer);
-      clearVoiceTimeouts();
       stop();
+      try {
+        Voice.destroy().then(Voice.removeAllListeners);
+      } catch (err) { }
     };
   }, []);
 
@@ -105,24 +149,23 @@ export default function VoiceSearchScreen() {
         speakingStarted.current = true;
       } else if (speakingStarted.current) {
         // Robot nói xong hoàn toàn! Thực hiện chuyển trang lập tức
-        router.replace('/member-search?query=cam' as any);
+        router.replace(`/member-search?query=${encodeURIComponent(finalQuery)}` as any);
+      } else {
+        // Safety fallback: Nếu TTS bị lỗi không set isSpeaking = true, sẽ tự chuyển trang sau 3 giây
+        safetyTimer = setTimeout(() => {
+          stop();
+          router.replace(`/member-search?query=${encodeURIComponent(finalQuery)}` as any);
+        }, 3000);
       }
-
-      // Safety fallback: Nếu loa gặp sự cố không tắt trạng thái nói, tự động chuyển trang sau 8.5 giây để tránh đơ Kiosk
-      safetyTimer = setTimeout(() => {
-        stop(); // Đảm bảo stop() trước để tắt cờ isSpeakingGlobal
-        router.replace('/member-search?query=cam' as any);
-      }, 8500);
     }
 
     return () => {
-      clearTimeout(safetyTimer);
+      if (safetyTimer) clearTimeout(safetyTimer);
     };
-  }, [isSpeaking, shouldNavigate]);
+  }, [isSpeaking, shouldNavigate, finalQuery]);
 
   // Bắt đầu lắng nghe giọng nói
   const startVoiceListening = async () => {
-    clearVoiceTimeouts();
     setStatus('listening');
     setTranscript('Đang lắng nghe...');
     setAiResponse('');
@@ -183,37 +226,20 @@ export default function VoiceSearchScreen() {
     animateWave(waveHeight4, 16, 55, 370);
     animateWave(waveHeight5, 10, 32, 430);
 
-    // Giả lập nhận diện thời gian thực bám sát nhịp độ nói (Voice-paced Typewriter Effect)
-    const simulatedSpeechSequence = [
-      { word: 'Nước', delay: 400 },
-      { word: 'ép', delay: 250 },
-      { word: 'cam', delay: 300 },
-      { word: 'nguyên', delay: 600 }, // Ngập ngừng nhẹ mô phỏng người nói suy nghĩ
-      { word: 'chất', delay: 350 },
-    ];
-    let currentText = '';
-    let accumulatedTime = 1500; // Đợi 1.5s sau khi hiện 'Đang lắng nghe...'
-    
-    simulatedSpeechSequence.forEach((item, index) => {
-      accumulatedTime += item.delay;
-      const timeoutId = setTimeout(() => {
-        currentText += (index === 0 ? '' : ' ') + item.word;
-        setTranscript(currentText);
-      }, accumulatedTime);
-      voiceTimeouts.current.push(timeoutId);
-    });
-
-    // Sau khi chữ hiện ra hết, tự động chuyển sang xử lý sau một nhịp chờ
-    const finalTimeoutId = setTimeout(() => {
-      simulateVoiceRecognition();
-    }, accumulatedTime + 500);
-    voiceTimeouts.current.push(finalTimeoutId);
+    try {
+      await Voice.start('vi-VN');
+    } catch (e) {
+      console.error(e);
+      // Fallback
+      handleVoiceRecognition('Sữa chua không đường');
+    }
   };
 
-  // Giả lập nhận diện thành công
-  const simulateVoiceRecognition = () => {
+  // Xử lý khi nhận diện thành công
+  const handleVoiceRecognition = (resultText: string) => {
     setStatus('processing');
-    setTranscript('Nước ép cam nguyên chất');
+    const cleanedQuery = cleanSearchQuery(resultText);
+    setFinalQuery(cleanedQuery);
 
     // Dừng ripple animation của Mic
     pulseScale1.value = withTiming(1);
@@ -228,15 +254,15 @@ export default function VoiceSearchScreen() {
     waveHeight4.value = withTiming(8);
     waveHeight5.value = withTiming(8);
 
-    // Giả lập phản hồi AI sau 1.5 giây
+    // AI Phản hồi
     setTimeout(() => {
       setStatus('success');
-      setAiResponse('Đã tìm thấy "Nước ép cam nguyên chất" tại Kệ 2, Dãy C. Đang dẫn đường...');
-      speak('Đã tìm thấy nước ép cam nguyên chất tại Kệ số 2, dãy C. Đang mở kết quả tìm kiếm cho bạn.');
+      setAiResponse(`Đang tìm kiếm "${cleanedQuery}" cho bạn...`);
+      speak(`Đang mở kết quả tìm kiếm cho ${cleanedQuery}.`);
 
       // Đánh dấu sẵn sàng điều hướng khi Robot nói xong hoàn toàn
       setShouldNavigate(true);
-    }, 1500);
+    }, 1000);
   };
 
   // Style Animations
@@ -298,11 +324,6 @@ export default function VoiceSearchScreen() {
           <XStack alignItems="center" gap={6}>
             <View width={8} height={8} borderRadius={4} backgroundColor="#10B981" style={styles.greenDot} />
             <Text fontSize={14} fontWeight="900" color="#0F5132" style={{ textShadowColor: 'rgba(16, 185, 129, 0.15)', textShadowRadius: 4 }} letterSpacing={1.2}>SmartMarketBot</Text>
-          </XStack>
-          {/* Vị trí Kiosk thực tế trong siêu thị */}
-          <XStack alignItems="center" gap={6} marginLeft="$3.5">
-            <MapPin size={10} color="#357A57" />
-            <Text fontSize={9.5} color="#357A57" fontWeight="600">📍 Vị trí: Lối vào chính • Kiosk #01</Text>
           </XStack>
         </YStack>
 
@@ -404,7 +425,7 @@ export default function VoiceSearchScreen() {
 
         {/* BOTTOM: Equalizer, Mic, Suggestions */}
         <YStack width="100%" alignItems="center" gap="$5" flex={1.5} justifyContent="flex-end">
-          
+
           {/* Equalizer Visualizer & Core Mic Row */}
           <XStack width="100%" justifyContent="center" alignItems="center" gap="$8" height={100}>
             {/* Sound waves (Left) */}
@@ -421,8 +442,7 @@ export default function VoiceSearchScreen() {
               <Pressable
                 onPress={() => {
                   if (status === 'listening') {
-                    clearVoiceTimeouts();
-                    stop();
+                    Voice.stop();
                     setStatus('initial');
                     setTranscript('Đã tạm dừng. Nhấn nút để thử lại.');
                   } else {
@@ -468,7 +488,7 @@ export default function VoiceSearchScreen() {
                     <Text fontSize={12} color="#4A5568" lineHeight={18} fontWeight="500">
                       Hãy nói to tên sản phẩm bạn cần tìm, ví dụ: "Sữa tươi Vinamilk", hoặc bấm vào các gợi ý bên dưới.
                     </Text>
-                    
+
                     <XStack gap="$2" flexWrap="wrap" marginTop="$2">
                       {[
                         { text: 'Súp lơ xanh 🥦', query: 'súp lơ' },

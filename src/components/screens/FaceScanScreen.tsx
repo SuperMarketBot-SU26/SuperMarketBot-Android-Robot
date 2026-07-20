@@ -28,6 +28,7 @@ export default function FaceScanScreen() {
 
   const [scanStatus, setScanStatus] = useState<'scanning' | 'processing' | 'success' | 'fail'>('scanning');
   const [greeting, setGreeting] = useState<string>('');
+  const [isCameraReady, setIsCameraReady] = useState(false);
 
   const scannerLineY = useSharedValue(-130);
   const ringRotation = useSharedValue(0);
@@ -99,10 +100,10 @@ export default function FaceScanScreen() {
 
   // Initial capture start
   useEffect(() => {
-    if (permission?.granted && scanStatus === 'scanning' && !captureTimer.current && !retryTimer.current) {
+    if (permission?.granted && isCameraReady && scanStatus === 'scanning' && !captureTimer.current && !retryTimer.current) {
       startCapture(1000);
     }
-  }, [permission]);
+  }, [permission, isCameraReady]);
 
   useEffect(() => () => stopTimers(), []);
 
@@ -155,10 +156,12 @@ export default function FaceScanScreen() {
       // Save session
       console.log(`[FaceScanScreen] Lưu session và chuyển hướng...`);
       setSession(data.token.accessToken, {
-        memberId: data.token.userId,
+        memberId: data.member?.memberId || data.token.userId,
         fullName: data.token.fullName,
         email: data.token.email,
         membershipLevel: data.member?.membershipLevel ?? null,
+        shoppingBudget: data.member?.shoppingBudget ?? 1000000,
+        avatarUrl: data.member?.avatarUrl || data.token?.avatarUrl || undefined,
       });
 
       const welcomeMsg = data.greeting || `Chào mừng ${data.token.fullName || 'bạn'} đến với Smart Market Bot!`;
@@ -272,7 +275,12 @@ export default function FaceScanScreen() {
             <View width={340} height={340} borderRadius={170} overflow="hidden" position="relative" backgroundColor="black" shadowColor={primaryColor} shadowOffset={{ width: 0, height: 10 }} shadowOpacity={0.3} shadowRadius={20}>
 
               {/* Camera always rendered as background */}
-              <CameraView ref={cameraRef} style={{ flex: 1 }} facing="front" />
+              <CameraView 
+                ref={cameraRef} 
+                style={{ flex: 1 }} 
+                facing="front" 
+                onCameraReady={() => setIsCameraReady(true)}
+              />
 
               {(isScanning || isProcessing) && (
                 <>

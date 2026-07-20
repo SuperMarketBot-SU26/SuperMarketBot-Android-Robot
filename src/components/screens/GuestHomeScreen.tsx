@@ -8,47 +8,7 @@ import { useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
-
-
-// Dữ liệu mẫu Sản phẩm
-const HOT_PRODUCTS = [
-  {
-    id: '1',
-    name: 'Súp lơ xanh Organic',
-    oldPrice: '45.000đ',
-    newPrice: '36.000đ',
-    badge: '-20%',
-    badgeColor: '#eab308', // Vàng
-    image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&q=80'
-  },
-  {
-    id: '2',
-    name: 'Cà chua bi Đà Lạt',
-    oldPrice: '',
-    newPrice: '28.000đ',
-    badge: 'Bán chạy',
-    badgeColor: '#f97316', // Cam
-    image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80'
-  },
-  {
-    id: '3',
-    name: 'Dứa mật MD2',
-    oldPrice: '65.000đ',
-    newPrice: '52.000đ',
-    badge: 'HOT',
-    badgeColor: '#ef4444', // Đỏ
-    image: 'https://images.unsplash.com/photo-1550258987-190a2d41a8ba?w=400&q=80'
-  },
-  {
-    id: '4',
-    name: 'Bơ sáp loại 1',
-    oldPrice: '80.000đ',
-    newPrice: '68.000đ',
-    badge: '-15%',
-    badgeColor: '#eab308',
-    image: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&q=80'
-  }
-];
+import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 
 export default function GuestHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -59,6 +19,14 @@ export default function GuestHomeScreen() {
   // Trạng thái điều hướng bằng giọng nói cho Camera Quét sản phẩm
   const [shouldNavigateToImageSearch, setShouldNavigateToImageSearch] = useState(false);
   const imageSearchSpeakingStarted = useRef<boolean>(false);
+  
+  const [hotProducts, setHotProducts] = useState<MobileProductSearchResultDto[]>([]);
+
+  useEffect(() => {
+    SearchService.getDeals()
+      .then(res => setHotProducts(res || []))
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (shouldNavigateToImageSearch) {
@@ -313,40 +281,61 @@ export default function GuestHomeScreen() {
 
         {/* HOT PRODUCTS SECTION */}
         <Animated.View entering={FadeInUp.delay(500).duration(600).springify()}>
-          <Text fontSize={16} fontWeight="bold" color="$textPrimary" marginBottom="$4">Khuyến mãi HOT hôm nay</Text>
+          <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
+            <Text fontSize={16} fontWeight="bold" color="$textPrimary">Khuyến mãi HOT hôm nay</Text>
+            <Button size="$2" backgroundColor="transparent" color="#00A550" fontWeight="bold" onPress={() => router.push('/guest-campaign' as any)}>
+              Xem tất cả
+            </Button>
+          </XStack>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             <XStack gap="$4">
-              {HOT_PRODUCTS.map((product) => (
-                <Card key={product.id} width={200} borderRadius={20} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={15} shadowOpacity={0.05} style={{ elevation: 3 }}>
+              {hotProducts.length > 0 ? (
+                hotProducts.map((product) => (
+                  <Card key={product.productId} width={200} borderRadius={20} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={15} shadowOpacity={0.05} style={{ elevation: 3 }}>
 
-                  {/* Product Image & Badge */}
-                  <View position="relative" height={130} backgroundColor="#f5f5f5">
-                    <Image source={{ uri: product.image }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                    <View position="absolute" top={10} left={10} backgroundColor={product.badgeColor} paddingHorizontal="$2" paddingVertical="$1" borderRadius={10}>
-                      <Text color="white" fontSize={10} fontWeight="bold">{product.badge}</Text>
+                    {/* Product Image & Badge */}
+                    <View position="relative" height={130} backgroundColor="#f5f5f5">
+                      <Image source={{ uri: product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image' }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                      {product.discountPercent ? (
+                        <View position="absolute" top={10} left={10} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={10}>
+                          <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
+                        </View>
+                      ) : (
+                        <View position="absolute" top={10} left={10} backgroundColor="#ef4444" paddingHorizontal="$2" paddingVertical="$1" borderRadius={10}>
+                          <Text color="white" fontSize={10} fontWeight="bold">HOT</Text>
+                        </View>
+                      )}
                     </View>
-                  </View>
 
-                  {/* Product Info */}
-                  <YStack padding="$3" gap="$2">
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.name}</Text>
+                    {/* Product Info */}
+                    <YStack padding="$3" gap="$2">
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
 
-                    <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$2">
-                      <YStack>
-                        {product.oldPrice ? (
-                          <Text fontSize={11} color="$textSecondary" textDecorationLine="line-through">{product.oldPrice}</Text>
-                        ) : null}
-                        <Text fontSize={15} fontWeight="900" color="#00A550">{product.newPrice}</Text>
-                      </YStack>
+                      <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$2">
+                        <YStack>
+                          {product.promotionPrice ? (
+                            <>
+                              <Text fontSize={11} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                              <Text fontSize={15} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
+                            </>
+                          ) : (
+                            <Text fontSize={15} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                          )}
+                        </YStack>
 
-                      <View width={36} height={36} borderRadius={18} backgroundColor="#00A550" justifyContent="center" alignItems="center" shadowColor="#00A550" shadowRadius={5} shadowOpacity={0.3}>
-                        <ShoppingCart size={16} color="white" />
-                      </View>
-                    </XStack>
-                  </YStack>
+                        <Pressable onPress={() => router.push('/member-cart' as any)}>
+                          <View width={36} height={36} borderRadius={18} backgroundColor="#00A550" justifyContent="center" alignItems="center" shadowColor="#00A550" shadowRadius={5} shadowOpacity={0.3}>
+                            <ShoppingCart size={16} color="white" />
+                          </View>
+                        </Pressable>
+                      </XStack>
+                    </YStack>
 
-                </Card>
-              ))}
+                  </Card>
+                ))
+              ) : (
+                <Text color="$textSecondary" padding="$4">Hiện tại không có khuyến mãi nào.</Text>
+              )}
             </XStack>
           </ScrollView>
         </Animated.View>

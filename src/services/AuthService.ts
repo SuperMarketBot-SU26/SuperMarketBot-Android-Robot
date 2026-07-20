@@ -1,4 +1,4 @@
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 
 export interface FaceLoginResult {
   success: boolean;
@@ -11,6 +11,7 @@ export interface FaceLoginResult {
     email: string;
     fullName: string | null;
     roles: string[];
+    avatarUrl?: string;
   } | null;
   member: {
     memberId: number | string;
@@ -18,6 +19,8 @@ export interface FaceLoginResult {
     email: string;
     phone: string | null;
     membershipLevel: string | null;
+    shoppingBudget?: number;
+    avatarUrl?: string;
   } | null;
 }
 

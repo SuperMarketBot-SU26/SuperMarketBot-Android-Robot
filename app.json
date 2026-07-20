@@ -35,7 +35,15 @@
             "imageWidth": 120
           }
         }
-      ]
+      ],
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Cho phép Ứng dụng truy cập Microphone để nhận diện giọng nói."
+        }
+      ],
+      "expo-image",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

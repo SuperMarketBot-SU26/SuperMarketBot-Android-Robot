@@ -6,122 +6,34 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
+import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
+import { useRobotAuth } from '../../context/RobotAuthContext';
+import { ProductDetailSheet } from '../ui/ProductDetailSheet';
 
-// CƠ SỞ DỮ LIỆU SẢN PHẨM TRỰC QUAN
-const PRODUCT_DATABASE = [
-  {
-    id: 'cam1',
-    name: 'Nước ép cam nguyên chất Tipco',
-    price: '38.000đ',
-    originalPrice: '45.000đ',
-    badge: 'Bán chạy',
-    badgeColor: '#ef4444',
-    image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&q=80',
-    location: 'Kệ số 2 - Dãy C',
-    distance: '3.5m',
-    voiceText: 'Tôi đã tìm thấy Nước ép cam nguyên chất Tipco có giá 38.000 đồng, nằm ngay tại Kệ số 2 dãy C bên tay phải của bạn.',
-    keywords: ['cam', 'nước', 'nước ép']
-  },
-  {
-    id: 'cam2',
-    name: 'Nước cam sành tự nhiên tươi ngon',
-    price: '25.000đ',
-    originalPrice: '',
-    badge: 'Mới',
-    badgeColor: '#22c55e',
-    image: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=400&q=80',
-    location: 'Kệ số 2 - Dãy C',
-    distance: '3.7m',
-    voiceText: 'Nước cam sành tự nhiên có giá 25.000 đồng, cũng nằm ở Kệ số 2 dãy C khu nước giải khát.',
-    keywords: ['cam', 'nước', 'nước ép']
-  },
-  {
-    id: 'ga1',
-    name: 'Đùi gà tươi CP (Khay 500g)',
-    price: '62.000đ',
-    originalPrice: '75.000đ',
-    badge: 'Khuyến mãi',
-    badgeColor: '#f97316',
-    image: 'https://images.unsplash.com/photo-1587593817642-87a7f729f37a?w=400&q=80',
-    location: 'Kệ số 4 - Dãy A',
-    distance: '12m',
-    voiceText: 'Đùi gà tươi CP khay 500 gam đang giảm giá còn 62.000 đồng, nằm ở Kệ số 4 dãy A khu thực phẩm tươi sống.',
-    keywords: ['gà', 'đùi gà']
-  },
-  {
-    id: 'sua1',
-    name: 'Sữa tươi Tiệt trùng Vinamilk 1L',
-    price: '32.000đ',
-    originalPrice: '',
-    badge: '100% Sữa sạch',
-    badgeColor: '#3b82f6',
-    image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&q=80',
-    location: 'Kệ số 1 - Dãy D',
-    distance: '5.2m',
-    voiceText: 'Sữa tươi tiệt trùng Vinamilk 1 lít có giá 32.000 đồng, ở Kệ số 1 dãy D khu sữa bơ.',
-    keywords: ['sữa', 'sữa tươi']
-  },
-  {
-    id: 'rau1',
-    name: 'Rau xà lách Organic sạch 300g',
-    price: '18.000đ',
-    originalPrice: '22.000đ',
-    badge: 'Organic',
-    badgeColor: '#10b981',
-    image: 'https://images.unsplash.com/photo-1556801712-76c8eb07bbc9?w=400&q=80',
-    location: 'Kệ số 3 - Dãy B',
-    distance: '2.1m',
-    voiceText: 'Rau xà lách organic khay 300 gam có giá 18.000 đồng, nằm ở Kệ số 3 dãy B khu rau quả tươi.',
-    keywords: ['rau', 'xà lách']
-  },
-  {
-    id: 'tao1',
-    name: 'Táo chín đỏ Envy Mỹ ngọt mát',
-    price: '89.000đ',
-    originalPrice: '110.000đ',
-    badge: 'Bán chạy',
-    badgeColor: '#ef4444',
-    image: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&q=80',
-    location: 'Kệ số 5 - Dãy B',
-    distance: '8.4m',
-    voiceText: 'Táo chín đỏ Envy Mỹ đang giảm giá còn 89.000 đồng, ở Kệ số 5 dãy B khu hoa quả tươi nhập khẩu.',
-    keywords: ['táo', 'táo envy']
-  }
-];
+const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
 
 export default function MemberSearchScreen() {
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
   const params = useLocalSearchParams();
   const { speak, stop } = useRobotVoice();
+  const { token } = useRobotAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<typeof PRODUCT_DATABASE>([]);
+  const [results, setResults] = useState<any[]>([]);
   const inputRef = useRef<TextInput>(null);
+
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const initialQuery = (params.query as string) || '';
 
   // Xử lý khi có query truyền từ trang Voice Search hoặc click gợi ý
   useEffect(() => {
     if (initialQuery) {
-      const cleanQ = initialQuery.toLowerCase().trim();
       setSearchQuery(initialQuery);
-      setIsSearching(true);
-
-      // Lọc sản phẩm
-      const filtered = PRODUCT_DATABASE.filter(p =>
-        p.keywords.some(k => cleanQ.includes(k) || k.includes(cleanQ)) ||
-        p.name.toLowerCase().includes(cleanQ)
-      );
-      setResults(filtered);
-
-      // Phát âm thanh giọng nói của Robot về vị trí sản phẩm thông qua FPT.AI
-      if (filtered.length > 0) {
-        speak(filtered[0].voiceText);
-      } else {
-        speak(`Tôi đã tìm kiếm ${initialQuery} nhưng chưa thấy trên hệ thống kệ hàng hiện tại.`);
-      }
+      executeSearch(initialQuery);
     } else {
       speak('Tôi đã sẵn sàng tìm kiếm. Hãy nhập tên sản phẩm hoặc nói tên món bạn cần nhé!');
       setTimeout(() => {
@@ -134,26 +46,73 @@ export default function MemberSearchScreen() {
     };
   }, [initialQuery]);
 
+  // Map dữ liệu API về format UI
+  const mapApiToUI = (items: any[]) => {
+    return items.map(p => {
+      const formattedPrice = p.unitPrice.toLocaleString('vi-VN') + 'đ';
+      const shelf = p.categoryName || 'Kệ chưa xác định';
+      return {
+        id: p.productId,
+        name: p.productName,
+        price: formattedPrice,
+        originalPrice: p.promotionPrice ? p.promotionPrice.toLocaleString('vi-VN') + 'đ' : null,
+        badge: p.status === 'Available' || p.status === 'instock' ? 'Có sẵn' : 'Tạm hết',
+        badgeColor: p.status === 'Available' || p.status === 'instock' ? '#22c55e' : '#ef4444',
+        image: p.imageUrl || 'https://via.placeholder.com/400',
+        location: shelf,
+        distance: 'Tính toán...', // Lidar sẽ update sau
+        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${shelf}.`,
+        semanticObjectId: null,
+        relevanceScore: p.relevanceScore || 0,
+        healthTags: p.healthTags || []
+      };
+    });
+  };
+
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [aiRanked, setAiRanked] = useState(false);
+
   // Thực hiện tìm kiếm khi người dùng nhấn Confirm
-  const executeSearch = (query: string) => {
+  const executeSearch = async (query: string) => {
     if (!query.trim()) {
       speak('Quý khách vui lòng nhập hoặc nói tên sản phẩm cần tìm!');
       return;
     }
     setIsSearching(true);
+    setResults([]);
+    setAiExplanation(null);
+    setAiRanked(false);
     const cleanQ = query.toLowerCase().trim();
 
-    // Lọc sản phẩm
-    const filtered = PRODUCT_DATABASE.filter(p =>
-      p.keywords.some(k => cleanQ.includes(k) || k.includes(cleanQ)) ||
-      p.name.toLowerCase().includes(cleanQ)
-    );
-    setResults(filtered);
+    try {
+      let searchResponse;
+      
+      if (token) {
+        searchResponse = await SearchService.searchPersonalized({
+          q: cleanQ,
+          useAi: true,
+          token: token
+        });
+      } else {
+        searchResponse = await SearchService.searchAll({
+          q: cleanQ,
+          useAi: false,
+        });
+      }
 
-    if (filtered.length > 0) {
-      speak(filtered[0].voiceText);
-    } else {
-      speak(`Bắt đầu tìm kiếm ${query}. Robot đang quét hệ thống kệ hàng nhưng sản phẩm này chưa có sẵn.`);
+      const formatted = mapApiToUI(searchResponse.results || []);
+      setResults(formatted);
+      setAiExplanation(searchResponse.aiExplanation || null);
+      setAiRanked(searchResponse.aiRanked || false);
+
+      if (formatted.length > 0) {
+        speak(formatted[0].voiceText);
+      } else {
+        speak(`Bắt đầu tìm kiếm ${query}. Robot đang quét hệ thống kệ hàng nhưng sản phẩm này chưa có sẵn.`);
+      }
+    } catch (error) {
+      console.error(error);
+      speak(`Xin lỗi, có lỗi kết nối khi tìm kiếm ${query}.`);
     }
   };
 
@@ -278,22 +237,44 @@ export default function MemberSearchScreen() {
           </XStack>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130 }}>
+            {aiExplanation && (
+              <Animated.View entering={FadeInDown.delay(100).duration(400)}>
+                <Card
+                  backgroundColor="#ECFDF5"
+                  borderWidth={1}
+                  borderColor="#A7F3D0"
+                  borderRadius={16}
+                  padding="$4"
+                  marginBottom="$4"
+                >
+                  <XStack alignItems="center" gap="$2" marginBottom="$2">
+                    <Sparkles size={16} color="#059669" />
+                    <Text fontSize={13} fontWeight="bold" color="#047857">Trợ lý AI phân tích</Text>
+                  </XStack>
+                  <Text fontSize={12} color="#065F46" lineHeight={18}>
+                    {aiExplanation}
+                  </Text>
+                </Card>
+              </Animated.View>
+            )}
+
             {results.length > 0 ? (
               <YStack gap="$4">
                 {results.map((product, index) => (
-                  <Animated.View key={product.id} entering={FadeInDown.delay(index * 100).duration(400)}>
-                    <Card
-                      borderWidth={1}
-                      borderColor="#e2ede5"
-                      borderRadius={24}
-                      backgroundColor="white"
-                      padding="$4"
-                      shadowColor="#00A550"
-                      shadowRadius={15}
-                      shadowOpacity={0.02}
-                      style={{ elevation: 2 }}
-                    >
-                      <XStack gap="$4" alignItems="center">
+                  <Animated.View key={product.id} entering={FadeInDown.delay((index + 1) * 100).duration(400)}>
+                    <Pressable onPress={() => { setSelectedProductId(product.id); setSheetOpen(true); }}>
+                      <Card
+                        borderWidth={1}
+                        borderColor="#e2ede5"
+                        borderRadius={24}
+                        backgroundColor="white"
+                        padding="$4"
+                        shadowColor="#00A550"
+                        shadowRadius={15}
+                        shadowOpacity={0.02}
+                        style={{ elevation: 2 }}
+                      >
+                        <XStack gap="$4" alignItems="center">
                         {/* Image & Badge */}
                         <View position="relative" width={110} height={110} borderRadius={16} overflow="hidden" backgroundColor="#f5f5f5">
                           <Image src={product.image} width="100%" height="100%" objectFit="cover" />
@@ -304,6 +285,14 @@ export default function MemberSearchScreen() {
 
                         {/* Product Info & Shelf Position */}
                         <YStack flex={1} gap="$1.5">
+                          {product.relevanceScore > 0 && (
+                            <XStack backgroundColor="#ECFDF5" alignSelf="flex-start" paddingHorizontal="$2" paddingVertical="$1" borderRadius={6} alignItems="center" gap="$1">
+                              <Sparkles size={10} color="#059669" />
+                              <Text fontSize={9} fontWeight="bold" color="#059669">
+                                Độ phù hợp: {product.relevanceScore}%
+                              </Text>
+                            </XStack>
+                          )}
                           <Text fontSize={15} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={20}>{product.name}</Text>
 
                           <XStack gap="$2" alignItems="center">
@@ -350,7 +339,8 @@ export default function MemberSearchScreen() {
                           />
                         </YStack>
                       </XStack>
-                    </Card>
+                      </Card>
+                    </Pressable>
                   </Animated.View>
                 ))}
               </YStack>
@@ -497,6 +487,11 @@ export default function MemberSearchScreen() {
         </Animated.View>
       </View>
 
+      <ProductDetailSheet 
+        productId={selectedProductId}
+        isOpen={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </View>
   );
 }

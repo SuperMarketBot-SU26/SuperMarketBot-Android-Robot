@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../api';
+import { BASE_URL } from './AuthService';
 
 export interface AdResourceDto {
   resourceType: 'IMAGE' | 'VIDEO' | 'VOICE_TEXT';
@@ -58,9 +58,12 @@ export const AdService = {
    */
   async getRobotPlaylist(robotId: number, semanticObjectId?: number): Promise<RobotPlaylistResponseDto> {
     const query = semanticObjectId ? `?semanticObjectId=${semanticObjectId}` : '';
-    const response = await fetch(`${API_BASE_URL}/api/v1/ad-campaign/${robotId}/robot-playlist${query}`, {
+    const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/robot-playlist/${robotId}${query}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
     });
 
     if (!response.ok) {
@@ -74,7 +77,7 @@ export const AdService = {
    * Ghi nhận impression khi Robot đi qua một vị trí (3 luồng charge tiền)
    */
   async recordImpression(robotCode: string, payload: ImpressionRequestDto): Promise<any> {
-    const response = await fetch(`${API_BASE_URL}/api/robots/${robotCode}/impression`, {
+    const response = await fetch(`${BASE_URL}/api/robots/${robotCode}/impression`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -91,7 +94,7 @@ export const AdService = {
    * Ghi log tương tác của khách hàng với quảng cáo trên Robot (Ví dụ: Click)
    */
   async logInteraction(payload: LogInteractionRequestDto): Promise<any> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/ad-campaign/log-interaction`, {
+    const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/log-interaction`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

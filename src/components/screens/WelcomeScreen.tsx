@@ -1,5 +1,5 @@
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowRight, Cpu, Sparkles, Settings } from 'lucide-react-native';
+import { ArrowRight, Sparkles } from 'lucide-react-native';
 import { TouchableOpacity } from 'react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet } from 'react-native';
@@ -176,35 +176,22 @@ export default function WelcomeScreen() {
               alignItems="center"
               zIndex={10}
             >
-              <YStack gap={1}>
-                <XStack alignItems="center" gap={8}>
-                  <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
-                  <Text
-                    color="#0F5132"
-                    fontSize={24}
-                    fontWeight="900"
-                    fontFamily="$heading"
-                    letterSpacing={1.2}
-                    style={styles.brandTitle}
-                  >
-                    SmartMarketBot
-                  </Text>
-                </XStack>
-              </YStack>
-
-              {/* AI Active Badge */}
-              <XStack backgroundColor="rgba(0, 165, 80, 0.1)" borderWidth={1} borderColor="rgba(0, 165, 80, 0.25)" borderRadius={20} paddingHorizontal="$3.5" paddingVertical="$1" gap="$1.5" alignItems="center">
-                <Cpu size={12} color="#00A550" />
-                <Text fontSize={9} color="#005b2b" fontWeight="800" letterSpacing={1}>SYSTEM ONLINE</Text>
+              {/* Left: Brand Name */}
+              <XStack alignItems="center" gap={8}>
+                <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
+                <Text
+                  color="#0F5132"
+                  fontSize={22}
+                  fontWeight="900"
+                  fontFamily="$heading"
+                  letterSpacing={1}
+                  style={styles.brandTitle}
+                >
+                  SmartMarketBot
+                </Text>
               </XStack>
 
-              {/* Developer Mode Button */}
-              <TouchableOpacity
-                onPress={() => router.push('/robot-control' as any)}
-                style={{ padding: 8 }}
-              >
-                <Settings size={20} color="#357A57" />
-              </TouchableOpacity>
+              {/* Right: Removed SYSTEM ONLINE badge as per request */}
             </XStack>
 
             {/* 3. CENTER PIECE: ANIMATED FLOATING ROBOT CONTAINER */}

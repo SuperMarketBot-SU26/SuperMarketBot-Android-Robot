@@ -70,7 +70,9 @@ export class MemberService {
    */
   static async getMemberDeals(memberId: number): Promise<MemberDealsResponseDto | null> {
     try {
-      const response = await fetch(`${BASE_URL}/api/members/${memberId}/deals`);
+      const response = await fetch(`${BASE_URL}/api/members/${memberId}/deals`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (!response.ok) {
         console.error('[MemberService.getMemberDeals] failed:', response.status);
         return null;
@@ -89,7 +91,9 @@ export class MemberService {
    */
   static async getSponsoredRecommendations(memberId: number): Promise<SponsoredRecommendationsResponseDto | null> {
     try {
-      const response = await fetch(`${BASE_URL}/api/members/${memberId}/sponsored-recommendations`);
+      const response = await fetch(`${BASE_URL}/api/members/${memberId}/sponsored-recommendations`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (!response.ok) {
         console.error('[MemberService.getSponsoredRecommendations] failed:', response.status);
         return null;
@@ -108,7 +112,9 @@ export class MemberService {
    */
   static async getMemberAlerts(memberId: number): Promise<MemberAlertsResponseDto | null> {
     try {
-      const response = await fetch(`${BASE_URL}/api/members/${memberId}/alerts`);
+      const response = await fetch(`${BASE_URL}/api/members/${memberId}/alerts`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (!response.ok) {
         console.error('[MemberService.getMemberAlerts] failed:', response.status);
         return null;
@@ -129,6 +135,7 @@ export class MemberService {
     try {
       const response = await fetch(`${BASE_URL}/api/members/${memberId}/alerts/mark-read`, {
         method: 'PUT',
+        headers: { 'ngrok-skip-browser-warning': 'true' }
       });
       if (!response.ok) {
         console.error('[MemberService.markAlertsAsRead] failed:', response.status);
@@ -138,6 +145,75 @@ export class MemberService {
     } catch (error) {
       console.error('[MemberService.markAlertsAsRead] error:', error);
       return false;
+    }
+  }
+
+  /**
+   * GET /api/members/me/personalized-products
+   * Lấy danh sách sản phẩm cá nhân hoá cho Member.
+   */
+  static async getPersonalizedProducts(token: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${BASE_URL}/api/members/me/personalized-products`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true' 
+        }
+      });
+      if (!response.ok) {
+        console.error('[MemberService.getPersonalizedProducts] failed:', response.status);
+        return [];
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[MemberService.getPersonalizedProducts] error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * GET /api/members/me/personalized-meals
+   * Lấy danh sách các món ăn (công thức) gợi ý cá nhân hoá.
+   */
+  static async getPersonalizedMeals(token: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${BASE_URL}/api/members/me/personalized-meals`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true' 
+        }
+      });
+      if (!response.ok) {
+        console.error('[MemberService.getPersonalizedMeals] failed:', response.status);
+        return [];
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[MemberService.getPersonalizedMeals] error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * GET /api/members/me
+   * Lấy thông tin cá nhân của member
+   */
+  static async getProfile(token: string): Promise<any> {
+    try {
+      const response = await fetch(`${BASE_URL}/api/members/me`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true' 
+        }
+      });
+      if (!response.ok) {
+        console.error('[MemberService.getProfile] failed:', response.status);
+        return null;
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[MemberService.getProfile] error:', error);
+      return null;
     }
   }
 }
