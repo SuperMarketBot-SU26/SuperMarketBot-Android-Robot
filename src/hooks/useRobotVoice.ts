@@ -1,10 +1,10 @@
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useEffect, useState } from 'react';
 
 // Lưu trữ instance âm thanh toàn cục và trạng thái nói toàn cục để tránh đè giọng và chặn điều hướng
-let globalActiveSound: Audio.Sound | null = null;
+let globalActiveSound: AudioPlayer | null = null;
 let globalRequestCounter = 0;
 let isSpeakingGlobal = false;
 
@@ -59,8 +59,12 @@ export function useRobotVoice() {
       if (globalActiveSound) {
         const sound = globalActiveSound;
         globalActiveSound = null;
-        await sound.stopAsync().catch(() => { });
-        await sound.unloadAsync().catch(() => { });
+        try {
+          sound.pause();
+        } catch (e) {}
+        try {
+          sound.remove();
+        } catch (e) {}
       }
     } catch (e) {
       console.warn('Error stopping sound', e);
@@ -133,10 +137,9 @@ export function useRobotVoice() {
 
         // Cấu hình Audio Mode để phát ra loa ngoài tốt nhất
         try {
-          await Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            playThroughEarpieceAndroid: false,
+          await setAudioModeAsync({
+            playsInSilentMode: true,
+            shouldPlayInBackground: false,
           });
         } catch (audioModeError) {
           console.warn('Audio.setAudioModeAsync failed (safe to ignore on emulator):', audioModeError);
@@ -144,15 +147,14 @@ export function useRobotVoice() {
 
         if (currentId !== globalRequestCounter) return;
 
-        // Tạo sound instance và tự động phát
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: audioUrl },
-          { shouldPlay: true }
-        );
+        // Tạo sound instance bằng expo-audio
+        const sound = createAudioPlayer(audioUrl);
+        
+        sound.play(); // Bắt đầu phát
 
         // Nếu trong lúc load sound mà có request mới, unload ngay lập tức
         if (currentId !== globalRequestCounter) {
-          sound.unloadAsync().catch(() => { });
+          sound.remove();
           return;
         }
 
@@ -161,16 +163,17 @@ export function useRobotVoice() {
         isSpeakingGlobal = true;
 
         // Lắng nghe sự kiện phát xong để tắt trạng thái isSpeaking
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
+        sound.addListener('playbackStatusUpdate', (status) => {
+          if (status.isLoaded && status.playing === false && status.currentTime >= status.duration - 0.5) {
             isSpeakingGlobal = false;
             setIsSpeaking(false);
             if (globalActiveSound === sound) {
               globalActiveSound = null;
             }
-            // Giải phóng âm thanh bất đồng bộ ở tick tiếp theo để tránh lỗi truy cập sai luồng (ExoPlayer thread crash)
             setTimeout(() => {
-              sound.unloadAsync().catch(() => { });
+              try {
+                sound.remove();
+              } catch (e) {}
             }, 100);
           }
         });

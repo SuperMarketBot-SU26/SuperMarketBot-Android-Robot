@@ -1,17 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, XStack, YStack, Avatar, Progress, Button } from 'tamagui';
-import { Cloud, Trash2, MapPin, User, Settings, LogOut } from 'lucide-react-native';
+import { Cloud, Trash2, MapPin, User, Settings, LogOut, ShoppingCart } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import { useRobotAuth } from '../../context/RobotAuthContext';
+import { CartService } from '../../services/CartService';
+import { MemberService } from '../../services/MemberService';
 
 export function MemberHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
+  const { member, token, clearSession } = useRobotAuth();
+  
+  const [currentSpending, setCurrentSpending] = useState(0);
+  const [actualBudget, setActualBudget] = useState<number | null>(member?.shoppingBudget || null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(member?.avatarUrl || null);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchCart = () => {
+      if (token) {
+        CartService.getCart(token).then((res) => {
+          if (mounted && res) {
+            setCurrentSpending(res.totalPrice || 0);
+          }
+        }).catch(err => console.log('Cart fetch error in header:', err));
+      }
+    };
+
+    const fetchProfile = async () => {
+      if (token) {
+        const profile = await MemberService.getProfile(token);
+        if (mounted && profile) {
+          if (profile.spendingLimit) setActualBudget(profile.spendingLimit);
+          if (profile.avatarUrl) setAvatarUrl(profile.avatarUrl);
+        }
+      }
+    };
+
+    fetchProfile();
+
+    fetchCart(); // Initial fetch
+    const interval = setInterval(fetchCart, 3000); // Sync every 3 seconds
+
+    return () => { 
+      mounted = false; 
+      clearInterval(interval);
+    };
+  }, [token]);
 
   const handleLogout = () => {
     setMenuOpen(false);
+    clearSession();
     router.replace('/role-selection' as any);
   };
+
+  // Removed formatCurrency to use standard toLocaleString('vi-VN')
+
+  const progressValue = actualBudget ? Math.min((currentSpending / actualBudget) * 100, 100) : 0;
+  const isOverBudget = actualBudget ? currentSpending > actualBudget : false;
 
   return (
     <YStack
@@ -40,11 +88,11 @@ export function MemberHeader() {
             cursor="pointer"
           >
             <YStack alignItems="flex-end">
-              <Text fontSize={14} fontWeight="bold" color="$textPrimary">Duy Nguyễn</Text>
-              <Text fontSize={10} fontWeight="bold" color="#00A550">PREMIUM MEMBER</Text>
+              <Text fontSize={14} fontWeight="bold" color="$textPrimary">{member?.fullName || 'Khách'}</Text>
+              <Text fontSize={10} fontWeight="bold" color="#00A550">{member?.membershipLevel?.toUpperCase() || 'MEMBER'}</Text>
             </YStack>
             <Avatar circular size="$3" style={{ borderWidth: 2, borderColor: menuOpen ? '#00A550' : 'transparent' }}>
-              <Avatar.Image src="https://i.pravatar.cc/150?u=duy" />
+              <Avatar.Image src={avatarUrl ? (avatarUrl.startsWith('http') ? avatarUrl : `https://smb-api.duckdns.org${avatarUrl.startsWith('/') ? '' : '/'}${avatarUrl}`) : "https://i.pravatar.cc/150?u=robot"} />
               <Avatar.Fallback backgroundColor="#00A550" />
             </Avatar>
           </XStack>
@@ -108,17 +156,50 @@ export function MemberHeader() {
         </View>
       </XStack>
 
-      {/* ROW 2: Budget */}
-      <XStack alignItems="center" justifyContent="space-between" backgroundColor="#f2fcf5" paddingHorizontal="$4" paddingVertical="$3" borderRadius={16}>
-        <YStack gap="$1.5" flex={1} paddingRight="$4">
-          <XStack justifyContent="space-between">
-            <Text fontSize={11} fontWeight="bold" color="#00A550">NGÂN SÁCH MUA SẮM</Text>
-            <Text fontSize={12} fontWeight="bold" color="#00A550">450k / 1000k</Text>
+      {/* ROW 2: Budget & Cart Button */}
+      <XStack alignItems="center" gap="$3">
+        {actualBudget ? (
+          <XStack flex={1} alignItems="center" backgroundColor={isOverBudget ? "#fff1f2" : "#f2fcf5"} paddingHorizontal="$4" paddingVertical="$3" borderRadius={20} borderWidth={1} borderColor={isOverBudget ? "#ffe4e6" : "#e0f2e9"}>
+            <YStack gap="$1.5" flex={1}>
+              <YStack>
+                <Text fontSize={10} fontWeight="900" color={isOverBudget ? "#e11d48" : "#005b2b"} letterSpacing={0.5}>
+                  NGÂN SÁCH MUA SẮM
+                </Text>
+                <Text fontSize={14} fontWeight="bold" color={isOverBudget ? "#e11d48" : "#00A550"} marginTop="$1">
+                  {currentSpending.toLocaleString('vi-VN')}đ / <Text color={isOverBudget ? "#be123c" : "#166534"}>{actualBudget.toLocaleString('vi-VN')}đ</Text>
+                </Text>
+              </YStack>
+              <Progress size="$1.5" value={progressValue} backgroundColor={isOverBudget ? "#fecdd3" : "#d1fae5"} marginTop="$1">
+                <Progress.Indicator backgroundColor={isOverBudget ? "#e11d48" : "#00A550"} />
+              </Progress>
+            </YStack>
           </XStack>
-          <Progress size="$2" value={45} backgroundColor="#e0f2e9">
-            <Progress.Indicator backgroundColor="#00A550" />
-          </Progress>
-        </YStack>
+        ) : (
+          <XStack flex={1} alignItems="center" backgroundColor="#f8fafc" paddingHorizontal="$4" paddingVertical="$3" borderRadius={20} borderWidth={1} borderColor="#e2e8f0">
+            <YStack gap="$1.5" flex={1}>
+              <YStack>
+                <Text fontSize={11} fontWeight="bold" color="#64748b">
+                  TỔNG THANH TOÁN
+                </Text>
+                <Text fontSize={15} fontWeight="900" color="#334155" marginTop="$1">
+                  {currentSpending.toLocaleString('vi-VN')}đ
+                </Text>
+              </YStack>
+            </YStack>
+          </XStack>
+        )}
+
+        <Button
+          size="$4"
+          backgroundColor="#00A550"
+          borderRadius={20}
+          icon={<ShoppingCart size={20} color="white" />}
+          onPress={() => router.push('/member-cart' as any)}
+          pressStyle={{ scale: 0.95, backgroundColor: '#00823e' }}
+          paddingHorizontal="$3"
+        >
+          <Text color="white" fontWeight="bold">Giỏ hàng</Text>
+        </Button>
       </XStack>
     </YStack>
   );

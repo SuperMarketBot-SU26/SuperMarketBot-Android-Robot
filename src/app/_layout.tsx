@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { TamaguiProvider } from 'tamagui';
+import { TamaguiProvider, PortalProvider } from 'tamagui';
 import tamaguiConfig from '../theme/tamagui.config';
 import { View } from 'react-native';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
@@ -25,15 +25,17 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <RobotAuthProvider>
-        <MapViewerProvider>
-          <RouteProvider>
-            <RobotControlProvider>
-              <RootLayoutContent />
-            </RobotControlProvider>
-          </RouteProvider>
-        </MapViewerProvider>
-      </RobotAuthProvider>
+      <PortalProvider shouldAddRootHost>
+        <RobotAuthProvider>
+          <MapViewerProvider>
+            <RouteProvider>
+              <RobotControlProvider>
+                <RootLayoutContent />
+              </RobotControlProvider>
+            </RouteProvider>
+          </MapViewerProvider>
+        </RobotAuthProvider>
+      </PortalProvider>
     </TamaguiProvider>
   );
 }

@@ -5,6 +5,8 @@ type Member = {
   fullName: string | null;
   email: string;
   membershipLevel: string | null;
+  shoppingBudget?: number;
+  avatarUrl?: string;
 };
 
 type RobotAuthContextType = {
