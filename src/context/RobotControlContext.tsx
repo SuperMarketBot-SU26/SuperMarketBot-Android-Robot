@@ -17,12 +17,15 @@ export interface MotorLayoutConfig {
   mapMot: number[];
   /** Cờ đảo chiều: [FL, RL, FR, RR] — 0=thuận, 1=đảo */
   motInv: number[];
+  /** Loại bánh xe: 0=Mecanum (đa hướng), 1=Normal (4WD vi sai) */
+  wheelMode: 0 | 1;
 }
 
 interface RobotControlContextType {
   isConnected: boolean;
   motorLayout: MotorLayoutConfig;
   setMotorLayout: (cfg: MotorLayoutConfig) => void;
+  setWheelMode: (mode: 0 | 1) => void;
   saveMotorLayout: () => void;
   testMotor: (slot: number, speedPct: number) => void;
 }
@@ -32,6 +35,7 @@ const RobotControlContext = createContext<RobotControlContextType | null>(null);
 const DEFAULT_LAYOUT: MotorLayoutConfig = {
   mapMot: [0, 1, 2, 3],
   motInv: [0, 0, 0, 0],
+  wheelMode: 0, // 0=Mecanum
 };
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -63,8 +67,14 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
     setMotorLayoutState(cfg);
   }, []);
 
+  const setWheelMode = useCallback((mode: 0 | 1) => {
+    setMotorLayoutState(prev => ({ ...prev, wheelMode: mode }));
+    RobotControlService.sendWheelMode(mode);
+  }, []);
+
   const saveMotorLayout = useCallback(() => {
     RobotControlService.sendMotorLayout(motorLayout.mapMot, motorLayout.motInv);
+    RobotControlService.sendWheelMode(motorLayout.wheelMode);
   }, [motorLayout]);
 
   const testMotor = useCallback((slot: number, speedPct: number) => {
@@ -76,6 +86,7 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
       isConnected,
       motorLayout,
       setMotorLayout,
+      setWheelMode,
       saveMotorLayout,
       testMotor,
     }}>
