@@ -1549,6 +1549,7 @@ function applyLiveTelemetry(d) {
         if (rawMode === '0' || rawMode === 'manual' || rawMode === 'lái tay') modeVal = 0;
         else if (rawMode === '1' || rawMode === 'auto' || rawMode === 'tự hành') modeVal = 1;
         else if (rawMode === '2' || rawMode === 'waypoint') modeVal = 2;
+        else if (rawMode === '3' || rawMode === 'line' || rawMode === 'dò line') modeVal = 3;
         
         if (modeVal === 0) {
             modeStr = 'LÁI TAY';
@@ -1559,6 +1560,9 @@ function applyLiveTelemetry(d) {
         } else if (modeVal === 2) {
             modeStr = 'WAYPOINT';
             badgeClass += 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+        } else if (modeVal === 3) {
+            modeStr = 'DÒ LINE';
+            badgeClass += 'bg-purple-500/10 text-purple-400 border-purple-500/20';
         } else {
             modeStr = String(d.mode).toUpperCase();
             badgeClass += 'bg-slate-800 text-slate-400 border-slate-700';
@@ -1571,10 +1575,12 @@ function applyLiveTelemetry(d) {
         const btnManual = document.getElementById('btnModeManual');
         const btnAuto = document.getElementById('btnModeAuto');
         const btnWaypoint = document.getElementById('btnModeWaypoint');
+        const btnLine = document.getElementById('btnModeLine');
         if (btnManual && btnAuto && btnWaypoint) {
             btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
             btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
             btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+            if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
             
             if (modeVal === 0) {
                 btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-emerald-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(16,185,129,0.3)]";
@@ -1582,6 +1588,8 @@ function applyLiveTelemetry(d) {
                 btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-amber-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(245,158,11,0.3)]";
             } else if (modeVal === 2) {
                 btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-blue-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(59,130,246,0.3)]";
+            } else if (modeVal === 3) {
+                if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-purple-500 text-slate-950 font-extrabold shadow-[0_0_10px_rgba(168,85,247,0.3)]";
             }
         }
         
@@ -2171,10 +2179,12 @@ window.changeRobotMode = function(modeVal) {
     const btnManual = document.getElementById('btnModeManual');
     const btnAuto = document.getElementById('btnModeAuto');
     const btnWaypoint = document.getElementById('btnModeWaypoint');
+    const btnLine = document.getElementById('btnModeLine');
     if (btnManual && btnAuto && btnWaypoint) {
         btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
         btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
         btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+        if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
         
         if (modeVal === 0) {
             btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-emerald-400 border border-emerald-500/30 animate-pulse";
@@ -2182,6 +2192,8 @@ window.changeRobotMode = function(modeVal) {
             btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-amber-400 border border-amber-500/30 animate-pulse";
         } else if (modeVal === 2) {
             btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-blue-400 border border-blue-500/30 animate-pulse";
+        } else if (modeVal === 3) {
+            if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-purple-400 border border-purple-500/30 animate-pulse";
         }
     }
     
@@ -2192,6 +2204,7 @@ window.changeRobotMode = function(modeVal) {
 document.getElementById('btnModeManual')?.addEventListener('click', () => changeRobotMode(0));
 document.getElementById('btnModeAuto')?.addEventListener('click', () => changeRobotMode(1));
 document.getElementById('btnModeWaypoint')?.addEventListener('click', () => changeRobotMode(2));
+document.getElementById('btnModeLine')?.addEventListener('click', () => changeRobotMode(3));
 
 document.getElementById('btnEstop')?.addEventListener('click', () => {
     console.warn('[Control] KÍCH HOẠT ESTOP!');
