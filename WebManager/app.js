@@ -503,6 +503,16 @@ function draw() {
         ctx.font = `bold ${11/scale}px Inter`;
         ctx.textAlign = 'center';
         ctx.fillText("ROBOT", px, py - 20/scale);
+
+        // Draw Live 360° LiDAR Scan Cloud around Robot
+        if (showLidarScanCloud && window.liveLidarScanPoints && window.liveLidarScanPoints.length > 0) {
+            ctx.fillStyle = '#ef4444'; // Bright Red laser hits
+            window.liveLidarScanPoints.forEach(pt => {
+                const lx = px + (pt.x / PIXEL_TO_METER);
+                const ly = py + (pt.y / PIXEL_TO_METER);
+                ctx.fillRect(lx - 1.5/scale, ly - 1.5/scale, 3/scale, 3/scale);
+            });
+        }
     }
 
     bgCtx.restore();
@@ -1174,6 +1184,23 @@ function connectRobotWs() {
                     return;
                 }
                 
+                if (data.t === 'scan' || data.pts) {
+                    const scanPts = (data.pts || []).map(pt => {
+                        const deg = Array.isArray(pt) ? pt[0] : pt.a;
+                        const distMm = Array.isArray(pt) ? pt[1] : pt.d;
+                        const rad = (deg * Math.PI) / 180;
+                        const distM = distMm / 1000.0;
+                        return {
+                            x: distM * Math.cos(rad),
+                            y: distM * Math.sin(rad)
+                        };
+                    });
+                    if (window.setLiveLidarPoints) {
+                        window.setLiveLidarPoints(scanPts);
+                    }
+                    return;
+                }
+
                 if (data.type === 'log') {
                     appendSerialLog(`[WS-Direct] ${data.message}`);
                 } else if (data.msg) {
@@ -2621,5 +2648,133 @@ document.getElementById('btnRunFixedRoute')?.addEventListener('click', async () 
         btn.disabled = false;
     }
 });
+
+// ============================================================================
+// LIDAR & SERIAL MONITOR LOG HANDLERS
+// ============================================================================
+let isSerialAutoScroll = true;
+let isLidarAutoScroll = true;
+
+window.appendSerialLog = function(msg) {
+    const container = document.getElementById('serialLogsContainer');
+    if (!container) return;
+    const time = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.textContent = `[${time}] ${msg}`;
+    container.appendChild(div);
+    if (isSerialAutoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+};
+
+window.appendLidarLog = function(msg) {
+    const container = document.getElementById('lidarLogsContainer');
+    if (!container) return;
+    const time = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.textContent = `[${time}] ${msg}`;
+    container.appendChild(div);
+    if (isLidarAutoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+};
+
+// Clear & Auto-scroll buttons
+document.getElementById('btnClearLogs')?.addEventListener('click', () => {
+    const container = document.getElementById('serialLogsContainer');
+    if (container) container.innerHTML = '<div class="text-slate-500 italic">[Hệ thống] Đã xóa log Robot.</div>';
+});
+
+document.getElementById('btnToggleAutoScroll')?.addEventListener('click', () => {
+    isSerialAutoScroll = !isSerialAutoScroll;
+    const btn = document.getElementById('btnToggleAutoScroll');
+    if (btn) btn.textContent = `Cuộn: ${isSerialAutoScroll ? 'BẬT' : 'TẮT'}`;
+});
+
+document.getElementById('btnClearLidarLogs')?.addEventListener('click', () => {
+    const container = document.getElementById('lidarLogsContainer');
+    if (container) container.innerHTML = '<div class="text-slate-500 italic">[LiDAR] Đã xóa log LiDAR.</div>';
+});
+
+document.getElementById('btnToggleLidarAutoScroll')?.addEventListener('click', () => {
+    isLidarAutoScroll = !isLidarAutoScroll;
+    const btn = document.getElementById('btnToggleLidarAutoScroll');
+    if (btn) btn.textContent = `Cuộn: ${isLidarAutoScroll ? 'BẬT' : 'TẮT'}`;
+});
+
+// ============================================================================
+// LIDAR SCAN & SLAM LAYER TOGGLE CONTROLS
+// ============================================================================
+let showLidarScanCloud = true;
+let showSlamGridLayer = true;
+
+document.getElementById('btnToggleLidarScan')?.addEventListener('click', () => {
+    showLidarScanCloud = !showLidarScanCloud;
+    const btn = document.getElementById('btnToggleLidarScan');
+    if (btn) {
+        if (showLidarScanCloud) {
+            btn.className = "px-2.5 py-1 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-xs font-semibold hover:bg-rose-500 hover:text-white transition-all flex items-center gap-1.5";
+        } else {
+            btn.className = "px-2.5 py-1 bg-slate-800 text-slate-500 border border-slate-700 rounded text-xs font-semibold transition-all flex items-center gap-1.5";
+        }
+    }
+    draw();
+});
+
+document.getElementById('btnToggleSlamGrid')?.addEventListener('click', () => {
+    showSlamGridLayer = !showSlamGridLayer;
+    const btn = document.getElementById('btnToggleSlamGrid');
+    if (btn) {
+        if (showSlamGridLayer) {
+            btn.className = "px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-xs font-semibold hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-1.5";
+        } else {
+            btn.className = "px-2.5 py-1 bg-slate-800 text-slate-500 border border-slate-700 rounded text-xs font-semibold transition-all flex items-center gap-1.5";
+        }
+    }
+    draw();
+});
+
+document.getElementById('btnCaptureSlamMap')?.addEventListener('click', () => {
+    const dataUrl = graphCanvas.toDataURL('image/png');
+    const img = new Image();
+    img.onload = () => {
+        mapImage = img;
+        draw();
+        alert('📸 Đã chụp mây điểm mặt bằng SLAM thành công và nạp làm Ảnh Nền Bản Đồ!');
+    };
+    img.src = dataUrl;
+});
+
+// ============================================================================
+// LIDAR STATUS BADGE & AUTO-CHECK
+// ============================================================================
+let lastLidarScanTimestamp = 0;
+
+function updateLidarStatusBadge(connected, count = 0) {
+    const badge = document.getElementById('lidarStatusBadge');
+    if (!badge) return;
+    if (connected) {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm";
+        badge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span><span class="text-slate-300">LiDAR 360°: Đã kết nối (${count}pts)</span>`;
+    } else {
+        badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm";
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span><span class="text-slate-500">LiDAR 360°: Chưa kết nối</span>';
+    }
+}
+
+window.setLiveLidarPoints = function(points) {
+    window.liveLidarScanPoints = points || [];
+    lastLidarScanTimestamp = Date.now();
+    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+    draw();
+};
+
+// Auto-check LiDAR timeout
+setInterval(() => {
+    const now = Date.now();
+    if (lastLidarScanTimestamp > 0 && (now - lastLidarScanTimestamp > 3000)) {
+        updateLidarStatusBadge(false);
+    }
+}, 1000);
 
 
