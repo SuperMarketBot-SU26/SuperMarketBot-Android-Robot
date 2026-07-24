@@ -2983,6 +2983,11 @@ const SlamEngine = {
     lastSendMs: 0,
     frameCount: 0,
 
+    // Consecutive Motion Filter: số frame liên tiếp phát hiện chuyển động
+    // Phải đạt MOTION_STREAK_NEEDED frame liên tiếp mới cập nhật pose
+    motionStreak: 0,
+    MOTION_STREAK_NEEDED: 2,
+
     // Bật/tắt SLAM (UI toggle)
     enabled: true,
 
@@ -3100,16 +3105,17 @@ const SlamEngine = {
         }
         const similarity = totalCount > 0 ? matchCount / totalCount : 0;
 
-        // Nếu scan giống nhau >88% → robot gần như không di chuyển
-        // Chỉ cập nhật occupancy grid (bản đồ), KHÔNG thay đổi pose
-        if (similarity > 0.88) {
+        // Nếu scan giống nhau >93% → robot đứng yên hoàn toàn
+        // Chỉ cập nhật occupancy grid (bản đồ), KHÔNG thay đổi pose, reset motionStreak
+        if (similarity > 0.93) {
+            this.motionStreak = 0; // Reset chuỗi chuyển động
             this.frameCount++;
             if (this.frameCount % 3 === 0) {
                 occupancyGrid.updateWithScan(rawPts, this.pose);
             }
             this.prevBins = currBins;
             this.prevPts  = rawPts;
-            return; // ← THOÁT SỚM: không drift khi đứng yên
+            return; // ← THOÁT SỚM: lock pose khi đứng yên
         }
 
         // ── Bước 1: Angular Correlation Matching ────────────────────────────
@@ -3132,24 +3138,34 @@ const SlamEngine = {
         }
 
         // ── Bước 3: Motion Gate — ngưỡng chết chống drift ──────────────────
-        // Ngưỡng tối thiểu để coi là "thực sự di chuyển":
-        //   - Tịnh tiến: > 3cm  (YDLIDAR X3 nhiễu ~1-2cm)
-        //   - Xoay:      > 1.5° (gyro drift nhỏ)
-        const MIN_TRANS_M  = 0.03;  // 3cm
-        const MIN_ROT_RAD  = 0.026; // ~1.5°
+        // YDLIDAR X3 noise: ~2-3cm, IMU gyro drift: ~0.5°/frame
+        // Ngưỡng đặt cao hơn noise để chỉ nhận chuyển động thực sự:
+        const MIN_TRANS_M = 0.06;  // 6cm (2× noise margin)
+        const MIN_ROT_RAD = 0.052; // ~3° (6× gyro deadband)
 
-        const distMoved    = Math.sqrt(dx * dx + dy * dy);
-        const rotMoved     = Math.abs(finalDTheta);
-
+        const distMoved      = Math.sqrt(dx * dx + dy * dy);
+        const rotMoved       = Math.abs(finalDTheta);
         const hasTranslation = distMoved >= MIN_TRANS_M;
         const hasRotation    = rotMoved  >= MIN_ROT_RAD;
 
         if (!hasTranslation && !hasRotation) {
-            // Không di chuyển đủ → chỉ cập nhật bản đồ, giữ nguyên pose
+            // Không đủ ngưỡng → reset streak, chỉ cập nhật bản đồ
+            this.motionStreak = 0;
             this.frameCount++;
             if (this.frameCount % 3 === 0) {
                 occupancyGrid.updateWithScan(rawPts, this.pose);
             }
+            this.prevBins = currBins;
+            this.prevPts  = rawPts;
+            return;
+        }
+
+        // ── Consecutive Motion Filter ─────────────────────────────────────────
+        // Chỉ tin tưởng chuyển động nếu được phát hiện liên tiếp ≥ N frame.
+        // Loại bỏ spike nhiễu nhất thời (vd: LiDAR bị che 1 frame → dx bất thường)
+        this.motionStreak++;
+        if (this.motionStreak < this.MOTION_STREAK_NEEDED) {
+            // Frame đầu tiên phát hiện: chờ thêm 1 frame nữa xác nhận
             this.prevBins = currBins;
             this.prevPts  = rawPts;
             return;
@@ -3215,6 +3231,7 @@ const SlamEngine = {
         this.trail         = [];
         this.frameCount    = 0;
         this.lastSendMs    = 0;
+        this.motionStreak  = 0;
         occupancyGrid.reset();
         console.log('[SLAM] Đã reset SLAM Engine và Occupancy Grid.');
         appendLidarLog('[SLAM] Đã reset bản đồ SLAM và Occupancy Grid.');
