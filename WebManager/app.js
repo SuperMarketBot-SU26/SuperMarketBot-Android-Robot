@@ -1984,16 +1984,30 @@ function sendDriveCommand() {
         return; // Only support direct WebSocket driving
     }
 
-    const { x, y, s } = getDriveValues();
+    let { x, y, s } = getDriveValues();
+
+    // Lấy giá trị từ 2 thanh Slider: Lái tay (spdSlider) và Xoay hướng (rotSlider)
+    const spdVal = Math.max(1, parseInt(document.getElementById('spdSlider')?.value || '30', 10));
+    const rotVal = parseInt(document.getElementById('rotSlider')?.value || '30', 10);
+
+    // Tính toán khuếch đại lực xoay hướng độc lập với tốc độ đi thẳng
+    // Nếu spdSlider = 30% (đi thẳng chậm) và rotSlider = 70% (xoay góc dũng mãnh):
+    // Lực xoay x được nhân tỷ lệ (70 / 30) = 2.333 giúp bánh xe xoay góc bốc 70% mà không bị khựng!
+    let scaledX = x;
+    if (x !== 0) {
+        const ratio = rotVal / spdVal;
+        scaledX = Math.round(x * ratio);
+        scaledX = Math.max(-250, Math.min(250, scaledX));
+    }
     
     // Only send if values changed to avoid network flooding
-    if (x === lastSentDrive.x && y === lastSentDrive.y && s === lastSentDrive.s) {
+    if (scaledX === lastSentDrive.x && y === lastSentDrive.y && s === lastSentDrive.s) {
         return;
     }
 
-    lastSentDrive = { x, y, s };
+    lastSentDrive = { x: scaledX, y, s };
     try {
-        robotWs.send(JSON.stringify({ t: 'joy', x: x, y: y, s: s }));
+        robotWs.send(JSON.stringify({ t: 'joy', x: scaledX, y: y, s: s }));
     } catch (e) {
         console.error('[RobotWS] Error sending drive command:', e);
     }
@@ -2764,6 +2778,58 @@ document.getElementById('btnToggleSlamGrid')?.addEventListener('click', () => {
     draw();
 });
 
+document.getElementById('btnToggleSlamTheme')?.addEventListener('click', () => {
+    occupancyGrid.theme = (occupancyGrid.theme === 'ros') ? 'rviz' : 'ros';
+    const btn = document.getElementById('btnToggleSlamTheme');
+    if (btn) {
+        if (occupancyGrid.theme === 'rviz') {
+            btn.innerHTML = '<i data-lucide="palette" class="w-4 h-4"></i> Theme: RViz Dark';
+            btn.className = "px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded text-xs font-semibold hover:bg-purple-500 hover:text-white transition-all flex items-center gap-1.5";
+        } else {
+            btn.innerHTML = '<i data-lucide="palette" class="w-4 h-4"></i> Theme: ROS Light';
+            btn.className = "px-2.5 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded text-xs font-semibold hover:bg-cyan-500 hover:text-white transition-all flex items-center gap-1.5";
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    occupancyGrid.dirty = true;
+    draw();
+});
+
+// Toggle Fullscreen Canvas (Phóng to / Thu nhỏ toàn màn hình)
+let isCanvasFullscreen = false;
+document.getElementById('btnResetView')?.addEventListener('click', () => {
+    const centerSection = document.querySelector('section.flex-1');
+    const btn = document.getElementById('btnResetView');
+    if (!centerSection) return;
+
+    isCanvasFullscreen = !isCanvasFullscreen;
+
+    if (isCanvasFullscreen) {
+        centerSection.classList.add('fixed', 'inset-0', 'z-50', 'w-screen', 'h-screen', 'p-2', 'bg-slate-950');
+        if (btn) {
+            btn.innerHTML = '<i data-lucide="minimize" class="w-4 h-4"></i>';
+            btn.title = "Thu nhỏ lại giao diện ban đầu";
+        }
+    } else {
+        centerSection.classList.remove('fixed', 'inset-0', 'z-50', 'w-screen', 'h-screen', 'p-2', 'bg-slate-950');
+        if (btn) {
+            btn.innerHTML = '<i data-lucide="maximize" class="w-4 h-4"></i>';
+            btn.title = "Phóng to toàn màn hình bản đồ";
+        }
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    setTimeout(() => {
+        const mapWrapper = document.getElementById('mapWrapper');
+        if (mapWrapper && graphCanvas && bgCanvas) {
+            graphCanvas.width = mapWrapper.clientWidth;
+            graphCanvas.height = mapWrapper.clientHeight;
+            bgCanvas.width = mapWrapper.clientWidth;
+            bgCanvas.height = mapWrapper.clientHeight;
+            draw();
+        }
+    }, 100);
+});
+
 document.getElementById('btnCaptureSlamMap')?.addEventListener('click', () => {
     const dataUrl = graphCanvas.toDataURL('image/png');
     const img = new Image();
@@ -2796,16 +2862,296 @@ window.setLiveLidarPoints = function(points) {
     window.liveLidarScanPoints = points || [];
     lastLidarScanTimestamp = Date.now();
     updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+
+    // Nếu đã kết nối ROS2 Bridge, tự động đẩy mây điểm LiDAR 360° sang topic /scan cho slam_toolbox!
+    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
+        Ros2BridgeManager.publishLaserScan(window.liveLidarScanPoints);
+    }
+
     draw();
 };
 
-// Auto-check LiDAR timeout
-setInterval(() => {
-    const now = Date.now();
-    if (lastLidarScanTimestamp > 0 && (now - lastLidarScanTimestamp > 3000)) {
-        updateLidarStatusBadge(false);
+// ============================================================================
+// ROS2 BRIDGE MANAGER (Chính Chủ Cách 1: Tích hợp ROS2 Core qua WebSocket Bridge)
+// Kết nối WebManager với ROS2 slam_toolbox / Nav2 / rosbridge_suite
+// ============================================================================
+const Ros2BridgeManager = {
+    ros: null,
+    isConnected: false,
+    url: 'ws://localhost:9090',
+    mapTopic: null,
+    poseTopic: null,
+    cmdVelTopic: null,
+    goalTopic: null,
+
+    init(wsUrl) {
+        if (wsUrl) this.url = wsUrl;
+        if (typeof ROSLIB === 'undefined') {
+            console.warn('[ROS2] Thư viện roslibjs chưa nạp thành công.');
+            return;
+        }
+
+        try {
+            this.ros = new ROSLIB.Ros({ url: this.url });
+        } catch (err) {
+            console.error('[ROS2] Khởi tạo ROSLIB thất bại:', err);
+            return;
+        }
+
+        this.ros.on('connection', () => {
+            this.isConnected = true;
+            console.log('[ROS2] ✅ Đã kết nối ROS2 Core thành công qua WebSocket:', this.url);
+            this.updateBadge(true, 'ROS2 Core: Đã kết nối (ws://' + this.url.split('://')[1] + ')');
+            this.subscribeTopics();
+        });
+
+        this.ros.on('error', (error) => {
+            this.isConnected = false;
+            console.warn('[ROS2] Lỗi kết nối ROS2 WebSocket:', error);
+            this.updateBadge(false, 'ROS2 Core: Lỗi kết nối');
+        });
+
+        this.ros.on('close', () => {
+            this.isConnected = false;
+            console.log('[ROS2] Đã ngắt kết nối ROS2 Core.');
+            this.updateBadge(false, 'ROS2 Core: Chưa kết nối');
+        });
+    },
+
+    updateBadge(connected, message) {
+        const dot  = document.getElementById('ros2StatusDot');
+        const text = document.getElementById('ros2StatusText');
+        const badge = document.getElementById('ros2StatusBadge');
+
+        if (dot && text && badge) {
+            if (connected) {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)] animate-pulse";
+                text.className = "text-sky-300 font-semibold";
+                text.innerText = message || 'ROS2 Core: Đã kết nối';
+                badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-950/80 border border-sky-500/40 text-sm cursor-pointer";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-rose-500";
+                text.className = "text-slate-500";
+                text.innerText = message || 'ROS2 Core: Chưa kết nối';
+                badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm cursor-pointer";
+            }
+        }
+    },
+
+    subscribeTopics() {
+        if (!this.ros || !this.isConnected) return;
+
+        // 1. Subscribe Topic Bản Đồ ROS2 chuẩn (/map từ slam_toolbox)
+        this.mapTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/map',
+            messageType: 'nav_msgs/msg/OccupancyGrid'
+        });
+
+        this.mapTopic.subscribe((gridMsg) => {
+            if (!gridMsg || !gridMsg.info || !gridMsg.data) return;
+            console.log(`[ROS2 /map] Nhận map ROS2 chuẩn: ${gridMsg.info.width}x${gridMsg.info.height}, resolution: ${gridMsg.info.resolution}m`);
+            this.importRos2OccupancyGrid(gridMsg);
+        });
+
+        // 2. Subscribe Topic Vị Trí Robot ROS2 (/robot_pose)
+        this.poseTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/robot_pose',
+            messageType: 'geometry_msgs/msg/PoseStamped'
+        });
+
+        this.poseTopic.subscribe((poseMsg) => {
+            if (!poseMsg || !poseMsg.pose) return;
+            const px = poseMsg.pose.position.x;
+            const py = poseMsg.pose.position.y;
+            const q = poseMsg.pose.orientation;
+            const siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+            const cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+            const heading = Math.atan2(siny_cosp, cosy_cosp);
+
+            SlamEngine.pose = { x: px, y: py, heading: heading };
+            SlamEngine.isInitialized = true;
+            draw();
+        });
+
+        // 3. Khởi tạo Publisher Động Cơ ROS2 (/cmd_vel)
+        this.cmdVelTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/cmd_vel',
+            messageType: 'geometry_msgs/msg/Twist'
+        });
+
+        // 4. Khởi tạo Publisher Đích Đến Tự Hành ROS2 (/goal_pose)
+        this.goalTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/goal_pose',
+            messageType: 'geometry_msgs/msg/PoseStamped'
+        });
+
+        // 5. Khởi tạo Publisher Mây Điểm LiDAR 360° (/scan) cho ROS2 slam_toolbox
+        this.scanTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/scan',
+            messageType: 'sensor_msgs/msg/LaserScan'
+        });
+
+        // 6. Khởi tạo Publisher Cây Tọa Độ TF (/tf) cho ROS2 slam_toolbox
+        this.tfTopic = new ROSLIB.Topic({
+            ros: this.ros,
+            name: '/tf',
+            messageType: 'tf2_msgs/msg/TFMessage'
+        });
+    },
+
+    // Phát Cây Tọa Độ TF odom -> base_link -> laser chuẩn ROS2
+    publishTf() {
+        if (!this.tfTopic || !this.isConnected) return;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const pose = SlamEngine.pose || { x: 0, y: 0, heading: 0 };
+
+        const tfMsg = new ROSLIB.Message({
+            transforms: [
+                {
+                    header: { frame_id: 'odom', stamp: { sec: nowSec, nanosec: 0 } },
+                    child_frame_id: 'base_link',
+                    transform: {
+                        translation: { x: pose.x, y: pose.y, z: 0 },
+                        rotation: { x: 0, y: 0, z: Math.sin(pose.heading / 2), w: Math.cos(pose.heading / 2) }
+                    }
+                },
+                {
+                    header: { frame_id: 'base_link', stamp: { sec: nowSec, nanosec: 0 } },
+                    child_frame_id: 'laser',
+                    transform: {
+                        translation: { x: 0, y: 0, z: 0 },
+                        rotation: { x: 0, y: 0, z: 0, w: 1 }
+                    }
+                }
+            ]
+        });
+
+        this.tfTopic.publish(tfMsg);
+    },
+
+    // Phát mây điểm LiDAR 360° từ ESP32 WebSocket tới Topic /scan của ROS2 slam_toolbox
+    publishLaserScan(rawPts) {
+        if (!this.scanTopic || !this.isConnected || !rawPts || rawPts.length === 0) return;
+
+        // Phát cây tọa độ TF trước khi đẩy mây điểm
+        this.publishTf();
+
+        const numSamples = 360;
+        const ranges = new Float32Array(numSamples).fill(0.0);
+
+        for (const pt of rawPts) {
+            const r = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
+            let angle = Math.atan2(pt.y, pt.x);
+            if (angle < 0) angle += 2 * Math.PI;
+
+            const idx = Math.floor((angle / (2 * Math.PI)) * numSamples) % numSamples;
+            ranges[idx] = r;
+        }
+
+        const scanMsg = new ROSLIB.Message({
+            header: {
+                frame_id: 'laser',
+                stamp: { sec: Math.floor(Date.now() / 1000), nanosec: 0 }
+            },
+            angle_min: 0.0,
+            angle_max: 2 * Math.PI,
+            angle_increment: (2 * Math.PI) / numSamples,
+            time_increment: 0.0,
+            scan_time: 0.1,
+            range_min: 0.1,
+            range_max: 8.0,
+            ranges: Array.from(ranges)
+        });
+
+        this.scanTopic.publish(scanMsg);
+    },
+
+    // Chuyển bản đồ ROS2 OccupancyGrid sang OccupancyGrid Canvas HD
+    importRos2OccupancyGrid(gridMsg) {
+        const W = gridMsg.info.width;
+        const H = gridMsg.info.height;
+        const res = gridMsg.info.resolution;
+        const rawData = gridMsg.data;
+
+        occupancyGrid.COLS = W;
+        occupancyGrid.ROWS = H;
+        occupancyGrid.RESOLUTION = res;
+        occupancyGrid.ORIGIN_COL = Math.round(W / 2);
+        occupancyGrid.ORIGIN_ROW = Math.round(H / 2);
+
+        if (!occupancyGrid.data || occupancyGrid.data.length !== W * H) {
+            occupancyGrid.data = new Float32Array(W * H);
+            occupancyGrid.maskData = new Uint8Array(W * H).fill(255);
+            occupancyGrid.offscreen.width = W * occupancyGrid.SUPER_SCALE;
+            occupancyGrid.offscreen.height = H * occupancyGrid.SUPER_SCALE;
+        }
+
+        for (let i = 0; i < rawData.length; i++) {
+            const v = rawData[i];
+            if (v === 100) {
+                occupancyGrid.data[i] = 5.0;  // Solid wall
+            } else if (v === 0) {
+                occupancyGrid.data[i] = -2.0; // Free space
+            } else {
+                occupancyGrid.data[i] = 0.0;  // Unknown
+            }
+        }
+        occupancyGrid.dirty = true;
+        draw();
+    },
+
+    // Gửi lệnh điều khiển v, w về ROS2 (/cmd_vel)
+    sendCmdVel(linearX, angularZ) {
+        if (!this.cmdVelTopic || !this.isConnected) return;
+        const twist = new ROSLIB.Message({
+            linear: { x: linearX, y: 0, z: 0 },
+            angular: { x: 0, y: 0, z: angularZ }
+        });
+        this.cmdVelTopic.publish(twist);
+    },
+
+    // Gửi điểm đích tự hành về ROS2 Nav2 (/goal_pose)
+    sendGoalPose(x, y, heading = 0) {
+        if (!this.goalTopic || !this.isConnected) return;
+        const poseMsg = new ROSLIB.Message({
+            header: {
+                frame_id: 'map',
+                stamp: { sec: Math.floor(Date.now() / 1000), nanosec: 0 }
+            },
+            pose: {
+                position: { x: x, y: y, z: 0 },
+                orientation: {
+                    x: 0, y: 0,
+                    z: Math.sin(heading / 2),
+                    w: Math.cos(heading / 2)
+                }
+            }
+        });
+        this.goalTopic.publish(poseMsg);
+        console.log(`[ROS2 Nav2] Đã phát lệnh tự hành /goal_pose tới điểm: (${x.toFixed(2)}m, ${y.toFixed(2)}m)`);
     }
-}, 1000);
+};
+
+// Tự động khởi tạo kết nối ROS2 khi nạp trang (Try default ws://localhost:9090)
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        Ros2BridgeManager.init('ws://localhost:9090');
+    }, 1500);
+});
+
+// Click vào Badge trạng thái ROS2 để nhập IP custom
+document.getElementById('ros2StatusBadge')?.addEventListener('click', () => {
+    const currentUrl = Ros2BridgeManager.url || 'ws://localhost:9090';
+    const newUrl = prompt('Nhập địa chỉ ROS2 WebSocket Bridge Server:', currentUrl);
+    if (newUrl && newUrl.trim()) {
+        Ros2BridgeManager.init(newUrl.trim());
+    }
+});
 
 // ============================================================================
 // SLAM ENGINE — 2D Lidar SLAM (Scan-to-Scan Matching + Occupancy Grid)
@@ -2816,38 +3162,45 @@ setInterval(() => {
 // ---------- Occupancy Grid Map ----------
 const occupancyGrid = {
     // Cấu hình lưới
-    RESOLUTION: 0.05,     // 5cm mỗi ô
+    RESOLUTION: 0.05,     // 5cm mỗi ô chuẩn ROS/ROS2
     COLS: 500,            // 500 ô = 25m chiều ngang
     ROWS: 500,            // 500 ô = 25m chiều dọc
     ORIGIN_COL: 250,      // Gốc tọa độ (robot bắt đầu ở giữa grid)
     ORIGIN_ROW: 250,
 
-    // Log-Odds parameters (chuẩn SLAM)
-    L_OCC:  0.9,          // Tăng khi ô bị tia LiDAR hit (vật cản)
-    L_FREE: -0.4,         // Giảm khi tia LiDAR đi qua (tự do)
+    // Log-Odds parameters (Khóa Bộ Nhớ Bản Đồ Bền Vững Multi-Room)
+    L_OCC:  1.8,          // Tăng mạnh khi ô bị tia LiDAR hit
+    L_FREE: -0.38,        // Giảm vừa đủ khi tia đi qua (tự do)
     L_MIN:  -5.0,
-    L_MAX:   5.0,
-    L_THRESH_OCC:  0.5,   // Ngưỡng hiển thị là vật cản
+    L_MAX:   8.0,         // Tăng giới hạn tích lũy lên 8.0 để tường đã quét được lưu bền vững vĩnh viễn
+    L_THRESH_OCC:  0.4,   // Ngưỡng hiển thị tường nhạy
     L_THRESH_FREE: -0.5,  // Ngưỡng hiển thị là tự do
 
     // Dữ liệu lưới (Log-Odds)
     data: null,
 
-    // Offscreen canvas để render nhanh (không vẽ lại toàn bộ mỗi frame)
+    // Mảng Mask Vùng Cấm Keep-Out (0 = keepout, 255 = no keepout)
+    maskData: null,
+
+    // Chế độ theme hiển thị: 'ros' (Classic Light) hoặc 'rviz' (Dark Neon)
+    theme: 'ros',
+
+    // Offscreen canvas Ultra-HD Supersampling (2000×2000 px = Gấp 4 lần độ nét)
     offscreen: null,
     offCtx: null,
-    dirty: false,         // Đánh dấu cần render lại
+    dirty: false,
+    SUPER_SCALE: 4, // 1 ô grid (5cm) = 4×4 pixel HD trên canvas offscreen
 
     init() {
         this.data = new Float32Array(this.COLS * this.ROWS).fill(0.0);
+        this.maskData = new Uint8Array(this.COLS * this.ROWS).fill(255);
         this.offscreen = document.createElement('canvas');
-        this.offscreen.width  = this.COLS;
-        this.offscreen.height = this.ROWS;
+        this.offscreen.width  = this.COLS * this.SUPER_SCALE; // 2000px HD
+        this.offscreen.height = this.ROWS * this.SUPER_SCALE; // 2000px HD
         this.offCtx = this.offscreen.getContext('2d');
-        // Nền ban đầu: xám trung tính (unknown)
-        this.offCtx.fillStyle = 'rgba(60, 65, 80, 0.85)';
-        this.offCtx.fillRect(0, 0, this.COLS, this.ROWS);
-        console.log('[OccGrid] Khởi tạo lưới 500×500 ô (25m×25m, độ phân giải 5cm/ô)');
+        this.dirty = true;
+        this.render();
+        console.log('[OccGrid] Khởi tạo lưới 500×500 ô kèm Bộ Render 4X Ultra-HD Supersampling (2000×2000 px)');
     },
 
     // Chuyển tọa độ thế giới (m) sang ô lưới
@@ -2857,13 +3210,11 @@ const occupancyGrid = {
         return { col, row };
     },
 
-    // Lấy giá trị Log-Odds tại ô (col, row)
     get(col, row) {
         if (col < 0 || col >= this.COLS || row < 0 || row >= this.ROWS) return 0;
         return this.data[row * this.COLS + col];
     },
 
-    // Cập nhật Log-Odds tại ô (col, row) với delta, kẹp trong [L_MIN, L_MAX]
     update(col, row, delta) {
         if (col < 0 || col >= this.COLS || row < 0 || row >= this.ROWS) return;
         const idx = row * this.COLS + col;
@@ -2871,8 +3222,7 @@ const occupancyGrid = {
         this.dirty = true;
     },
 
-    // Bresenham Line Algorithm: vẽ tia từ robot đến điểm hit
-    // Các ô dọc đường: L_FREE; ô cuối (hit): L_OCC
+    // Bresenham Raycasting (Khóa Bộ Nhớ Bản Đồ Vĩnh Viễn: Dừng tia khi đụng tường cũ, không làm mất Khu vực A khi sang Khu vực B)
     raycast(robCol, robRow, hitCol, hitRow, isHit) {
         let x0 = robCol, y0 = robRow;
         const x1 = hitCol, y1 = hitRow;
@@ -2881,9 +3231,22 @@ const occupancyGrid = {
         let err = dx - dy;
 
         let steps = 0;
-        while (steps++ < 600) { // Giới hạn tối đa 600 bước (~30m) để tránh loop vô tận
+        while (steps++ < 600) {
             const isEnd = (x0 === x1 && y0 === y1);
-            const delta = (isEnd && isHit) ? this.L_OCC : this.L_FREE;
+
+            // Nếu tia đang bay ngang qua một ô ĐÃ LÀ TƯỜNG CẮNG (L_Odds >= 1.5) mà chưa tới điểm cuối -> DỪNG TIA NGAY!
+            // Giúp bảo vệ 100% bản đồ khu vực A đã đi qua, không bị các tia bay từ khu vực B xóa nhầm!
+            if (!isEnd && steps > 1 && this.get(x0, y0) >= 1.5) {
+                break;
+            }
+
+            // Nếu ô đã là tường chắc, việc trừ L_FREE chỉ giảm rất nhẹ (-0.05) chống nhiễu
+            const currentVal = this.get(x0, y0);
+            let delta = (isEnd && isHit) ? this.L_OCC : this.L_FREE;
+            if (!isEnd && currentVal >= 2.0) {
+                delta = -0.05; // Bảo vệ tường chắc không bao giờ bị xóa nhầm
+            }
+
             this.update(x0, y0, delta);
             if (isEnd) break;
             const e2 = 2 * err;
@@ -2892,58 +3255,101 @@ const occupancyGrid = {
         }
     },
 
-    // Cập nhật grid với 1 scan đã hiệu chỉnh pose
+    // Cập nhật grid với 1 scan (Lọc khoảng cách tin cậy 4.0m chuẩn ROS2)
     updateWithScan(scanPtsXY, pose) {
         const robGrid = this.worldToGrid(pose.x, pose.y);
-        const MAX_DIST_M = 6.0; // Bỏ qua điểm xa hơn 6m (nhiễu LiDAR X3)
+        const MAX_VALID_HIT_M = 4.0; // Tường thực tế tin cậy trong 4.0m (Khử hoàn toàn vệt quạt bắn xa)
 
         for (const pt of scanPtsXY) {
-            // pt.x, pt.y là toạ độ trong frame robot → chuyển sang frame thế giới
+            const distM = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
+            if (distM < 0.12 || distM > MAX_VALID_HIT_M) continue; // Bỏ nhiễu cực gần và cực xa
+
             const cos_h = Math.cos(pose.heading);
             const sin_h = Math.sin(pose.heading);
             const wx = pose.x + pt.x * cos_h - pt.y * sin_h;
             const wy = pose.y + pt.x * sin_h + pt.y * cos_h;
 
-            const distM = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
-            if (distM < 0.05 || distM > MAX_DIST_M) continue; // Loại nhiễu gần + xa
-
             const hitGrid = this.worldToGrid(wx, wy);
-            const isHit = (distM < MAX_DIST_M * 0.98); // Tia đến sát giới hạn → có thể bị cut
+            const isHit = (distM <= MAX_VALID_HIT_M * 0.95);
 
             this.raycast(robGrid.col, robGrid.row, hitGrid.col, hitGrid.row, isHit);
         }
     },
 
-    // Render offscreen canvas từ dữ liệu Log-Odds (chỉ render khi dirty)
+    // Render offscreen canvas 2000×2000 HD Supersample (Khử mốc rác lơ lửng, tường đen nét căng chuẩn ROS2)
     render() {
         if (!this.dirty) return;
         this.dirty = false;
 
-        const imgData = this.offCtx.createImageData(this.COLS, this.ROWS);
+        const superW = this.COLS * this.SUPER_SCALE; // 2000
+        const superH = this.ROWS * this.SUPER_SCALE; // 2000
+        const imgData = this.offCtx.createImageData(superW, superH);
         const pixels  = imgData.data;
+        const S = this.SUPER_SCALE;
+        const W = this.COLS, H = this.ROWS;
 
-        for (let i = 0; i < this.data.length; i++) {
-            const lo = this.data[i];
-            const base = i * 4;
-            if (lo > this.L_THRESH_OCC) {
-                // Vật cản: trắng sáng
-                const intensity = Math.min(255, Math.round(200 + (lo / this.L_MAX) * 55));
-                pixels[base]     = intensity;
-                pixels[base + 1] = intensity;
-                pixels[base + 2] = intensity;
-                pixels[base + 3] = 220;
-            } else if (lo < this.L_THRESH_FREE) {
-                // Vùng tự do: xanh đen
-                pixels[base]     = 15;
-                pixels[base + 1] = 25;
-                pixels[base + 2] = 40;
-                pixels[base + 3] = 200;
-            } else {
-                // Chưa biết: xám mờ
-                pixels[base]     = 55;
-                pixels[base + 1] = 60;
-                pixels[base + 2] = 75;
-                pixels[base + 3] = 120;
+        for (let r = 0; r < H; r++) {
+            for (let c = 0; c < W; c++) {
+                const i = r * W + c;
+                const lo = this.data[i];
+                const maskVal = this.maskData ? this.maskData[i] : 255;
+
+                // Tường đen sắc nét (Yêu cầu lo >= 1.5 và có ít nhất 1 ô hàng xóm lân cận)
+                let isSolidWall = (lo >= 1.5);
+                if (isSolidWall) {
+                    let n = 0;
+                    if (c > 0 && this.data[i - 1] > 0.4) n++;
+                    if (c < W - 1 && this.data[i + 1] > 0.4) n++;
+                    if (r > 0 && this.data[i - W] > 0.4) n++;
+                    if (r < H - 1 && this.data[i + W] > 0.4) n++;
+                    if (n === 0 && lo < 2.5) isSolidWall = false; // Bỏ mốc đơn lẻ lơ lửng ở giữa phòng
+                }
+
+                let red = 98, green = 117, blue = 133, alpha = 255; // Unknown Slate Gray #627585
+
+                if (this.theme === 'rviz') {
+                    if (isSolidWall) {
+                        red = 255; green = 255; blue = 255; alpha = 255;
+                    } else if (lo < this.L_THRESH_FREE) {
+                        red = 17; green = 24; blue = 39; alpha = 240;
+                    } else {
+                        red = 30; green = 41; blue = 59; alpha = 180;
+                    }
+                } else {
+                    // ROS / RViz Classic Light Mode (Giống 100% Ảnh ROS Tham Chiếu)
+                    if (isSolidWall) {
+                        red = 0; green = 0; blue = 0; alpha = 255;       // Tường ĐEN tuyền (#000000)
+                    } else if (lo < this.L_THRESH_FREE) {
+                        red = 222; green = 224; blue = 227; alpha = 255; // Free space Xám nhạt dịu mắt (#DEE0E3)
+                    } else {
+                        red = 98; green = 117; blue = 133; alpha = 255;  // Unknown Slate Gray (#627585)
+                    }
+                }
+
+                // Phủ lớp Vùng Cấm Keep-Out Red Overlay
+                if (maskVal === 0) {
+                    const a = 0.55;
+                    red   = Math.round(red * (1 - a) + 239 * a);
+                    green = Math.round(green * (1 - a) + 68 * a);
+                    blue  = Math.round(blue * (1 - a) + 68 * a);
+                }
+
+                // Ghi 4×4 subpixel HD cho mỗi ô grid
+                const startY = r * S;
+                const startX = c * S;
+
+                for (let dy = 0; dy < S; dy++) {
+                    const py = startY + dy;
+                    const rowOffset = py * superW;
+                    for (let dx = 0; dx < S; dx++) {
+                        const px = startX + dx;
+                        const base = (rowOffset + px) * 4;
+                        pixels[base]     = red;
+                        pixels[base + 1] = green;
+                        pixels[base + 2] = blue;
+                        pixels[base + 3] = alpha;
+                    }
+                }
             }
         }
         this.offCtx.putImageData(imgData, 0, 0);
@@ -2951,10 +3357,11 @@ const occupancyGrid = {
 
     // Reset toàn bộ bản đồ
     reset() {
-        this.data.fill(0.0);
+        if (this.data) this.data.fill(0.0);
+        if (this.maskData) this.maskData.fill(255);
         this.dirty = true;
         this.render();
-        console.log('[OccGrid] Đã reset bản đồ Occupancy Grid.');
+        console.log('[OccGrid] Đã reset bản đồ Occupancy Grid và Keepout Mask.');
     }
 };
 
@@ -3036,36 +3443,43 @@ const SlamEngine = {
         return (bestShift * Math.PI) / 180; // → radian
     },
 
-    // Translation Matching: Tìm (dx, dy) tối ưu bằng grid search nhỏ
-    // Dùng sau khi đã có góc xoay dTheta từ Angular Correlation
-    findBestTranslation(prevPts, currPts, dTheta) {
-        // Xoay currPts về frame của prevPts
-        const cos_t = Math.cos(-dTheta);
-        const sin_t = Math.sin(-dTheta);
-        const rotated = currPts.map(pt => ({
-            x: pt.x * cos_t - pt.y * sin_t,
-            y: pt.x * sin_t + pt.y * cos_t
-        }));
+    // Translation Matching: Scan-to-Map Lock Engine (Tích hợp Motion Prior chống nhảy ziczac)
+    findBestTranslation(currPts, dTheta, currentPose) {
+        const targetHeading = currentPose.heading + dTheta;
+        const cos_h = Math.cos(targetHeading);
+        const sin_h = Math.sin(targetHeading);
 
-        // Grid search ±0.3m, bước 5cm
+        // Mẫu 1/2 số điểm để tính toán cực nhanh trong 1ms
+        const samplePts = currPts.filter((_, i) => i % 2 === 0);
+
         let bestScore = -Infinity;
         let bestDx = 0, bestDy = 0;
-        const STEP = 0.05, RANGE = 0.30;
+        const STEP = 0.02; // Bước tìm kiếm 2cm siêu mịn
+        const RANGE = 0.20; // Phạm vi tìm kiếm ±20cm
 
         for (let dx = -RANGE; dx <= RANGE; dx += STEP) {
             for (let dy = -RANGE; dy <= RANGE; dy += STEP) {
+                const candX = currentPose.x + dx;
+                const candY = currentPose.y + dy;
                 let score = 0;
-                for (const pt of rotated) {
-                    const tx = pt.x + dx;
-                    const ty = pt.y + dy;
-                    // Tìm điểm gần nhất trong prevPts (nearest-neighbor)
-                    let minDist = Infinity;
-                    for (const pp of prevPts) {
-                        const d = (pp.x - tx) ** 2 + (pp.y - ty) ** 2;
-                        if (d < minDist) minDist = d;
+
+                // 1. Scan-to-Map Matching Score
+                for (const pt of samplePts) {
+                    const wx = candX + pt.x * cos_h - pt.y * sin_h;
+                    const wy = candY + pt.x * sin_h + pt.y * cos_h;
+
+                    const grid = occupancyGrid.worldToGrid(wx, wy);
+                    const val = occupancyGrid.get(grid.col, grid.row);
+
+                    if (val >= occupancyGrid.L_THRESH_OCC) {
+                        score += 10; // Đâm trúng tường cũ trong map -> KHÓA KHỚP CỰC MẠNH (+10)
                     }
-                    if (minDist < 0.15 * 0.15) score += 1; // Trong 15cm = match
                 }
+
+                // 2. Motion Prior Penalty (Tốc độ chuyển động hợp lý, phạt nặng các bước nhảy vọt chéo vô lý)
+                const distSq = dx * dx + dy * dy;
+                score -= distSq * 90.0; // Phạt nặng nếu nhảy vị trí bất thường không có tường xác nhận
+
                 if (score > bestScore) {
                     bestScore = score;
                     bestDx = dx;
@@ -3089,53 +3503,67 @@ const SlamEngine = {
             this.isInitialized   = true;
             this.trail.push({ x: this.pose.x, y: this.pose.y });
             occupancyGrid.init();
-            console.log('[SLAM] Khởi tạo SLAM Engine. Pose gốc: (0, 0)');
+            console.log('[SLAM] Khởi tạo SLAM Engine (Scan-to-Map Lock ROS2). Pose gốc: (0, 0)');
             return;
         }
 
         // ── Bước 0: Phát hiện scan tĩnh (Static Scan Detection) ─────────────
-        // Tính mức độ tương đồng giữa scan hiện tại và scan trước.
-        // Nếu quá giống nhau → robot đứng yên → BỎ QUA hoàn toàn, không cập nhật pose.
         let matchCount = 0, totalCount = 0;
         for (let i = 0; i < currBins.length; i++) {
             if (currBins[i] > 0 && this.prevBins[i] > 0) {
                 totalCount++;
-                if (Math.abs(currBins[i] - this.prevBins[i]) < 0.10) matchCount++; // Sai số <10cm
+                if (Math.abs(currBins[i] - this.prevBins[i]) < 0.10) matchCount++;
             }
         }
         const similarity = totalCount > 0 ? matchCount / totalCount : 0;
 
-        // Nếu scan giống nhau >93% → robot đứng yên hoàn toàn
-        // Chỉ cập nhật occupancy grid (bản đồ), KHÔNG thay đổi pose, reset motionStreak
         if (similarity > 0.93) {
-            this.motionStreak = 0; // Reset chuỗi chuyển động
+            this.motionStreak = 0;
             this.frameCount++;
             if (this.frameCount % 3 === 0) {
                 occupancyGrid.updateWithScan(rawPts, this.pose);
             }
             this.prevBins = currBins;
             this.prevPts  = rawPts;
-            return; // ← THOÁT SỚM: lock pose khi đứng yên
+            return;
         }
 
-        // ── Bước 1: Angular Correlation Matching ────────────────────────────
-        const imuDelta        = imuHeadingRad - this.pose.heading;
-        const imuDeltaClamped = Math.max(-0.4, Math.min(0.4, imuDelta));
+        // ── Bước 1: Rotation Matching (Tính góc xoay + Khóa kẹp chống xoáy góc mạng nhện) ──
+        const rawDTheta = this.findBestRotation(this.prevBins, currBins, 18);
 
-        const dTheta = this.findBestRotation(this.prevBins, currBins, 18);
-        // Blend: 75% scan matching + 25% IMU
-        const finalDTheta = dTheta * 0.75 + imuDeltaClamped * 0.25;
+        let finalDTheta = 0;
+        const currImu = (typeof imuHeadingRad === 'number' && !isNaN(imuHeadingRad) && imuHeadingRad !== 0) ? imuHeadingRad : null;
 
-        // ── Bước 2: Translation Matching ────────────────────────────────────
-        let dx = 0, dy = 0;
-        const prevSample = this.prevPts.filter((_, i) => i % 3 === 0);
-        const currSample = rawPts.filter((_, i) => i % 3 === 0);
+        if (currImu !== null && this.prevImuHeading !== null && this.prevImuHeading !== undefined) {
+            let imuDelta = currImu - this.prevImuHeading;
+            while (imuDelta > Math.PI)  imuDelta -= 2 * Math.PI;
+            while (imuDelta < -Math.PI) imuDelta += 2 * Math.PI;
 
-        if (prevSample.length > 10 && currSample.length > 10) {
-            const t = this.findBestTranslation(prevSample, currSample, finalDTheta);
-            dx = t.dx;
-            dy = t.dy;
+            // Kẹp gia tốc góc quay vật lý từ IMU (tối đa ±12°/frame)
+            imuDelta = Math.max(-0.20, Math.min(0.20, imuDelta));
+            finalDTheta = imuDelta;
+        } else {
+            // Không có IMU -> Kẹp dTheta cực nhỏ (tối đa ±4°/frame = 0.07 rad) chống giật xoáy 18° mạng nhện!
+            if (Math.abs(rawDTheta) <= 0.10) {
+                finalDTheta = rawDTheta;
+            } else {
+                finalDTheta = 0; // Bỏ qua nhảy góc vô lý
+            }
         }
+
+        if (currImu !== null) {
+            this.prevImuHeading = currImu;
+        }
+
+        // Ngưỡng chết góc xoay chống trôi nhẹ (Deadband 2.5° = 0.044 rad)
+        if (Math.abs(finalDTheta) < 0.044) {
+            finalDTheta = 0;
+        }
+
+        // ── Bước 2: Scan-to-Map Translation Matching (Khóa vị trí với bản đồ) ──
+        const t = this.findBestTranslation(rawPts, finalDTheta, this.pose);
+        const dx = t.dx;
+        const dy = t.dy;
 
         // ── Bước 3: Motion Gate — ngưỡng chết chống drift ──────────────────
         // YDLIDAR X3 noise: ~2-3cm, IMU gyro drift: ~0.5°/frame
@@ -3227,6 +3655,7 @@ const SlamEngine = {
         this.pose          = { x: 0, y: 0, heading: 0 };
         this.prevBins      = null;
         this.prevPts       = null;
+        this.prevImuHeading = null;
         this.isInitialized = false;
         this.trail         = [];
         this.frameCount    = 0;
@@ -3283,76 +3712,749 @@ if (_origDraw) {
         const ctx = canvas.getContext('2d');
 
         ctx.save();
-        // Dùng đúng transform giống draw gốc (translate rồi scale)
         ctx.translate(offsetX, offsetY);
         ctx.scale(scale, scale);
 
-        // Vị trí robot pixel (ưu tiên SLAM pose nếu robot chưa có từ API)
-        const robPx = (robotLiveX !== null)
+        // ── Tính Anchor: vị trí robot trên canvas (pixel) ─────────────────
+        // Robot từ API (m → px). Nếu chưa có API, dùng gốc canvas center.
+        const robCanvasX = (robotLiveX !== null)
             ? robotLiveX / PIXEL_TO_METER
-            : SlamEngine.pose.x / PIXEL_TO_METER;
-        const robPy = (robotLiveY !== null)
+            : (canvas.width  / 2 / scale - offsetX / scale);
+        const robCanvasY = (robotLiveY !== null)
             ? robotLiveY / PIXEL_TO_METER
-            : SlamEngine.pose.y / PIXEL_TO_METER;
+            : (canvas.height / 2 / scale - offsetY / scale);
 
-        // ── Lớp 1: Occupancy Grid Map ───────────────────────────────────
+        // ── Tỉ lệ scale: 1 ô lưới SLAM (5cm) = bao nhiêu pixel canvas ───
+        // PIXEL_TO_METER = 0.006 (1px = 0.6cm), RESOLUTION = 0.05 (1cell = 5cm)
+        // → 1 cell = 5cm / 0.6cm = 8.33 px trên canvas
+        const cellPx = occupancyGrid.RESOLUTION / PIXEL_TO_METER; // ≈ 8.33
+
+        // ── Gốc toạ độ SLAM trên canvas ──────────────────────────────────
+        // Robot hiện tại ở (pose.x, pose.y) trong SLAM space.
+        // → Gốc SLAM (0,0) ở vị trí: robot_canvas - pose_canvas_offset
+        const slamOriginX = robCanvasX - SlamEngine.pose.x / PIXEL_TO_METER;
+        const slamOriginY = robCanvasY + SlamEngine.pose.y / PIXEL_TO_METER;
+
+        // ── Lớp 1: Occupancy Grid Map ─────────────────────────────────────
         if (showSlamGridLayer && occupancyGrid.offscreen && SlamEngine.isInitialized) {
-            occupancyGrid.render(); // Chỉ render khi dirty
+            occupancyGrid.render(); // Chỉ render lại khi dirty
 
-            // Vị trí vẽ grid: robot ở ORIGIN_COL, ORIGIN_ROW của grid
-            const gx = robPx - occupancyGrid.ORIGIN_COL;
-            const gy = robPy - occupancyGrid.ORIGIN_ROW;
-            ctx.globalAlpha = 0.65;
-            ctx.drawImage(occupancyGrid.offscreen, gx, gy, occupancyGrid.COLS, occupancyGrid.ROWS);
+            const gx = slamOriginX - occupancyGrid.ORIGIN_COL * cellPx;
+            const gy = slamOriginY - occupancyGrid.ORIGIN_ROW * cellPx;
+
+            ctx.save();
+            // Bật Bilinear Subpixel Smoothing mịn màng như RViz / ROS2
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.globalAlpha = 1.0;
+            ctx.drawImage(
+                occupancyGrid.offscreen,
+                gx, gy,
+                occupancyGrid.COLS * cellPx,
+                occupancyGrid.ROWS * cellPx
+            );
+            ctx.restore();
+
+            // ── Lớp 1.2: Lưới Thước Đo 1 Mét x 1 Mét Chuẩn RViz ────────────
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.lineWidth   = 1 / scale;
+            const meterPx = 1.0 / PIXEL_TO_METER;
+
+            // Kẻ dọc & ngang mỗi 1m quanh gốc SLAM
+            for (let x = -15; x <= 15; x++) {
+                const px = slamOriginX + x * meterPx;
+                ctx.beginPath();
+                ctx.moveTo(px, slamOriginY - 15 * meterPx);
+                ctx.lineTo(px, slamOriginY + 15 * meterPx);
+                ctx.stroke();
+            }
+            for (let y = -15; y <= 15; y++) {
+                const py = slamOriginY - y * meterPx;
+                ctx.beginPath();
+                ctx.moveTo(slamOriginX - 15 * meterPx, py);
+                ctx.lineTo(slamOriginX + 15 * meterPx, py);
+                ctx.stroke();
+            }
+            ctx.restore();
         }
 
-        // ── Lớp 2: SLAM Trail (vệt hành trình xanh lá) ────────────────
-        if (SlamEngine.trail.length > 1) {
+        // ── Lớp 1.5: Robot TF Coordinate Axes & Directional FOV Frustum (Chuẩn RViz) ──
+        if (SlamEngine.isInitialized) {
+            ctx.save();
+            ctx.translate(robCanvasX, robCanvasY);
+            ctx.rotate(SlamEngine.pose.heading);
+
+            // Nón quét LiDAR 360°
+            const fovGrad = ctx.createRadialGradient(0, 0, 4 / scale, 0, 0, 110 / scale);
+            fovGrad.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
+            fovGrad.addColorStop(0.6, 'rgba(16, 185, 129, 0.10)');
+            fovGrad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
             ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, 110 / scale, -Math.PI * 0.4, Math.PI * 0.4);
+            ctx.closePath();
+            ctx.fillStyle = fovGrad;
+            ctx.fill();
+
+            // Trục tọa độ TF Robot (Red = X Forward, Green = Y Left chuẩn ROS)
+            const axisLen = 22 / scale;
+            // Trục X (Đỏ)
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(axisLen, 0);
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5 / scale; ctx.stroke();
+            // Trục Y (Xanh lá)
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -axisLen);
+            ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2.5 / scale; ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // ── Lớp 2: SLAM Trail (Vệt hành trình Xanh lá Neon) ───────────────────
+        if (SlamEngine.trail.length > 1) {
+            ctx.save();
+            ctx.beginPath();
+            const t0 = SlamEngine.trail[0];
             ctx.moveTo(
-                SlamEngine.trail[0].x / PIXEL_TO_METER,
-                SlamEngine.trail[0].y / PIXEL_TO_METER
+                slamOriginX + t0.x / PIXEL_TO_METER,
+                slamOriginY - t0.y / PIXEL_TO_METER
             );
             for (let i = 1; i < SlamEngine.trail.length; i++) {
+                const tp = SlamEngine.trail[i];
                 ctx.lineTo(
-                    SlamEngine.trail[i].x / PIXEL_TO_METER,
-                    SlamEngine.trail[i].y / PIXEL_TO_METER
+                    slamOriginX + tp.x / PIXEL_TO_METER,
+                    slamOriginY - tp.y / PIXEL_TO_METER
                 );
             }
-            ctx.strokeStyle = 'rgba(16, 220, 100, 0.85)';
-            ctx.lineWidth   = 2 / scale;
+            ctx.shadowColor = '#10dc64';
+            ctx.shadowBlur  = 8 / scale;
+            ctx.strokeStyle = '#10dc64';
+            ctx.lineWidth   = 2.5 / scale;
             ctx.lineCap     = 'round';
             ctx.lineJoin    = 'round';
             ctx.stroke();
+            ctx.restore();
 
-            // Chấm SLAM position hiện tại
-            const last = SlamEngine.trail[SlamEngine.trail.length - 1];
-            const lx   = last.x / PIXEL_TO_METER;
-            const ly   = last.y / PIXEL_TO_METER;
+            // Chấm tròn tại vị trí SLAM hiện tại (= đúng vị trí robot trên canvas)
+            ctx.save();
+            ctx.shadowColor = '#10dc64';
+            ctx.shadowBlur  = 12 / scale;
             ctx.beginPath();
-            ctx.arc(lx, ly, 5 / scale, 0, Math.PI * 2);
+            ctx.arc(robCanvasX, robCanvasY, 6.5 / scale, 0, Math.PI * 2);
             ctx.fillStyle = '#10dc64';
             ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth   = 2 / scale;
+            ctx.stroke();
+            ctx.restore();
 
-            // Label tọa độ SLAM
+            // Label tọa độ SLAM ngay cạnh robot
             ctx.fillStyle = '#10dc64';
-            ctx.font      = `bold ${9 / scale}px monospace`;
+            ctx.font      = `bold ${10 / scale}px monospace`;
             ctx.textAlign = 'left';
             ctx.fillText(
                 `SLAM (${SlamEngine.pose.x.toFixed(2)}m, ${SlamEngine.pose.y.toFixed(2)}m)`,
-                lx + 8 / scale,
-                ly - 8 / scale
+                robCanvasX + 12 / scale,
+                robCanvasY - 12 / scale
             );
+        }
+
+        // ── Lớp 3: Shape & Measure Ghost Previews ────────────────────────
+        if (slamPreviewing && (slamTool === 'measure' || slamShape === 'line' || slamShape === 'rect')) {
+            const cellPx = occupancyGrid.RESOLUTION / PIXEL_TO_METER; // ~8.33
+            const gx = slamOriginX - occupancyGrid.ORIGIN_COL * cellPx;
+            const gy = slamOriginY - occupancyGrid.ORIGIN_ROW * cellPx;
+
+            const px1 = gx + slamStartX * cellPx + cellPx / 2;
+            const py1 = gy + slamStartY * cellPx + cellPx / 2;
+            const px2 = gx + (slamLastPreviewX ?? slamStartX) * cellPx + cellPx / 2;
+            const py2 = gy + (slamLastPreviewY ?? slamStartY) * cellPx + cellPx / 2;
+
+            if (slamTool === 'measure') {
+                // Đường thước đo (Cyan)
+                ctx.beginPath();
+                ctx.moveTo(px1, py1);
+                ctx.lineTo(px2, py2);
+                ctx.strokeStyle = 'rgba(6, 182, 212, 0.95)';
+                ctx.lineWidth   = 2.5 / scale;
+                ctx.setLineDash([6 / scale, 4 / scale]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Chấm 2 đầu
+                [ [px1, py1], [px2, py2] ].forEach(([x, y]) => {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4 / scale, 0, Math.PI * 2);
+                    ctx.fillStyle = '#06b6d4';
+                    ctx.fill();
+                });
+
+                // Tính khoảng cách thực tế (m & ft)
+                const dCol = (slamLastPreviewX ?? slamStartX) - slamStartX;
+                const dRow = (slamLastPreviewY ?? slamStartY) - slamStartY;
+                const distM = Math.sqrt(dCol * dCol + dRow * dRow) * occupancyGrid.RESOLUTION;
+                const distFt = distM * 3.28084;
+                const labelTxt = `${distM.toFixed(3)} m (${distFt.toFixed(2)} ft)`;
+
+                // Label khoảng cách
+                const midX = (px1 + px2) / 2;
+                const midY = (py1 + py2) / 2;
+                ctx.font = `bold ${11 / scale}px sans-serif`;
+                const tw = ctx.measureText(labelTxt).width;
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                ctx.fillRect(midX - tw / 2 - 6 / scale, midY - 14 / scale, tw + 12 / scale, 18 / scale);
+                ctx.strokeStyle = '#06b6d4';
+                ctx.lineWidth = 1 / scale;
+                ctx.strokeRect(midX - tw / 2 - 6 / scale, midY - 14 / scale, tw + 12 / scale, 18 / scale);
+
+                ctx.fillStyle = '#22d3ee';
+                ctx.textAlign = 'center';
+                ctx.fillText(labelTxt, midX, midY);
+            } else if (slamShape === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(px1, py1);
+                ctx.lineTo(px2, py2);
+                ctx.strokeStyle = 'rgba(52, 211, 153, 0.8)';
+                ctx.lineWidth   = (slamBrush * cellPx) / 2 / scale;
+                ctx.stroke();
+            } else if (slamShape === 'rect') {
+                const rx = Math.min(px1, px2);
+                const ry = Math.min(py1, py2);
+                const rw = Math.abs(px2 - px1);
+                const rh = Math.abs(py2 - py1);
+                if (slamFilledRect) {
+                    ctx.fillStyle = 'rgba(52, 211, 153, 0.35)';
+                    ctx.fillRect(rx, ry, rw, rh);
+                }
+                ctx.strokeStyle = 'rgba(52, 211, 153, 0.9)';
+                ctx.lineWidth   = 2 / scale;
+                ctx.strokeRect(rx, ry, rw, rh);
+            }
         }
 
         ctx.restore();
     };
 }
 
-// ---------- Nút Reset SLAM từ UI ----------
+// ============================================================================
+// ROS SLAM MAP EDITOR SUITE (Integrated from ROS-SLAM-Map-Editor)
+// ============================================================================
+
+// State
+let slamTool = 'select'; // 'select' | 'paint' | 'erase' | 'unscan' | 'mask' | 'measure'
+let slamShape = 'freehand'; // 'freehand' | 'line' | 'rect'
+let slamBrush = 8;
+let slamFilledRect = false;
+
+let slamDrawing = false;
+let slamPreviewing = false;
+let slamStartX = 0, slamStartY = 0;
+let slamLastPreviewX = null, slamLastPreviewY = null;
+
+// Undo / Redo Stacks
+const slamUndoStack = [];
+const slamRedoStack = [];
+let slamCurrentStroke = null;
+let slamTouchedIndices = null;
+
+// ---------- PGM & YAML Parser / Encoder Utilities ----------
+
+function parsePGM(buf) {
+    const uint8 = new Uint8Array(buf);
+    let pos = 0;
+    function nextToken() {
+        while (pos < uint8.length) {
+            while (pos < uint8.length && uint8[pos] <= 32) pos++;
+            if (uint8[pos] === 35) { // # comment
+                while (pos < uint8.length && uint8[pos] !== 10 && uint8[pos] !== 13) pos++;
+                continue;
+            }
+            break;
+        }
+        if (pos >= uint8.length) return null;
+        let start = pos;
+        while (pos < uint8.length && uint8[pos] > 32 && uint8[pos] !== 35) pos++;
+        let str = '';
+        for (let i = start; i < pos; i++) str += String.fromCharCode(uint8[i]);
+        return str;
+    }
+
+    const magic = nextToken();
+    if (!magic || (magic !== 'P5' && magic !== 'P2')) {
+        throw new Error('Định dạng PGM không hỗ trợ: ' + magic);
+    }
+    const width = parseInt(nextToken(), 10);
+    const height = parseInt(nextToken(), 10);
+    const maxval = parseInt(nextToken(), 10);
+
+    if (pos < uint8.length && (uint8[pos] === 10 || uint8[pos] === 13 || uint8[pos] === 32)) {
+        pos++;
+        if (pos < uint8.length && uint8[pos - 1] === 13 && uint8[pos] === 10) pos++;
+    }
+
+    let pixels;
+    if (magic === 'P5') {
+        pixels = uint8.subarray(pos, pos + width * height);
+    } else {
+        pixels = new Uint8Array(width * height);
+        for (let i = 0; i < width * height; i++) {
+            const tok = nextToken();
+            pixels[i] = tok ? parseInt(tok, 10) : 0;
+        }
+    }
+    return { magic, width, height, maxval, pixels };
+}
+
+function encodePGM(pixels, width, height, maxval = 255) {
+    const headerStr = `P5\n${width} ${height}\n${maxval}\n`;
+    const headerBytes = new TextEncoder().encode(headerStr);
+    const out = new Uint8Array(headerBytes.length + width * height);
+    out.set(headerBytes, 0);
+    for (let i = 0; i < pixels.length; i++) {
+        out[headerBytes.length + i] = Math.max(0, Math.min(255, pixels[i]));
+    }
+    return out;
+}
+
+function buildUpdatedYaml(imageName, resolution = 0.05, origin = [-12.5, -12.5, 0.0]) {
+    return `image: ${imageName}
+resolution: ${resolution.toFixed(6)}
+origin: [${origin[0].toFixed(6)}, ${origin[1].toFixed(6)}, ${origin[2].toFixed(6)}]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+`;
+}
+
+function dlBytes(bytes, filename, mime = 'application/octet-stream') {
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+}
+
+function dlText(txt, filename, mime = 'text/yaml') {
+    dlBytes(new TextEncoder().encode(txt), filename, mime);
+}
+
+// ---------- Undo / Redo Engine ----------
+
+function beginSlamStroke() {
+    slamCurrentStroke = [];
+    slamTouchedIndices = new Set();
+}
+
+function finishSlamStroke() {
+    if (slamCurrentStroke && slamCurrentStroke.length > 0) {
+        slamUndoStack.push(slamCurrentStroke);
+        if (slamUndoStack.length > 100) slamUndoStack.shift();
+        slamRedoStack.length = 0;
+    }
+    slamCurrentStroke = null;
+    slamTouchedIndices = null;
+}
+
+function undoSlam() {
+    const changeSet = slamUndoStack.pop();
+    if (!changeSet) return;
+    const redoSet = [];
+    for (const ch of changeSet) {
+        if (ch.layer === 'data') {
+            occupancyGrid.data[ch.idx] = ch.prev;
+        } else if (ch.layer === 'mask') {
+            occupancyGrid.maskData[ch.idx] = ch.prev;
+        }
+        redoSet.push({ layer: ch.layer, idx: ch.idx, prev: ch.prev, next: ch.next });
+    }
+    slamRedoStack.push(redoSet);
+    occupancyGrid.dirty = true;
+    draw();
+}
+
+function redoSlam() {
+    const changeSet = slamRedoStack.pop();
+    if (!changeSet) return;
+    const undoSet = [];
+    for (const ch of changeSet) {
+        if (ch.layer === 'data') {
+            occupancyGrid.data[ch.idx] = ch.next;
+        } else if (ch.layer === 'mask') {
+            occupancyGrid.maskData[ch.idx] = ch.next;
+        }
+        undoSet.push({ layer: ch.layer, idx: ch.idx, prev: ch.prev, next: ch.next });
+    }
+    slamUndoStack.push(undoSet);
+    occupancyGrid.dirty = true;
+    draw();
+}
+
+function setPixelWithUndo(layer, idx, nextVal) {
+    const buf = (layer === 'data') ? occupancyGrid.data : occupancyGrid.maskData;
+    if (!buf || idx < 0 || idx >= buf.length) return;
+    const prevVal = buf[idx];
+    if (prevVal === nextVal) return;
+
+    if (slamTouchedIndices && !slamTouchedIndices.has(idx)) {
+        if (slamCurrentStroke) {
+            slamCurrentStroke.push({ layer, idx, prev: prevVal, next: nextVal });
+        }
+        slamTouchedIndices.add(idx);
+    }
+    buf[idx] = nextVal;
+    occupancyGrid.dirty = true;
+}
+
+// ---------- Drawing Primitives ----------
+
+function paintGridCellBuffer(layer, col, row, rad, value) {
+    const cols = occupancyGrid.COLS, rows = occupancyGrid.ROWS;
+    for (let r = row - rad; r <= row + rad; r++) {
+        if (r < 0 || r >= rows) continue;
+        for (let c = col - rad; c <= col + rad; c++) {
+            if (c < 0 || c >= cols) continue;
+            if ((c - col) ** 2 + (r - row) ** 2 <= rad ** 2) {
+                const idx = r * cols + c;
+                setPixelWithUndo(layer, idx, value);
+            }
+        }
+    }
+}
+
+function paintAtGridCell(col, row) {
+    if (!occupancyGrid.data) return;
+    const rad = Math.max(1, Math.floor(slamBrush / 2));
+    if (slamTool === 'paint') {
+        paintGridCellBuffer('data', col, row, rad, occupancyGrid.L_MAX);
+    } else if (slamTool === 'erase') {
+        paintGridCellBuffer('data', col, row, rad, occupancyGrid.L_MIN);
+        paintGridCellBuffer('mask', col, row, rad, 255);
+    } else if (slamTool === 'unscan') {
+        paintGridCellBuffer('data', col, row, rad, 0.0);
+    } else if (slamTool === 'mask') {
+        paintGridCellBuffer('mask', col, row, rad, 0);
+    }
+    draw();
+}
+
+function drawThickLineGrid(col1, row1, col2, row2) {
+    let c0 = col1, r0 = row1, c1 = col2, r1 = row2;
+    const dc = Math.abs(c1 - c0), dr = Math.abs(r1 - r0);
+    const sc = c0 < c1 ? 1 : -1, sr = r0 < r1 ? 1 : -1;
+    let err = dc - dr;
+    while (true) {
+        paintAtGridCell(c0, r0);
+        if (c0 === c1 && r0 === r1) break;
+        const e2 = 2 * err;
+        if (e2 > -dr) { err -= dr; c0 += sc; }
+        if (e2 <  dc) { err += dc; r0 += sr; }
+    }
+}
+
+function drawThickRectGrid(col1, row1, col2, row2) {
+    const cMin = Math.min(col1, col2), cMax = Math.max(col1, col2);
+    const rMin = Math.min(row1, row2), rMax = Math.max(row1, row2);
+    drawThickLineGrid(cMin, rMin, cMax, rMin);
+    drawThickLineGrid(cMax, rMin, cMax, rMax);
+    drawThickLineGrid(cMax, rMax, cMin, rMax);
+    drawThickLineGrid(cMin, rMax, cMin, rMin);
+}
+
+function drawFilledRectGrid(col1, row1, col2, row2) {
+    const cMin = Math.min(col1, col2), cMax = Math.max(col1, col2);
+    const rMin = Math.min(row1, row2), rMax = Math.max(row1, row2);
+    const rad = Math.max(1, Math.floor(slamBrush / 2));
+    for (let r = rMin - rad; r <= rMax + rad; r++) {
+        if (r < 0 || r >= occupancyGrid.ROWS) continue;
+        for (let c = cMin - rad; c <= cMax + rad; c++) {
+            if (c < 0 || c >= occupancyGrid.COLS) continue;
+            const idx = r * occupancyGrid.COLS + c;
+            if (slamTool === 'paint') setPixelWithUndo('data', idx, occupancyGrid.L_MAX);
+            else if (slamTool === 'erase') { setPixelWithUndo('data', idx, occupancyGrid.L_MIN); setPixelWithUndo('mask', idx, 255); }
+            else if (slamTool === 'unscan') setPixelWithUndo('data', idx, 0.0);
+            else if (slamTool === 'mask') setPixelWithUndo('mask', idx, 0);
+        }
+    }
+    draw();
+}
+
+// ---------- Import & Export ROS PGM + YAML Maps ----------
+
+function exportSlamPgmYaml() {
+    if (!occupancyGrid.data) return;
+    const W = occupancyGrid.COLS, H = occupancyGrid.ROWS;
+    const pixels = new Uint8Array(W * H);
+
+    for (let i = 0; i < occupancyGrid.data.length; i++) {
+        const lo = occupancyGrid.data[i];
+        if (lo > occupancyGrid.L_THRESH_OCC) {
+            pixels[i] = 0; // Occupied = 0 (black in ROS)
+        } else if (lo < occupancyGrid.L_THRESH_FREE) {
+            pixels[i] = 254; // Free = 254 (white in ROS)
+        } else {
+            pixels[i] = 205; // Unknown = 205 (gray in ROS)
+        }
+    }
+
+    const pgmBytes = encodePGM(pixels, W, H, 255);
+    const yamlTxt = buildUpdatedYaml('map_edited.pgm', occupancyGrid.RESOLUTION, [-12.5, -12.5, 0.0]);
+
+    dlBytes(pgmBytes, 'map_edited.pgm', 'image/x-portable-graymap');
+    dlText(yamlTxt, 'map_edited.yaml', 'text/yaml');
+    console.log('[SLAM] Đã xuất bản đồ ROS map_edited.pgm và map_edited.yaml');
+    appendLidarLog('[SLAM] Đã xuất thành công bản đồ ROS map_edited.pgm + .yaml');
+}
+
+function exportKeepoutMask() {
+    if (!occupancyGrid.maskData) return;
+    const W = occupancyGrid.COLS, H = occupancyGrid.ROWS;
+    const pgmBytes = encodePGM(occupancyGrid.maskData, W, H, 255);
+    const yamlTxt = buildUpdatedYaml('map_keepout.pgm', occupancyGrid.RESOLUTION, [-12.5, -12.5, 0.0]);
+
+    dlBytes(pgmBytes, 'map_keepout.pgm', 'image/x-portable-graymap');
+    dlText(yamlTxt, 'map_keepout.yaml', 'text/yaml');
+    console.log('[SLAM] Đã xuất bản đồ vùng cấm map_keepout.pgm');
+    appendLidarLog('[SLAM] Đã xuất thành công bản đồ vùng cấm map_keepout.pgm + .yaml');
+}
+
+function importPgmYaml(files) {
+    if (!files || files.length === 0) return;
+    for (const file of files) {
+        const name = file.name.toLowerCase();
+        if (name.endsWith('.pgm')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = parsePGM(e.target.result);
+                    const isKeepout = name.includes('keepout') || name.includes('mask');
+                    if (isKeepout) {
+                        occupancyGrid.maskData = new Uint8Array(parsed.pixels);
+                        console.log('[SLAM] Đã nạp file Keepout Mask PGM thành công:', file.name);
+                        appendLidarLog('[SLAM] Nạp thành công Keepout Mask: ' + file.name);
+                    } else {
+                        for (let i = 0; i < parsed.pixels.length && i < occupancyGrid.data.length; i++) {
+                            const val = parsed.pixels[i];
+                            if (val <= 50) occupancyGrid.data[i] = occupancyGrid.L_MAX;
+                            else if (val >= 200) occupancyGrid.data[i] = occupancyGrid.L_MIN;
+                            else occupancyGrid.data[i] = 0.0;
+                        }
+                        console.log('[SLAM] Đã nạp file ROS Map PGM thành công:', file.name);
+                        appendLidarLog('[SLAM] Nạp thành công ROS Map: ' + file.name);
+                    }
+                    occupancyGrid.dirty = true;
+                    draw();
+                } catch (err) {
+                    console.error('[SLAM] Lỗi parse file PGM:', err);
+                    alert('Lỗi nạp file PGM: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } else if (name.endsWith('.yaml') || name.endsWith('.yml')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const txt = e.target.result;
+                    const resMatch = txt.match(/resolution:\s*([\d.]+)/);
+                    if (resMatch) {
+                        const res = parseFloat(resMatch[1]);
+                        if (res > 0) occupancyGrid.RESOLUTION = res;
+                    }
+                    console.log('[SLAM] Đã nạp file YAML resolution:', occupancyGrid.RESOLUTION);
+                    appendLidarLog('[SLAM] Nạp YAML resolution = ' + occupancyGrid.RESOLUTION + 'm/cell');
+                } catch (err) { /* silent */ }
+            };
+            reader.readAsText(file);
+        }
+    }
+}
+
+// ---------- UI Event Wireups & Canvas Interaction ----------
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Tự động tạo nút Reset SLAM nếu chưa có
+    // Tool buttons
+    document.querySelectorAll('.slam-tool-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.slam-tool-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            slamTool = btn.dataset.tool;
+            const cursor = document.getElementById('brushCursor');
+            if (cursor) cursor.style.display = (slamTool !== 'select') ? 'block' : 'none';
+        });
+    });
+
+    // Shape buttons
+    document.querySelectorAll('.slam-shape-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.slam-shape-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            slamShape = btn.dataset.shape;
+        });
+    });
+
+    // Filled Rect
+    const chkFilled = document.getElementById('chkSlamFilledRect');
+    if (chkFilled) {
+        chkFilled.addEventListener('change', (e) => { slamFilledRect = e.target.checked; });
+    }
+
+    // Brush slider
+    const rngBrush = document.getElementById('rngSlamBrushSize');
+    const lblBrush = document.getElementById('lblSlamBrushSize');
+    if (rngBrush && lblBrush) {
+        rngBrush.addEventListener('input', (e) => {
+            slamBrush = parseInt(e.target.value, 10);
+            lblBrush.textContent = slamBrush + ' px';
+            updateBrushCursorDisplay();
+        });
+    }
+
+    // Undo / Redo
+    const btnUndo = document.getElementById('btnSlamUndo');
+    const btnRedo = document.getElementById('btnSlamRedo');
+    if (btnUndo) btnUndo.addEventListener('click', undoSlam);
+    if (btnRedo) btnRedo.addEventListener('click', redoSlam);
+
+    // Export / Import
+    const btnExportMap = document.getElementById('btnExportPgmYaml');
+    const btnExportMask = document.getElementById('btnExportKeepoutMask');
+    const btnImportMap = document.getElementById('btnImportPgmYaml');
+
+    if (btnExportMap) btnExportMap.addEventListener('click', exportSlamPgmYaml);
+    if (btnExportMask) btnExportMask.addEventListener('click', exportKeepoutMask);
+    if (btnImportMap) {
+        btnImportMap.addEventListener('change', (e) => importPgmYaml(e.target.files));
+    }
+
+    // Canvas Events for Map Editing
+    const graphCanvas = document.getElementById('graphCanvas');
+    const brushCursor = document.getElementById('brushCursor');
+
+    function updateBrushCursorDisplay() {
+        if (!brushCursor) return;
+        const cellPx = occupancyGrid.RESOLUTION / PIXEL_TO_METER;
+        const d = Math.max(4, Math.round(slamBrush * cellPx * scale));
+        brushCursor.style.width = d + 'px';
+        brushCursor.style.height = d + 'px';
+    }
+
+    function getGridCellFromEvent(e) {
+        if (!graphCanvas) return { col: 0, row: 0, clientX: 0, clientY: 0 };
+        const rect = graphCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const mouseX = clientX - rect.left;
+        const mouseY = clientY - rect.top;
+
+        // Un-transform canvas (translate & scale)
+        const canvasX = (mouseX - offsetX) / scale;
+        const canvasY = (mouseY - offsetY) / scale;
+
+        // Robot position on canvas
+        const robCanvasX = (robotLiveX !== null)
+            ? robotLiveX / PIXEL_TO_METER
+            : (graphCanvas.width / 2 / scale - offsetX / scale);
+        const robCanvasY = (robotLiveY !== null)
+            ? robotLiveY / PIXEL_TO_METER
+            : (graphCanvas.height / 2 / scale - offsetY / scale);
+
+        const cellPx = occupancyGrid.RESOLUTION / PIXEL_TO_METER;
+        const slamOriginX = robCanvasX - SlamEngine.pose.x / PIXEL_TO_METER;
+        const slamOriginY = robCanvasY + SlamEngine.pose.y / PIXEL_TO_METER;
+
+        const gx = slamOriginX - occupancyGrid.ORIGIN_COL * cellPx;
+        const gy = slamOriginY - occupancyGrid.ORIGIN_ROW * cellPx;
+
+        const col = Math.round((canvasX - gx) / cellPx);
+        const row = Math.round((canvasY - gy) / cellPx);
+
+        return { col, row, clientX, clientY };
+    }
+
+    if (graphCanvas) {
+        graphCanvas.addEventListener('mouseenter', () => {
+            if (brushCursor && slamTool !== 'select') brushCursor.style.display = 'block';
+        });
+        graphCanvas.addEventListener('mouseleave', () => {
+            if (brushCursor) brushCursor.style.display = 'none';
+        });
+
+        graphCanvas.addEventListener('mousedown', (e) => {
+            if (slamTool === 'select') return;
+            const { col, row } = getGridCellFromEvent(e);
+            if (slamShape === 'freehand') {
+                slamDrawing = true;
+                beginSlamStroke();
+                paintAtGridCell(col, row);
+            } else if (slamShape === 'line' || slamShape === 'rect' || slamTool === 'measure') {
+                slamPreviewing = true;
+                slamStartX = col;
+                slamStartY = row;
+                slamLastPreviewX = col;
+                slamLastPreviewY = row;
+                draw();
+            }
+        });
+
+        graphCanvas.addEventListener('mousemove', (e) => {
+            if (brushCursor) {
+                brushCursor.style.left = e.clientX + 'px';
+                brushCursor.style.top  = e.clientY + 'px';
+                updateBrushCursorDisplay();
+            }
+            if (slamTool === 'select') return;
+            const { col, row } = getGridCellFromEvent(e);
+            if (slamDrawing && slamShape === 'freehand') {
+                paintAtGridCell(col, row);
+            } else if (slamPreviewing) {
+                slamLastPreviewX = col;
+                slamLastPreviewY = row;
+                draw();
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (slamDrawing) {
+                slamDrawing = false;
+                finishSlamStroke();
+            } else if (slamPreviewing) {
+                slamPreviewing = false;
+                const { col, row } = getGridCellFromEvent(e);
+                if (slamTool === 'measure') {
+                    setTimeout(() => { slamLastPreviewX = null; slamLastPreviewY = null; draw(); }, 5000);
+                } else if (slamShape === 'line') {
+                    beginSlamStroke();
+                    drawThickLineGrid(slamStartX, slamStartY, col, row);
+                    finishSlamStroke();
+                } else if (slamShape === 'rect') {
+                    beginSlamStroke();
+                    if (slamFilledRect) drawFilledRectGrid(slamStartX, slamStartY, col, row);
+                    else drawThickRectGrid(slamStartX, slamStartY, col, row);
+                    finishSlamStroke();
+                }
+            }
+        });
+    }
+
+    // Keyboard Shortcuts (Ctrl+Z, Ctrl+Y)
+    window.addEventListener('keydown', (e) => {
+        if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            undoSlam();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            redoSlam();
+        } else if (e.shiftKey && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            redoSlam();
+        }
+    });
+
+    // Reset SLAM Button from UI
     const slamBtn = document.getElementById('btnCaptureSlamMap');
     if (slamBtn) {
         const resetBtn = document.createElement('button');
@@ -3370,8 +4472,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Log khởi tạo
-console.log('[SLAM] Module SLAM Engine + Occupancy Grid đã tải thành công.');
-appendLidarLog('[SLAM] Hệ thống SLAM 2D sẵn sàng. Đang chờ dữ liệu quét LiDAR...');
+console.log('[SLAM] Module SLAM Engine + ROS SLAM Map Editor Suite đã tải thành công.');
+appendLidarLog('[SLAM] Hệ thống SLAM 2D + Bộ biên tập bản đồ ROS sẵn sàng.');
+
 
 
 
