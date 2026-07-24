@@ -52,20 +52,55 @@
         /* Sidebar Tab-based display */
         .sidebar-tab-map #contentMapSection { display: block; }
         .sidebar-tab-map #contentRouteSection { display: none; }
+        .sidebar-tab-map #contentSlamSection { display: none; }
 
         .sidebar-tab-route #contentMapSection { display: none; }
         .sidebar-tab-route #contentRouteSection { display: block; }
+        .sidebar-tab-route #contentSlamSection { display: none; }
         .sidebar-tab-route #btnRunFixedRoute { display: none !important; }
         .sidebar-tab-route #btnCreateRouteMode, 
         .sidebar-tab-route .route-item-actions { display: flex !important; }
 
         .sidebar-tab-run #contentMapSection { display: none; }
         .sidebar-tab-run #contentRouteSection { display: block; }
+        .sidebar-tab-run #contentSlamSection { display: none; }
         .sidebar-tab-run #btnRunFixedRoute { display: flex !important; }
         .sidebar-tab-run #btnCreateRouteMode,
         .sidebar-tab-run #routeEditForm,
         .sidebar-tab-run .route-item-actions { display: none !important; }
+
+        .sidebar-tab-slam #contentMapSection { display: none; }
+        .sidebar-tab-slam #contentRouteSection { display: none; }
+        .sidebar-tab-slam #contentSlamSection { display: block; }
+
+        /* SLAM Map Editor active tool styling */
+        .slam-tool-btn.active, .slam-shape-btn.active {
+            background-color: #059669 !important;
+            color: white !important;
+            border-color: #34d399 !important;
+            box-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+        }
+
+        /* Canvas HD Crisp-Edges Rendering (Khóa sắc nét không bị nhòe/bể khi zoom) */
+        #mapWrapper canvas, canvas {
+            image-rendering: pixelated !important;
+            image-rendering: -moz-crisp-edges !important;
+            image-rendering: crisp-edges !important;
+        }
+
+        #brushCursor {
+            position: absolute;
+            border: 1.5px solid #34d399;
+            border-radius: 50%;
+            pointer-events: none;
+            display: none;
+            z-index: 40;
+            box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+            transform: translate(-50%, -50%);
+        }
     </style>
+    <!-- ROSLIBJS — Thư viện chính chủ kết nối ROS2 cho Browser JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col">
 
@@ -77,11 +112,15 @@
             </div>
             <div>
                 <h1 class="font-bold text-lg text-white leading-tight">SmartMarketBot</h1>
-                <p class="text-xs text-slate-400">Hệ thống Giám sát & Điều hướng</p>
+                <p class="text-xs text-slate-400">Hệ thống Giám sát & Điều hướng ROS2 Dual-Engine</p>
             </div>
         </div>
         
         <div class="flex items-center gap-3">
+            <div id="ros2StatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/40 border border-slate-800 text-sm cursor-pointer hover:border-sky-500/50 transition-all" title="Click để đổi URL ROS2 WebSocket (mặc định ws://localhost:9090)">
+                <span id="ros2StatusDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span id="ros2StatusText" class="text-slate-500">ROS2 Core: Chưa kết nối</span>
+            </div>
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
                 <span class="text-slate-300">Đã kết nối Server</span>
@@ -306,11 +345,106 @@
                         </div>
                     </div>
                 </details>
+
+                <!-- SECTION 4: SLAM MAP EDITOR & CONTROL (ROS-SLAM-Map-Editor Suite) -->
+                <div id="contentSlamSection" class="p-4 space-y-3">
+                    <div class="border-b border-slate-700/50 pb-2">
+                        <h2 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="layers" class="w-4 h-4"></i> Biên Tập Bản Đồ ROS SLAM
+                        </h2>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Chỉnh sửa tường, vùng cấm (keep-out) & thước đo</p>
+                    </div>
+
+                    <!-- Tool Buttons -->
+                    <div class="space-y-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Công cụ (Tools):</span>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button class="slam-tool-btn active py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="select" title="Chế độ chọn / tương tác thông thường">
+                                <i data-lucide="mouse-pointer" class="w-3.5 h-3.5"></i> Chọn
+                            </button>
+                            <button class="slam-tool-btn py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="paint" title="Vẽ tường / vật cản (Occupied #000)">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5 text-blue-400"></i> Tường
+                            </button>
+                            <button class="slam-tool-btn py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="erase" title="Xóa tường / xóa vùng cấm">
+                                <i data-lucide="eraser" class="w-3.5 h-3.5 text-amber-400"></i> Tẩy
+                            </button>
+                            <button class="slam-tool-btn py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="unscan" title="Đánh dấu vùng chưa quét (Unknown #7F7F7F)">
+                                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400"></i> Chưa quét
+                            </button>
+                            <button class="slam-tool-btn py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="mask" title="Vẽ vùng cấm robot (Keep-Out Mask màu đỏ mờ)">
+                                <i data-lucide="ban" class="w-3.5 h-3.5 text-rose-400"></i> Vùng cấm
+                            </button>
+                            <button class="slam-tool-btn py-1.5 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition-all" data-tool="measure" title="Thước đo khoảng cách (mét & feet)">
+                                <i data-lucide="ruler" class="w-3.5 h-3.5 text-cyan-400"></i> Đo đạc
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Shape Buttons -->
+                    <div class="space-y-2 pt-1 border-t border-slate-700/30">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Hình dạng (Shapes):</span>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button class="slam-shape-btn active py-1 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[10px] font-medium flex items-center justify-center gap-1 transition-all" data-shape="freehand">
+                                Cọ tự do
+                            </button>
+                            <button class="slam-shape-btn py-1 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[10px] font-medium flex items-center justify-center gap-1 transition-all" data-shape="line">
+                                Đường thẳng
+                            </button>
+                            <button class="slam-shape-btn py-1 px-2 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[10px] font-medium flex items-center justify-center gap-1 transition-all" data-shape="rect">
+                                Hình chữ nhật
+                            </button>
+                        </div>
+                        <div class="flex items-center justify-between pt-1">
+                            <label class="text-[11px] text-slate-300 flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" id="chkSlamFilledRect" class="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0">
+                                Tô đặc hình chữ nhật
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Brush Size & Controls -->
+                    <div class="space-y-2 pt-2 border-t border-slate-700/30">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400 font-medium">Kích thước cọ:</span>
+                            <span id="lblSlamBrushSize" class="text-emerald-400 font-bold">8 px</span>
+                        </div>
+                        <input type="range" id="rngSlamBrushSize" min="1" max="32" value="8" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+
+                    <!-- Undo / Redo -->
+                    <div class="flex gap-2 pt-2 border-t border-slate-700/30">
+                        <button id="btnSlamUndo" class="flex-1 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-600/30 rounded text-xs font-semibold transition-all flex justify-center items-center gap-1" title="Khôi phục thao tác trước (Ctrl+Z)">
+                            <i data-lucide="undo-2" class="w-3.5 h-3.5"></i> Undo
+                        </button>
+                        <button id="btnSlamRedo" class="flex-1 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-600/30 rounded text-xs font-semibold transition-all flex justify-center items-center gap-1" title="Làm lại thao tác vừa xóa (Ctrl+Y)">
+                            <i data-lucide="redo-2" class="w-3.5 h-3.5"></i> Redo
+                        </button>
+                    </div>
+
+                    <!-- Import & Export PGM/YAML ROS Maps -->
+                    <div class="space-y-2 pt-3 border-t border-slate-700/40">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Xuất / Nhập Bản Đồ ROS (.pgm + .yaml):</span>
+                        <div class="grid grid-cols-1 gap-2">
+                            <button id="btnExportPgmYaml" class="w-full py-2 bg-emerald-600 text-white hover:bg-emerald-500 rounded-lg text-xs font-bold transition-all shadow-lg flex justify-center items-center gap-1.5">
+                                <i data-lucide="download" class="w-4 h-4"></i> Download Map (.pgm + .yaml)
+                            </button>
+                            <button id="btnExportKeepoutMask" class="w-full py-1.5 bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white border border-rose-600/30 rounded-lg text-xs font-semibold transition-all flex justify-center items-center gap-1.5">
+                                <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Download Keepout Mask
+                            </button>
+                            <label class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-all flex justify-center items-center gap-1.5 cursor-pointer border border-slate-700">
+                                <input type="file" id="btnImportPgmYaml" accept=".pgm,.yaml,.yml" multiple class="hidden">
+                                <i data-lucide="upload" class="w-3.5 h-3.5 text-blue-400"></i> Import ROS Map (.pgm / .yaml)
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
         </aside>
 
         <!-- Center: Canvas Area -->
         <section class="flex-1 p-6 relative bg-slate-900 overflow-hidden flex flex-col">
+            <!-- Brush Cursor Indicator -->
+            <div id="brushCursor"></div>
             <!-- Toolbar for Canvas Controls & LiDAR SLAM Layers -->
             <div class="absolute top-8 right-8 z-10 flex gap-2 glass-panel p-1.5 rounded-lg items-center">
                 <button id="btnToggleLidarScan" class="px-2.5 py-1 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-xs font-semibold hover:bg-rose-500 hover:text-white transition-all flex items-center gap-1.5" title="Bật/Tắt mây điểm Laser LiDAR 360°">
@@ -318,6 +452,9 @@
                 </button>
                 <button id="btnToggleSlamGrid" class="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-xs font-semibold hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-1.5" title="Bật/Tắt lớp bản đồ quét SLAM">
                     <i data-lucide="layers" class="w-4 h-4"></i> Lớp Bản Đồ SLAM
+                </button>
+                <button id="btnToggleSlamTheme" class="px-2.5 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded text-xs font-semibold hover:bg-cyan-500 hover:text-white transition-all flex items-center gap-1.5" title="Chuyển chế độ giao diện bản đồ: ROS Classic Light / RViz Dark Neon">
+                    <i data-lucide="palette" class="w-4 h-4"></i> Theme: ROS Light
                 </button>
                 <div class="w-px h-5 bg-slate-700 mx-0.5"></div>
                 <button id="btnZoomIn" class="p-1.5 hover:bg-slate-700 rounded text-slate-300" title="Phóng to"><i data-lucide="zoom-in" class="w-4 h-4"></i></button>
@@ -913,31 +1050,37 @@
             const btnTabMap = document.getElementById("btnTabMap");
             const btnTabRoute = document.getElementById("btnTabRoute");
             const btnTabRun = document.getElementById("btnTabRun");
+            const btnTabSlam = document.getElementById("btnTabSlam");
 
             window.setTab = function(tabName) {
                 if (!leftSidebar) return;
                 // Reset classes
-                leftSidebar.classList.remove("sidebar-tab-map", "sidebar-tab-route", "sidebar-tab-run");
-                btnTabMap.className = btnTabMap.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
-                btnTabRoute.className = btnTabRoute.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
-                btnTabRun.className = btnTabRun.className.replace("border-blue-500 text-blue-400", "border-transparent text-slate-400");
+                leftSidebar.classList.remove("sidebar-tab-map", "sidebar-tab-route", "sidebar-tab-run", "sidebar-tab-slam");
+                if (btnTabMap) btnTabMap.className = btnTabMap.className.replace("border-blue-500 text-blue-400 border-emerald-500 text-emerald-400", "border-transparent text-slate-400");
+                if (btnTabRoute) btnTabRoute.className = btnTabRoute.className.replace("border-blue-500 text-blue-400 border-emerald-500 text-emerald-400", "border-transparent text-slate-400");
+                if (btnTabRun) btnTabRun.className = btnTabRun.className.replace("border-blue-500 text-blue-400 border-emerald-500 text-emerald-400", "border-transparent text-slate-400");
+                if (btnTabSlam) btnTabSlam.className = btnTabSlam.className.replace("border-emerald-500 text-emerald-400", "border-transparent text-slate-400");
 
                 // Set active
                 if (tabName === "map") {
                     leftSidebar.classList.add("sidebar-tab-map");
-                    btnTabMap.className = btnTabMap.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                    if (btnTabMap) btnTabMap.className = btnTabMap.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
                 } else if (tabName === "route") {
                     leftSidebar.classList.add("sidebar-tab-route");
-                    btnTabRoute.className = btnTabRoute.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                    if (btnTabRoute) btnTabRoute.className = btnTabRoute.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
                 } else if (tabName === "run") {
                     leftSidebar.classList.add("sidebar-tab-run");
-                    btnTabRun.className = btnTabRun.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                    if (btnTabRun) btnTabRun.className = btnTabRun.className.replace("border-transparent text-slate-400", "border-blue-500 text-blue-400");
+                } else if (tabName === "slam") {
+                    leftSidebar.classList.add("sidebar-tab-slam");
+                    if (btnTabSlam) btnTabSlam.className = btnTabSlam.className.replace("border-transparent text-slate-400", "border-emerald-500 text-emerald-400");
                 }
             };
 
             if (btnTabMap) btnTabMap.addEventListener("click", () => setTab("map"));
             if (btnTabRoute) btnTabRoute.addEventListener("click", () => setTab("route"));
             if (btnTabRun) btnTabRun.addEventListener("click", () => setTab("run"));
+            if (btnTabSlam) btnTabSlam.addEventListener("click", () => setTab("slam"));
         })();
 
         lucide.createIcons();
