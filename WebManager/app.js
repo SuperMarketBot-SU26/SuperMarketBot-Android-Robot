@@ -1201,15 +1201,32 @@ function connectRobotWs() {
                     return;
                 }
 
-                if (data.type === 'log') {
-                    appendSerialLog(`[WS-Direct] ${data.message}`);
+                if (data.type === 'lidar_log' || data.type === 'slam_log' || (data.t && data.t.includes('lidar'))) {
+                    appendLidarLog(data.message || data.msg || data.text || '');
+                } else if (data.type === 'log') {
+                    const txt = data.message || '';
+                    if (txt.includes('[LiDAR') || txt.includes('[YDLIDAR')) {
+                        appendLidarLog(txt);
+                    } else {
+                        appendSerialLog(`[WS-Direct] ${txt}`);
+                    }
                 } else if (data.msg) {
-                    appendSerialLog(`[WS-Direct] ${data.msg}`);
+                    const txt = typeof data.msg === 'string' ? data.msg : JSON.stringify(data.msg);
+                    if (txt.includes('[LiDAR') || txt.includes('[YDLIDAR')) {
+                        appendLidarLog(txt);
+                    } else {
+                        appendSerialLog(`[WS-Direct] ${txt}`);
+                    }
                 } else {
                     applyLiveTelemetry(data);
                 }
             } catch (e) {
-                appendSerialLog(`[WS-Direct] ${event.data}`);
+                const txt = String(event.data || '');
+                if (txt.includes('[LiDAR') || txt.includes('[YDLIDAR')) {
+                    appendLidarLog(txt);
+                } else {
+                    appendSerialLog(`[WS-Direct] ${txt}`);
+                }
             }
         };
         
@@ -2789,5 +2806,555 @@ setInterval(() => {
         updateLidarStatusBadge(false);
     }
 }, 1000);
+
+// ============================================================================
+// SLAM ENGINE — 2D Lidar SLAM (Scan-to-Scan Matching + Occupancy Grid)
+// Toàn bộ SLAM back-end chạy trên PC (browser JavaScript)
+// ESP32 chỉ làm front-end: thu thập và stream dữ liệu thô
+// ============================================================================
+
+// ---------- Occupancy Grid Map ----------
+const occupancyGrid = {
+    // Cấu hình lưới
+    RESOLUTION: 0.05,     // 5cm mỗi ô
+    COLS: 500,            // 500 ô = 25m chiều ngang
+    ROWS: 500,            // 500 ô = 25m chiều dọc
+    ORIGIN_COL: 250,      // Gốc tọa độ (robot bắt đầu ở giữa grid)
+    ORIGIN_ROW: 250,
+
+    // Log-Odds parameters (chuẩn SLAM)
+    L_OCC:  0.9,          // Tăng khi ô bị tia LiDAR hit (vật cản)
+    L_FREE: -0.4,         // Giảm khi tia LiDAR đi qua (tự do)
+    L_MIN:  -5.0,
+    L_MAX:   5.0,
+    L_THRESH_OCC:  0.5,   // Ngưỡng hiển thị là vật cản
+    L_THRESH_FREE: -0.5,  // Ngưỡng hiển thị là tự do
+
+    // Dữ liệu lưới (Log-Odds)
+    data: null,
+
+    // Offscreen canvas để render nhanh (không vẽ lại toàn bộ mỗi frame)
+    offscreen: null,
+    offCtx: null,
+    dirty: false,         // Đánh dấu cần render lại
+
+    init() {
+        this.data = new Float32Array(this.COLS * this.ROWS).fill(0.0);
+        this.offscreen = document.createElement('canvas');
+        this.offscreen.width  = this.COLS;
+        this.offscreen.height = this.ROWS;
+        this.offCtx = this.offscreen.getContext('2d');
+        // Nền ban đầu: xám trung tính (unknown)
+        this.offCtx.fillStyle = 'rgba(60, 65, 80, 0.85)';
+        this.offCtx.fillRect(0, 0, this.COLS, this.ROWS);
+        console.log('[OccGrid] Khởi tạo lưới 500×500 ô (25m×25m, độ phân giải 5cm/ô)');
+    },
+
+    // Chuyển tọa độ thế giới (m) sang ô lưới
+    worldToGrid(wx, wy) {
+        const col = Math.round(this.ORIGIN_COL + wx / this.RESOLUTION);
+        const row = Math.round(this.ORIGIN_ROW - wy / this.RESOLUTION);
+        return { col, row };
+    },
+
+    // Lấy giá trị Log-Odds tại ô (col, row)
+    get(col, row) {
+        if (col < 0 || col >= this.COLS || row < 0 || row >= this.ROWS) return 0;
+        return this.data[row * this.COLS + col];
+    },
+
+    // Cập nhật Log-Odds tại ô (col, row) với delta, kẹp trong [L_MIN, L_MAX]
+    update(col, row, delta) {
+        if (col < 0 || col >= this.COLS || row < 0 || row >= this.ROWS) return;
+        const idx = row * this.COLS + col;
+        this.data[idx] = Math.max(this.L_MIN, Math.min(this.L_MAX, this.data[idx] + delta));
+        this.dirty = true;
+    },
+
+    // Bresenham Line Algorithm: vẽ tia từ robot đến điểm hit
+    // Các ô dọc đường: L_FREE; ô cuối (hit): L_OCC
+    raycast(robCol, robRow, hitCol, hitRow, isHit) {
+        let x0 = robCol, y0 = robRow;
+        const x1 = hitCol, y1 = hitRow;
+        const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        const dy = Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+
+        let steps = 0;
+        while (steps++ < 600) { // Giới hạn tối đa 600 bước (~30m) để tránh loop vô tận
+            const isEnd = (x0 === x1 && y0 === y1);
+            const delta = (isEnd && isHit) ? this.L_OCC : this.L_FREE;
+            this.update(x0, y0, delta);
+            if (isEnd) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 <  dx) { err += dx; y0 += sy; }
+        }
+    },
+
+    // Cập nhật grid với 1 scan đã hiệu chỉnh pose
+    updateWithScan(scanPtsXY, pose) {
+        const robGrid = this.worldToGrid(pose.x, pose.y);
+        const MAX_DIST_M = 6.0; // Bỏ qua điểm xa hơn 6m (nhiễu LiDAR X3)
+
+        for (const pt of scanPtsXY) {
+            // pt.x, pt.y là toạ độ trong frame robot → chuyển sang frame thế giới
+            const cos_h = Math.cos(pose.heading);
+            const sin_h = Math.sin(pose.heading);
+            const wx = pose.x + pt.x * cos_h - pt.y * sin_h;
+            const wy = pose.y + pt.x * sin_h + pt.y * cos_h;
+
+            const distM = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
+            if (distM < 0.05 || distM > MAX_DIST_M) continue; // Loại nhiễu gần + xa
+
+            const hitGrid = this.worldToGrid(wx, wy);
+            const isHit = (distM < MAX_DIST_M * 0.98); // Tia đến sát giới hạn → có thể bị cut
+
+            this.raycast(robGrid.col, robGrid.row, hitGrid.col, hitGrid.row, isHit);
+        }
+    },
+
+    // Render offscreen canvas từ dữ liệu Log-Odds (chỉ render khi dirty)
+    render() {
+        if (!this.dirty) return;
+        this.dirty = false;
+
+        const imgData = this.offCtx.createImageData(this.COLS, this.ROWS);
+        const pixels  = imgData.data;
+
+        for (let i = 0; i < this.data.length; i++) {
+            const lo = this.data[i];
+            const base = i * 4;
+            if (lo > this.L_THRESH_OCC) {
+                // Vật cản: trắng sáng
+                const intensity = Math.min(255, Math.round(200 + (lo / this.L_MAX) * 55));
+                pixels[base]     = intensity;
+                pixels[base + 1] = intensity;
+                pixels[base + 2] = intensity;
+                pixels[base + 3] = 220;
+            } else if (lo < this.L_THRESH_FREE) {
+                // Vùng tự do: xanh đen
+                pixels[base]     = 15;
+                pixels[base + 1] = 25;
+                pixels[base + 2] = 40;
+                pixels[base + 3] = 200;
+            } else {
+                // Chưa biết: xám mờ
+                pixels[base]     = 55;
+                pixels[base + 1] = 60;
+                pixels[base + 2] = 75;
+                pixels[base + 3] = 120;
+            }
+        }
+        this.offCtx.putImageData(imgData, 0, 0);
+    },
+
+    // Reset toàn bộ bản đồ
+    reset() {
+        this.data.fill(0.0);
+        this.dirty = true;
+        this.render();
+        console.log('[OccGrid] Đã reset bản đồ Occupancy Grid.');
+    }
+};
+
+// ---------- SLAM Engine ----------
+const SlamEngine = {
+    // Pose hiện tại (metre, radian)
+    pose: { x: 0, y: 0, heading: 0 },
+
+    // Histogram khoảng cách theo góc (360 bin) của scan trước
+    prevBins: null,
+
+    // Điểm scan thô trước (frame robot: x,y metre)
+    prevPts: null,
+
+    // Lịch sử hành trình
+    trail: [],
+    MAX_TRAIL: 5000,
+
+    // Keyframe (để loop closure, dùng ở Phase 3)
+    keyframes: [],
+    lastKeyframeX: 0,
+    lastKeyframeY: 0,
+    KEYFRAME_DIST_M: 0.4, // Lưu keyframe mỗi khi di chuyển 40cm
+
+    isInitialized: false,
+    lastSendMs: 0,
+    frameCount: 0,
+
+    // Bật/tắt SLAM (UI toggle)
+    enabled: true,
+
+    // Xây dựng histogram khoảng cách theo góc 360°
+    // Trả về Float32Array[NUM_BINS] (khoảng cách min trong bin, đơn vị: metre)
+    buildBins(pts, numBins = 360) {
+        const bins = new Float32Array(numBins).fill(0);
+        for (const pt of pts) {
+            let deg = Math.round((Math.atan2(pt.y, pt.x) * 180 / Math.PI + 360)) % numBins;
+            const dist = Math.sqrt(pt.x * pt.x + pt.y * pt.y);
+            if (dist < 0.05 || dist > 6.0) continue;
+            if (bins[deg] === 0 || dist < bins[deg]) {
+                bins[deg] = dist;
+            }
+        }
+        return bins;
+    },
+
+    // Angular Correlation: Tìm góc dịch chuyển tốt nhất giữa 2 histogram
+    // Tìm trong phạm vi ±MAX_SEARCH_DEG, trả về góc tối ưu (radian)
+    findBestRotation(prevBins, currBins, maxSearchDeg = 25) {
+        const N = prevBins.length;
+        let bestScore = -Infinity;
+        let bestShift = 0;
+
+        for (let shift = -maxSearchDeg; shift <= maxSearchDeg; shift++) {
+            let score = 0;
+            let count = 0;
+            for (let i = 0; i < N; i++) {
+                const j = ((i + shift) % N + N) % N;
+                const p = prevBins[i];
+                const c = currBins[j];
+                if (p > 0 && c > 0) {
+                    const diff = Math.abs(p - c);
+                    // Thưởng nếu khoảng cách khớp trong sai số ±8cm
+                    score += diff < 0.08 ? 2 : (diff < 0.20 ? 0.5 : -0.5);
+                    count++;
+                }
+            }
+            // Chuẩn hoá theo số bin có dữ liệu để tránh bias scan thưa
+            if (count > 10 && score / count > bestScore / Math.max(1, count)) {
+                bestScore = score;
+                bestShift = shift;
+            }
+        }
+        return (bestShift * Math.PI) / 180; // → radian
+    },
+
+    // Translation Matching: Tìm (dx, dy) tối ưu bằng grid search nhỏ
+    // Dùng sau khi đã có góc xoay dTheta từ Angular Correlation
+    findBestTranslation(prevPts, currPts, dTheta) {
+        // Xoay currPts về frame của prevPts
+        const cos_t = Math.cos(-dTheta);
+        const sin_t = Math.sin(-dTheta);
+        const rotated = currPts.map(pt => ({
+            x: pt.x * cos_t - pt.y * sin_t,
+            y: pt.x * sin_t + pt.y * cos_t
+        }));
+
+        // Grid search ±0.3m, bước 5cm
+        let bestScore = -Infinity;
+        let bestDx = 0, bestDy = 0;
+        const STEP = 0.05, RANGE = 0.30;
+
+        for (let dx = -RANGE; dx <= RANGE; dx += STEP) {
+            for (let dy = -RANGE; dy <= RANGE; dy += STEP) {
+                let score = 0;
+                for (const pt of rotated) {
+                    const tx = pt.x + dx;
+                    const ty = pt.y + dy;
+                    // Tìm điểm gần nhất trong prevPts (nearest-neighbor)
+                    let minDist = Infinity;
+                    for (const pp of prevPts) {
+                        const d = (pp.x - tx) ** 2 + (pp.y - ty) ** 2;
+                        if (d < minDist) minDist = d;
+                    }
+                    if (minDist < 0.15 * 0.15) score += 1; // Trong 15cm = match
+                }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestDx = dx;
+                    bestDy = dy;
+                }
+            }
+        }
+        return { dx: bestDx, dy: bestDy };
+    },
+
+    // Xử lý scan mới: chạy toàn bộ pipeline SLAM
+    processScan(rawPts, imuHeadingRad) {
+        if (!this.enabled || rawPts.length < 20) return;
+
+        const currBins = this.buildBins(rawPts);
+
+        if (!this.isInitialized) {
+            this.pose.heading    = imuHeadingRad;
+            this.prevBins        = currBins;
+            this.prevPts         = rawPts;
+            this.isInitialized   = true;
+            this.trail.push({ x: this.pose.x, y: this.pose.y });
+            occupancyGrid.init();
+            console.log('[SLAM] Khởi tạo SLAM Engine. Pose gốc: (0, 0)');
+            return;
+        }
+
+        // ── Bước 0: Phát hiện scan tĩnh (Static Scan Detection) ─────────────
+        // Tính mức độ tương đồng giữa scan hiện tại và scan trước.
+        // Nếu quá giống nhau → robot đứng yên → BỎ QUA hoàn toàn, không cập nhật pose.
+        let matchCount = 0, totalCount = 0;
+        for (let i = 0; i < currBins.length; i++) {
+            if (currBins[i] > 0 && this.prevBins[i] > 0) {
+                totalCount++;
+                if (Math.abs(currBins[i] - this.prevBins[i]) < 0.10) matchCount++; // Sai số <10cm
+            }
+        }
+        const similarity = totalCount > 0 ? matchCount / totalCount : 0;
+
+        // Nếu scan giống nhau >88% → robot gần như không di chuyển
+        // Chỉ cập nhật occupancy grid (bản đồ), KHÔNG thay đổi pose
+        if (similarity > 0.88) {
+            this.frameCount++;
+            if (this.frameCount % 3 === 0) {
+                occupancyGrid.updateWithScan(rawPts, this.pose);
+            }
+            this.prevBins = currBins;
+            this.prevPts  = rawPts;
+            return; // ← THOÁT SỚM: không drift khi đứng yên
+        }
+
+        // ── Bước 1: Angular Correlation Matching ────────────────────────────
+        const imuDelta        = imuHeadingRad - this.pose.heading;
+        const imuDeltaClamped = Math.max(-0.4, Math.min(0.4, imuDelta));
+
+        const dTheta = this.findBestRotation(this.prevBins, currBins, 18);
+        // Blend: 75% scan matching + 25% IMU
+        const finalDTheta = dTheta * 0.75 + imuDeltaClamped * 0.25;
+
+        // ── Bước 2: Translation Matching ────────────────────────────────────
+        let dx = 0, dy = 0;
+        const prevSample = this.prevPts.filter((_, i) => i % 3 === 0);
+        const currSample = rawPts.filter((_, i) => i % 3 === 0);
+
+        if (prevSample.length > 10 && currSample.length > 10) {
+            const t = this.findBestTranslation(prevSample, currSample, finalDTheta);
+            dx = t.dx;
+            dy = t.dy;
+        }
+
+        // ── Bước 3: Motion Gate — ngưỡng chết chống drift ──────────────────
+        // Ngưỡng tối thiểu để coi là "thực sự di chuyển":
+        //   - Tịnh tiến: > 3cm  (YDLIDAR X3 nhiễu ~1-2cm)
+        //   - Xoay:      > 1.5° (gyro drift nhỏ)
+        const MIN_TRANS_M  = 0.03;  // 3cm
+        const MIN_ROT_RAD  = 0.026; // ~1.5°
+
+        const distMoved    = Math.sqrt(dx * dx + dy * dy);
+        const rotMoved     = Math.abs(finalDTheta);
+
+        const hasTranslation = distMoved >= MIN_TRANS_M;
+        const hasRotation    = rotMoved  >= MIN_ROT_RAD;
+
+        if (!hasTranslation && !hasRotation) {
+            // Không di chuyển đủ → chỉ cập nhật bản đồ, giữ nguyên pose
+            this.frameCount++;
+            if (this.frameCount % 3 === 0) {
+                occupancyGrid.updateWithScan(rawPts, this.pose);
+            }
+            this.prevBins = currBins;
+            this.prevPts  = rawPts;
+            return;
+        }
+
+        // ── Bước 4: Cập nhật Pose ───────────────────────────────────────────
+        if (hasTranslation) {
+            const cos_h = Math.cos(this.pose.heading);
+            const sin_h = Math.sin(this.pose.heading);
+            this.pose.x += dx * cos_h - dy * sin_h;
+            this.pose.y += dx * sin_h + dy * cos_h;
+        }
+        if (hasRotation) {
+            this.pose.heading += finalDTheta;
+            this.pose.heading  = ((this.pose.heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        }
+
+        // Lưu trail (chỉ khi thực sự di chuyển)
+        const lastTrail = this.trail[this.trail.length - 1] || { x: 0, y: 0 };
+        const distFromLast = Math.sqrt(
+            (this.pose.x - lastTrail.x) ** 2 + (this.pose.y - lastTrail.y) ** 2
+        );
+        if (distFromLast > 0.02) { // Lưu trail mỗi 2cm (tránh chấm quá dày)
+            this.trail.push({ x: this.pose.x, y: this.pose.y });
+            if (this.trail.length > this.MAX_TRAIL) this.trail.shift();
+        }
+
+        // ── Bước 5: Cập nhật Occupancy Grid ────────────────────────────────
+        this.frameCount++;
+        if (this.frameCount % 2 === 0) {
+            occupancyGrid.updateWithScan(rawPts, this.pose);
+        }
+
+        // Cập nhật prev
+        this.prevBins = currBins;
+        this.prevPts  = rawPts;
+
+        // Gửi SLAM pose về ESP32 (tối đa 5 Hz)
+        const nowMs = Date.now();
+        if (nowMs - this.lastSendMs >= 200) {
+            this.lastSendMs = nowMs;
+            if (robotWs && isRobotWsConnected) {
+                try {
+                    robotWs.send(JSON.stringify({
+                        t: 'slam_pose',
+                        x: parseFloat(this.pose.x.toFixed(4)),
+                        y: parseFloat(this.pose.y.toFixed(4)),
+                        h: parseFloat(this.pose.heading.toFixed(5))
+                    }));
+                } catch (e) { /* silent */ }
+            }
+        }
+
+        draw();
+    },
+
+    // Reset SLAM về gốc
+    reset() {
+        this.pose          = { x: 0, y: 0, heading: 0 };
+        this.prevBins      = null;
+        this.prevPts       = null;
+        this.isInitialized = false;
+        this.trail         = [];
+        this.frameCount    = 0;
+        this.lastSendMs    = 0;
+        occupancyGrid.reset();
+        console.log('[SLAM] Đã reset SLAM Engine và Occupancy Grid.');
+        appendLidarLog('[SLAM] Đã reset bản đồ SLAM và Occupancy Grid.');
+        draw();
+    }
+};
+
+// ---------- Hook vào setLiveLidarPoints: chạy SLAM sau mỗi scan ----------
+const _origSetLiveLidarPoints = window.setLiveLidarPoints;
+window.setLiveLidarPoints = function(points) {
+    // Gọi logic gốc (cập nhật liveLidarScanPoints, badge, draw)
+    window.liveLidarScanPoints = points || [];
+    lastLidarScanTimestamp = Date.now();
+    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+
+    // Lấy IMU heading hiện tại từ telemetry
+    const imuHeading = (typeof window._lastImuHeadingRad === 'number')
+        ? window._lastImuHeadingRad : 0;
+
+    // Chạy SLAM pipeline
+    SlamEngine.processScan(points || [], imuHeading);
+};
+
+// ---------- Patch applyLiveTelemetry để lưu IMU heading ----------
+const _origApplyTelemetry = typeof applyLiveTelemetry === 'function' ? applyLiveTelemetry : null;
+if (_origApplyTelemetry) {
+    window.applyLiveTelemetry = function(data) {
+        _origApplyTelemetry(data);
+        // Lưu IMU heading (radian) từ telemetry packet
+        // Field name trong WebManager: HeadingRad (từ normalizeSignalRTelemetry)
+        if (data && typeof data.HeadingRad === 'number') {
+            window._lastImuHeadingRad = data.HeadingRad;
+        } else if (data && typeof data.headingRad === 'number') {
+            window._lastImuHeadingRad = data.headingRad;
+        } else if (data && typeof data.imuHeading === 'number') {
+            window._lastImuHeadingRad = data.imuHeading * Math.PI / 180;
+        }
+    };
+}
+
+// ---------- Patch draw() để vẽ SLAM trail + Occupancy Grid ----------
+const _origDraw = typeof draw === 'function' ? draw : null;
+if (_origDraw) {
+    window.draw = function() {
+        _origDraw();
+
+        const canvas = document.getElementById('graphCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        ctx.save();
+        // Dùng đúng transform giống draw gốc (translate rồi scale)
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        // Vị trí robot pixel (ưu tiên SLAM pose nếu robot chưa có từ API)
+        const robPx = (robotLiveX !== null)
+            ? robotLiveX / PIXEL_TO_METER
+            : SlamEngine.pose.x / PIXEL_TO_METER;
+        const robPy = (robotLiveY !== null)
+            ? robotLiveY / PIXEL_TO_METER
+            : SlamEngine.pose.y / PIXEL_TO_METER;
+
+        // ── Lớp 1: Occupancy Grid Map ───────────────────────────────────
+        if (showSlamGridLayer && occupancyGrid.offscreen && SlamEngine.isInitialized) {
+            occupancyGrid.render(); // Chỉ render khi dirty
+
+            // Vị trí vẽ grid: robot ở ORIGIN_COL, ORIGIN_ROW của grid
+            const gx = robPx - occupancyGrid.ORIGIN_COL;
+            const gy = robPy - occupancyGrid.ORIGIN_ROW;
+            ctx.globalAlpha = 0.65;
+            ctx.drawImage(occupancyGrid.offscreen, gx, gy, occupancyGrid.COLS, occupancyGrid.ROWS);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // ── Lớp 2: SLAM Trail (vệt hành trình xanh lá) ────────────────
+        if (SlamEngine.trail.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(
+                SlamEngine.trail[0].x / PIXEL_TO_METER,
+                SlamEngine.trail[0].y / PIXEL_TO_METER
+            );
+            for (let i = 1; i < SlamEngine.trail.length; i++) {
+                ctx.lineTo(
+                    SlamEngine.trail[i].x / PIXEL_TO_METER,
+                    SlamEngine.trail[i].y / PIXEL_TO_METER
+                );
+            }
+            ctx.strokeStyle = 'rgba(16, 220, 100, 0.85)';
+            ctx.lineWidth   = 2 / scale;
+            ctx.lineCap     = 'round';
+            ctx.lineJoin    = 'round';
+            ctx.stroke();
+
+            // Chấm SLAM position hiện tại
+            const last = SlamEngine.trail[SlamEngine.trail.length - 1];
+            const lx   = last.x / PIXEL_TO_METER;
+            const ly   = last.y / PIXEL_TO_METER;
+            ctx.beginPath();
+            ctx.arc(lx, ly, 5 / scale, 0, Math.PI * 2);
+            ctx.fillStyle = '#10dc64';
+            ctx.fill();
+
+            // Label tọa độ SLAM
+            ctx.fillStyle = '#10dc64';
+            ctx.font      = `bold ${9 / scale}px monospace`;
+            ctx.textAlign = 'left';
+            ctx.fillText(
+                `SLAM (${SlamEngine.pose.x.toFixed(2)}m, ${SlamEngine.pose.y.toFixed(2)}m)`,
+                lx + 8 / scale,
+                ly - 8 / scale
+            );
+        }
+
+        ctx.restore();
+    };
+}
+
+// ---------- Nút Reset SLAM từ UI ----------
+document.addEventListener('DOMContentLoaded', () => {
+    // Tự động tạo nút Reset SLAM nếu chưa có
+    const slamBtn = document.getElementById('btnCaptureSlamMap');
+    if (slamBtn) {
+        const resetBtn = document.createElement('button');
+        resetBtn.id        = 'btnResetSlam';
+        resetBtn.className = slamBtn.className;
+        resetBtn.textContent = '🔄 Reset SLAM';
+        resetBtn.title     = 'Xoá bản đồ SLAM và vệt hành trình, bắt đầu lại từ đầu';
+        resetBtn.addEventListener('click', () => {
+            if (confirm('Reset toàn bộ bản đồ SLAM và vệt hành trình?')) {
+                SlamEngine.reset();
+            }
+        });
+        slamBtn.parentNode.insertBefore(resetBtn, slamBtn.nextSibling);
+    }
+});
+
+// Log khởi tạo
+console.log('[SLAM] Module SLAM Engine + Occupancy Grid đã tải thành công.');
+appendLidarLog('[SLAM] Hệ thống SLAM 2D sẵn sàng. Đang chờ dữ liệu quét LiDAR...');
+
 
 
