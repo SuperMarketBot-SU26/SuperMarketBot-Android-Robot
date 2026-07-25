@@ -969,6 +969,40 @@
                             <span>100%</span>
                         </div>
                     </div>
+
+                    <!-- Waypoint Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Đi Waypoint (Waypoint Nav)</span>
+                            <span id="spdWaypointVal" class="text-xs font-mono font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">50%</span>
+                        </div>
+                        <input type="range" id="spdWaypointSlider" min="15" max="100" value="50" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>15%</span>
+                            <span>50%</span>
+                            <span>100%</span>
+                        </div>
+                    </div>
+
+                    <!-- Line Follower Speed -->
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-slate-300 font-medium">Tốc độ tối đa · Dò line (Line Follower TCRT)</span>
+                            <span id="spdLineVal" class="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">60%</span>
+                        </div>
+                        <input type="range" id="spdLineSlider" min="15" max="100" value="60" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+                            <span>15%</span>
+                            <span>60%</span>
+                            <span>100%</span>
+                        </div>
+                    </div>
+
+                    <!-- Ghi chú: Rotate áp dụng cho TẤT CẢ các mode -->
+                    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-2.5 text-[10px] text-indigo-200 leading-relaxed">
+                        <i data-lucide="info" class="w-3 h-3 inline-block -mt-0.5 mr-1"></i>
+                        <strong>Thanh "Xoay hướng (Rotate)"</strong> áp dụng đồng thời cho <strong>mọi chế độ</strong>: Lái tay, Auto, Waypoint Nav, Swerve (tránh vật cản) và Dò line. Chỉnh 1 lần — robot sẽ dùng chung tốc độ xoay này ở tất cả các mode.
+                    </div>
                 </div>
 
                 <!-- Tab: Auto Tuning Parameters -->
