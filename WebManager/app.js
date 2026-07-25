@@ -1339,6 +1339,8 @@ wireSlider('strSlider', 'strVal', 'set_strafe', 'joy');
 wireSlider('rotSlider', 'rotVal', 'set_speed_rotate', 'spdRotate');
 wireSlider('spdAutoSlider', 'spdAutoVal', 'set_speed_auto', 'spdAuto');
 wireSlider('spdSwerveSlider', 'spdSwerveVal', 'set_speed_swerve', 'spdSwerve');
+wireSlider('spdWaypointSlider', 'spdWaypointVal', 'set_speed_waypoint', 'spdWaypoint');
+wireSlider('spdLineSlider', 'spdLineVal', 'set_speed_line', 'spdLine');
 wireSlider('yawScaleSlider', 'yawScaleVal', 'set_yaw_scale', 'yawScale');
 
 
@@ -3091,14 +3093,23 @@ const Ros2BridgeManager = {
             occupancyGrid.offscreen.height = H * occupancyGrid.SUPER_SCALE;
         }
 
+        // ★ Mapping ROS OccupancyGrid [-1, 0..100] → Log-Odds của app:
+        //   -1 (Unknown)       → 0.0 (giữa, sẽ render Unknown xám)
+        //    0 (Free)          → -2.0 (rất tự do)
+        //   100 (Occupied)     → 5.0 (chắc chắn tường)
+        //    1..99 (xác suất)  → map tuyến tính từ -1.5 → 3.5 để giữ gradient
+        // Lý do: ROS trả về giá trị xác suất (0..100), bỏ qua sẽ mất gradient → tường lem.
         for (let i = 0; i < rawData.length; i++) {
             const v = rawData[i];
-            if (v === 100) {
-                occupancyGrid.data[i] = 5.0;  // Solid wall
+            if (v < 0) {
+                occupancyGrid.data[i] = 0.0;            // Unknown
             } else if (v === 0) {
-                occupancyGrid.data[i] = -2.0; // Free space
+                occupancyGrid.data[i] = -2.0;           // Free
+            } else if (v >= 100) {
+                occupancyGrid.data[i] = 5.0;            // Solid wall
             } else {
-                occupancyGrid.data[i] = 0.0;  // Unknown
+                // Gradient: v=1 → -1.5 (gần free), v=99 → 3.5 (gần occupied)
+                occupancyGrid.data[i] = -1.5 + (v / 100) * 5.0;
             }
         }
         occupancyGrid.dirty = true;
@@ -3305,7 +3316,7 @@ const occupancyGrid = {
                     if (n === 0 && lo < 2.5) isSolidWall = false; // Bỏ mốc đơn lẻ lơ lửng ở giữa phòng
                 }
 
-                let red = 98, green = 117, blue = 133, alpha = 255; // Unknown Slate Gray #627585
+                let red = 127, green = 140, blue = 141, alpha = 255; // Unknown Slate Gray #7F8C8D (chuẩn ROS OccupancyGrid)
 
                 if (this.theme === 'rviz') {
                     if (isSolidWall) {
@@ -3316,13 +3327,16 @@ const occupancyGrid = {
                         red = 30; green = 41; blue = 59; alpha = 180;
                     }
                 } else {
-                    // ROS / RViz Classic Light Mode (Giống 100% Ảnh ROS Tham Chiếu)
+                    // ★ ROS OccupancyGrid Standard (Tầng 4 — theo prompt Root-Cause)
+                    //   Occupied (100) → Đen đậm #101010 (đường nét sắc nét)
+                    //   Free      (0)  → Xám sáng/Trắng #F0F2F5 (sàn robot đi được)
+                    //   Unknown   (-1) → Xám trung tính #7F8C8D (vùng chưa khám phá)
                     if (isSolidWall) {
-                        red = 0; green = 0; blue = 0; alpha = 255;       // Tường ĐEN tuyền (#000000)
+                        red = 16; green = 16; blue = 16; alpha = 255;       // #101010 - Occupied
                     } else if (lo < this.L_THRESH_FREE) {
-                        red = 222; green = 224; blue = 227; alpha = 255; // Free space Xám nhạt dịu mắt (#DEE0E3)
+                        red = 240; green = 242; blue = 245; alpha = 255;   // #F0F2F5 - Free
                     } else {
-                        red = 98; green = 117; blue = 133; alpha = 255;  // Unknown Slate Gray (#627585)
+                        red = 127; green = 140; blue = 141; alpha = 255;   // #7F8C8D - Unknown
                     }
                 }
 
