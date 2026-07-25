@@ -351,13 +351,93 @@ function draw() {
     if (mapImage) {
         bgCtx.drawImage(mapImage, 0, 0);
     } else {
-        // Grid pattern if no map
-        bgCtx.strokeStyle = '#334155';
-        bgCtx.lineWidth = 1/scale;
-        for(let i=0; i<graphCanvas.width*2; i+=50) {
-            bgCtx.beginPath(); bgCtx.moveTo(i, -graphCanvas.height); bgCtx.lineTo(i, graphCanvas.height*2); bgCtx.stroke();
-            bgCtx.beginPath(); bgCtx.moveTo(-graphCanvas.width, i); bgCtx.lineTo(graphCanvas.width*2, i); bgCtx.stroke();
+        // Grid pattern đẹp (ROS Light theme) — vẽ trên toàn bộ viewport
+        // Mỗi 50px = 1m (resolution 0.05m)
+        const gridSize = 50;
+        const minX = -offsetX / scale;
+        const minY = -offsetY / scale;
+        const maxX = (graphCanvas.width - offsetX) / scale;
+        const maxY = (graphCanvas.height - offsetY) / scale;
+        // Light theme background
+        bgCtx.fillStyle = '#f8fafc';
+        bgCtx.fillRect(minX, minY, maxX - minX, maxY - minY);
+
+        // Minor grid (10cm) mỗi 10px
+        bgCtx.strokeStyle = '#e2e8f0';
+        bgCtx.lineWidth = 0.5 / scale;
+        bgCtx.beginPath();
+        for (let x = Math.floor(minX / 10) * 10; x <= maxX; x += 10) {
+            bgCtx.moveTo(x, minY); bgCtx.lineTo(x, maxY);
         }
+        for (let y = Math.floor(minY / 10) * 10; y <= maxY; y += 10) {
+            bgCtx.moveTo(minX, y); bgCtx.lineTo(maxX, y);
+        }
+        bgCtx.stroke();
+
+        // Major grid (1m) mỗi 50px
+        bgCtx.strokeStyle = '#cbd5e1';
+        bgCtx.lineWidth = 1 / scale;
+        bgCtx.beginPath();
+        for (let x = Math.floor(minX / 50) * 50; x <= maxX; x += 50) {
+            bgCtx.moveTo(x, minY); bgCtx.lineTo(x, maxY);
+        }
+        for (let y = Math.floor(minY / 50) * 50; y <= maxY; y += 50) {
+            bgCtx.moveTo(minX, y); bgCtx.lineTo(maxX, y);
+        }
+        bgCtx.stroke();
+
+        // Origin marker (0,0)
+        bgCtx.strokeStyle = '#94a3b8';
+        bgCtx.lineWidth = 1.5 / scale;
+        bgCtx.beginPath();
+        bgCtx.arc(0, 0, 8 / scale, 0, Math.PI * 2);
+        bgCtx.stroke();
+        bgCtx.fillStyle = '#94a3b8';
+        bgCtx.font = `${11/scale}px Inter`;
+        bgCtx.textAlign = 'left';
+        bgCtx.textBaseline = 'top';
+        bgCtx.fillText('Origin (0,0)', 12 / scale, 12 / scale);
+    }
+
+    // ========== SLAM Realtime Overlay (render occupancyGrid nếu có data) ==========
+    if (showSlamGridLayer && occupancyGrid && occupancyGrid.data && occupancyGrid.data.length > 0) {
+        const og = occupancyGrid;
+        const ogRes = og.RESOLUTION || 0.05;
+        const cellPx = 1.0 / (PIXEL_TO_METER * ogRes);   // pixel per cell (ở scale=1)
+        const occCol = Math.round(og.COLS / 2);
+        const occRow = Math.round(og.ROWS / 2);
+        const L_OCC = og.L_OCC || 1.8;
+        const L_FREE = og.L_THRESH_FREE || -0.5;
+        const localScale = scale * PIXEL_TO_METER;  // 1 data-cell = 1 cellPx * localScale pixel
+
+        bgCtx.save();
+        bgCtx.fillStyle = 'rgba(248, 250, 252, 0.85)';
+        // Convert (col, row) → (world x, y) theo ROS convention
+        // x = (col - ORIGIN_COL) * RESOLUTION
+        // y = (row - ORIGIN_ROW) * RESOLUTION
+        // ROS y tăng lên = bắc, canvas y tăng xuống. Cần flip Y.
+        const visibleCells = Math.min(og.data.length, 50000);  // giới hạn tối đa
+        const step = Math.max(1, Math.floor(og.data.length / visibleCells));
+        for (let i = 0; i < og.data.length; i += step) {
+            const lo = og.data[i];
+            const col = i % og.COLS;
+            const row = Math.floor(i / og.COLS);
+            const worldX = (col - occCol) * ogRes;
+            const worldY = -(row - occRow) * ogRes;  // flip Y
+            const pxX = worldX / PIXEL_TO_METER;
+            const pxY = worldY / PIXEL_TO_METER;
+            const cs = cellPx * scale;
+            if (lo >= L_OCC * 0.85) {
+                bgCtx.fillStyle = 'rgba(10, 10, 10, 0.9)';
+                bgCtx.fillRect(pxX, pxY, cellPx, cellPx);
+            } else if (lo < L_FREE) {
+                // Free — không vẽ (để background grid hiện)
+            } else {
+                bgCtx.fillStyle = 'rgba(127, 140, 141, 0.4)';
+                bgCtx.fillRect(pxX, pxY, cellPx, cellPx);
+            }
+        }
+        bgCtx.restore();
     }
 
     // Draw Edges
@@ -504,19 +584,88 @@ function draw() {
         ctx.textAlign = 'center';
         ctx.fillText("ROBOT", px, py - 20/scale);
 
-        // Draw Live 360° LiDAR Scan Cloud around Robot
+        // Draw Live 360° LiDAR Scan Cloud around Robot (RViz-style)
         if (showLidarScanCloud && window.liveLidarScanPoints && window.liveLidarScanPoints.length > 0) {
-            ctx.fillStyle = '#ef4444'; // Bright Red laser hits
+            // Vẽ tia (ray) từ robot → điểm (gradient alpha theo khoảng cách)
+            const maxR = 6.0; // 6m
+            ctx.lineWidth = 1.0 / scale;
             window.liveLidarScanPoints.forEach(pt => {
+                const distM = Math.hypot(pt.x, pt.y);
                 const lx = px + (pt.x / PIXEL_TO_METER);
                 const ly = py + (pt.y / PIXEL_TO_METER);
-                ctx.fillRect(lx - 1.5/scale, ly - 1.5/scale, 3/scale, 3/scale);
+                const alpha = Math.max(0.15, 1.0 - (distM / maxR));
+                if (alpha < 0.1) return; // bỏ điểm quá xa
+                // Ray
+                ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.5})`;
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(lx, ly);
+                ctx.stroke();
+                // Hit point
+                ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
+                const r = Math.max(2.0, 4.0 * (1 - distM / maxR)) / scale;
+                ctx.fillRect(lx - r/2, ly - r/2, r, r);
             });
         }
     }
 
     bgCtx.restore();
     ctx.restore();
+
+    // ===== Update Map Stats overlay (góc trên-trái) =====
+    updateMapStatsOverlay();
+}
+
+// ===== Map Stats Overlay update =====
+let _mapStatsCache = { occ: -1, free: -1, grid: '' };
+function updateMapStatsOverlay() {
+    const og = (typeof window !== 'undefined' && window.occupancyGrid) || (typeof occupancyGrid !== 'undefined' ? occupancyGrid : null);
+    if (!og || !og.data) return;
+    const res = og.RESOLUTION || 0.05;
+    const grid = `${og.COLS} × ${og.ROWS}`;
+    const elRes = document.getElementById('mapStatRes');
+    const elGrid = document.getElementById('mapStatGrid');
+    const elOcc = document.getElementById('mapStatOcc');
+    const elFree = document.getElementById('mapStatFree');
+    if (elRes) elRes.textContent = (res * 100).toFixed(1) + 'cm';
+    if (elGrid) elGrid.textContent = grid;
+    // % occupied/free (đếm mỗi 2 frame để tránh lag)
+    if (_mapStatsCache.grid !== grid) {
+        _mapStatsCache.grid = grid;
+        const L_OCC = og.L_OCC || 1.8;
+        const L_FREE = og.L_THRESH_FREE || -0.5;
+        let occ = 0, free = 0;
+        for (let i = 0; i < og.data.length; i++) {
+            const lo = og.data[i];
+            if (lo >= L_OCC * 0.85) occ++;
+            else if (lo < L_FREE) free++;
+        }
+        const total = og.data.length;
+        _mapStatsCache.occ = (occ / total * 100).toFixed(1);
+        _mapStatsCache.free = (free / total * 100).toFixed(1);
+    }
+    if (elOcc) elOcc.textContent = _mapStatsCache.occ + '%';
+    if (elFree) elFree.textContent = _mapStatsCache.free + '%';
+}
+
+// ===== Mouse coordinate indicator (drag để xem tọa độ) =====
+const mapCoordIndicator = document.getElementById('mapCoordIndicator');
+if (mapCoordIndicator) {
+    const wrapper = document.getElementById('mapWrapper');
+    if (wrapper) {
+        wrapper.addEventListener('mousemove', (e) => {
+            const rect = wrapper.getBoundingClientRect();
+            const canvasX = (e.clientX - rect.left);
+            const canvasY = (e.clientY - rect.top);
+            // Convert sang world coordinates theo biến offsetX, scale
+            const worldX = ((canvasX - offsetX) / scale) * PIXEL_TO_METER;
+            const worldY = ((canvasY - offsetY) / scale) * PIXEL_TO_METER;
+            const elX = document.getElementById('mapCoordX');
+            const elY = document.getElementById('mapCoordY');
+            if (elX) elX.textContent = worldX.toFixed(2) + 'm';
+            if (elY) elY.textContent = worldY.toFixed(2) + 'm';
+        });
+    }
 }
 
 // Properties Panel Logic
@@ -1108,6 +1257,35 @@ async function pollRobotLivePose() {
     setTimeout(pollRobotLivePose, 1000);
 }
 
+// ============================================================
+// ★ LIVE RENDER LOOP (requestAnimationFrame)
+// Vẽ lại mỗi 16ms (60fps) khi SLAM đang chạy — giúp map update
+// mượt như RViz realtime, không bị giật khi robot di chuyển.
+// Không tốn CPU khi SLAM tắt vì sẽ skip draw() sau dirty-check.
+// ============================================================
+let _liveRenderEnabled = false;
+let _lastRenderMs = 0;
+function liveRenderLoop() {
+    if (_liveRenderEnabled && SlamEngine.isInitialized) {
+        const nowMs = performance.now();
+        // Throttle ~33fps (30ms) để tránh chiếm dụng CPU quá mức
+        if (nowMs - _lastRenderMs >= 33) {
+            _lastRenderMs = nowMs;
+            if (typeof draw === 'function') draw();
+        }
+    }
+    requestAnimationFrame(liveRenderLoop);
+}
+requestAnimationFrame(liveRenderLoop);
+
+// Bật/tắt live render từ UI
+window.setLiveRender = function(enabled) {
+    _liveRenderEnabled = !!enabled;
+    console.log(`[LIVE-RENDER] ${enabled ? 'BẬT' : 'TẮT'} render mượt 30fps`);
+};
+// Mặc định BẬT
+window.setLiveRender(true);
+
 // Kích hoạt Live Tracking sau khi load trang
 setTimeout(pollRobotLivePose, 2000);
 
@@ -1197,6 +1375,29 @@ function connectRobotWs() {
                     });
                     if (window.setLiveLidarPoints) {
                         window.setLiveLidarPoints(scanPts);
+                    }
+                    return;
+                }
+
+                // ====== AUTO SCAN MAP EVENTS (từ ESP32 broadcast) ======
+                if (data.t === 'scan_progress') {
+                    if (typeof window.onAutoScanProgress === 'function') {
+                        window.onAutoScanProgress(
+                            parseFloat(data.pct) || 0,
+                            parseFloat(data.dist) || 0,
+                            parseInt(data.durMs, 10) || 0,
+                            parseInt(data.fsm, 10) || 0
+                        );
+                    }
+                    return;
+                }
+                if (data.t === 'scan_complete') {
+                    if (typeof window.onAutoScanComplete === 'function') {
+                        window.onAutoScanComplete(
+                            parseFloat(data.pct) || 0,
+                            parseFloat(data.dist) || 0,
+                            parseInt(data.durMs, 10) || 0
+                        );
                     }
                     return;
                 }
@@ -1294,6 +1495,13 @@ function sendRobotCommand(command, wsType, value) {
                 robotWs.send(JSON.stringify({ t: 'test_motor', payload: value }));
             } else if (wsType === 'mode') {
                 robotWs.send(JSON.stringify({ t: 'mode', m: parseInt(value, 10) }));
+            } else if (wsType === 'mode_auto_explore') {
+                robotWs.send(JSON.stringify({ t: 'mode_auto_explore' }));
+                console.log('[RobotWS] ▶ Sent mode_auto_explore to ESP32');
+                appendSerialLog('[AUTO-SCAN] → ESP32: mode_auto_explore');
+            } else if (wsType === 'scan_stop') {
+                robotWs.send(JSON.stringify({ t: 'scan_stop' }));
+                console.log('[RobotWS] ⏹ Sent scan_stop to ESP32');
             } else if (wsType === 'estop') {
                 robotWs.send(JSON.stringify({ t: 'estop' }));
             } else if (wsType === 'odomReset') {
@@ -1342,6 +1550,24 @@ wireSlider('spdSwerveSlider', 'spdSwerveVal', 'set_speed_swerve', 'spdSwerve');
 wireSlider('spdWaypointSlider', 'spdWaypointVal', 'set_speed_waypoint', 'spdWaypoint');
 wireSlider('spdLineSlider', 'spdLineVal', 'set_speed_line', 'spdLine');
 wireSlider('yawScaleSlider', 'yawScaleVal', 'set_yaw_scale', 'yawScale');
+
+// Snap-to-90° slider — gửi giá trị tolerance (degrees) qua WS
+(() => {
+    const slider = document.getElementById('snap90Slider');
+    const valEl  = document.getElementById('snap90Val');
+    if (!slider || !valEl) return;
+    slider.addEventListener('input', () => {
+        valEl.textContent = slider.value + '°';
+    });
+    slider.addEventListener('change', () => {
+        const deg = parseInt(slider.value, 10);
+        // Gửi WS tới ESP32: {t: 'snap90', deg: deg}
+        if (isRobotWsConnected && robotWs && robotWs.readyState === WebSocket.OPEN) {
+            robotWs.send(JSON.stringify({ t: 'snap90', deg }));
+            appendSerialLog(`[Snap-to-90] Đã set tolerance = ${deg}°`);
+        }
+    });
+})();
 
 
 
@@ -2210,32 +2436,279 @@ window.changeRobotMode = function(modeVal) {
     
     // Tạm thời highlight nút vừa bấm để phản hồi tức thì cho người dùng
     const btnManual = document.getElementById('btnModeManual');
-    const btnAuto = document.getElementById('btnModeAuto');
+    const btnAutoExplore = document.getElementById('btnModeAutoExplore');
     const btnWaypoint = document.getElementById('btnModeWaypoint');
     const btnLine = document.getElementById('btnModeLine');
-    if (btnManual && btnAuto && btnWaypoint) {
+    if (btnManual && btnAutoExplore && btnWaypoint) {
         btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
-        btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
+        btnAutoExplore.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/20";
         btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
         if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30";
-        
+
         if (modeVal === 0) {
             btnManual.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-emerald-400 border border-emerald-500/30 animate-pulse";
         } else if (modeVal === 1) {
-            btnAuto.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-amber-400 border border-amber-500/30 animate-pulse";
+            btnAutoExplore.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-amber-400 border border-amber-500/30 animate-pulse";
         } else if (modeVal === 2) {
             btnWaypoint.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-blue-400 border border-blue-500/30 animate-pulse";
         } else if (modeVal === 3) {
             if (btnLine) btnLine.className = "flex-1 py-1.5 text-[10px] font-bold rounded transition-all focus:outline-none uppercase bg-slate-700 text-purple-400 border border-purple-500/30 animate-pulse";
         }
     }
-    
+
     sendRobotCommand('set_mode', 'mode', modeVal);
 };
 
+// ============================================================
+// AUTO SCAN MAP — Modal + WS events + Auto-save to BE
+// ============================================================
+let autoScanState = {
+    active: false,
+    sessionId: null,
+    floorId: 1,
+    mapName: 'Auto-scanned Map',
+    autoSave: true,
+    lastPct: 0,
+    lastDist: 0,
+    startMs: 0,
+    lastMapDataUrl: null
+};
+
+window.openAutoScanModal = function() {
+    const modal = document.getElementById('autoScanModal');
+    if (modal) modal.classList.replace('hidden', 'flex');
+};
+
+window.closeAutoScanModal = function() {
+    const modal = document.getElementById('autoScanModal');
+    if (modal) modal.classList.replace('flex', 'hidden');
+};
+
+window.startAutoScan = function() {
+    autoScanState.floorId = parseInt(document.getElementById('autoScanFloorId').value, 10) || 1;
+    autoScanState.mapName = document.getElementById('autoScanMapName').value || 'Auto-scanned Map';
+    autoScanState.autoSave = document.getElementById('autoScanAutoSave').checked;
+    autoScanState.startMs = Date.now();
+    autoScanState.lastPct = 0;
+    autoScanState.lastDist = 0;
+    autoScanState.active = true;
+    autoScanState.sessionId = Date.now().toString(36);
+
+    // UI: show progress, hide start button
+    document.getElementById('autoScanProgressBox').classList.remove('hidden');
+    document.getElementById('btnAutoScanStart').classList.add('hidden');
+    document.getElementById('btnAutoScanStop').classList.remove('hidden');
+    document.getElementById('autoScanResult').classList.add('hidden');
+
+    // Gửi lệnh sang ESP32
+    sendRobotCommand('mode_auto_explore', 'scan', 'start');
+    appendSerialLog('[AUTO-SCAN] ▶ Bắt đầu quét Map tự động...');
+};
+
+window.stopAutoScan = function() {
+    autoScanState.active = false;
+    sendRobotCommand('scan_stop', 'scan', 'stop');
+    document.getElementById('btnAutoScanStop').classList.add('hidden');
+    document.getElementById('btnAutoScanStart').classList.remove('hidden');
+    appendSerialLog('[AUTO-SCAN] ⏹ Đã gửi lệnh dừng quét');
+};
+
+window.onAutoScanProgress = function(pct, dist, durMs, fsm) {
+    if (!autoScanState.active) return;
+    autoScanState.lastPct = pct;
+    autoScanState.lastDist = dist;
+
+    const fsmNames = ['CRUISE', 'SPIN_DETECT', 'AVOID_US', 'DONE'];
+    document.getElementById('autoScanState').textContent = fsmNames[fsm] || `STATE_${fsm}`;
+    document.getElementById('autoScanPct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('autoScanBar').style.width = pct + '%';
+    document.getElementById('autoScanDist').textContent = dist.toFixed(2) + 'm';
+    const sec = Math.floor(durMs / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    document.getElementById('autoScanDur').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+window.onAutoScanComplete = function(pct, dist, durMs) {
+    autoScanState.active = false;
+    document.getElementById('btnAutoScanStop').classList.add('hidden');
+    document.getElementById('btnAutoScanStart').classList.remove('hidden');
+    document.getElementById('autoScanPct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('autoScanBar').style.width = pct + '%';
+
+    const resultEl = document.getElementById('autoScanResult');
+    resultEl.classList.remove('hidden');
+    resultEl.className = 'text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-lg p-3';
+    resultEl.innerHTML = `✅ Quét hoàn thành! Coverage: <strong>${pct.toFixed(1)}%</strong>, Quãng đường: <strong>${dist.toFixed(2)}m</strong>, Thời gian: <strong>${(durMs/1000).toFixed(0)}s</strong>`;
+
+    appendSerialLog(`[AUTO-SCAN] ✅ Quét xong — coverage ${pct.toFixed(1)}%, ${dist.toFixed(2)}m`);
+
+    if (autoScanState.autoSave) {
+        // Lưu map hiện tại xuống BE
+        saveScannedMapToBE();
+    }
+};
+
+async function saveScannedMapToBE() {
+    try {
+        appendSerialLog('[AUTO-SCAN] 💾 Đang lưu map xuống Server...');
+        const pngBlob = await renderOccupancyGridAsPng();
+        if (!pngBlob) {
+            appendSerialLog('[AUTO-SCAN] ⚠ Không có dữ liệu map để lưu');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', pngBlob, 'autoscan.png');
+
+        const params = new URLSearchParams({
+            floorId: autoScanState.floorId,
+            mapName: autoScanState.mapName,
+            sessionId: autoScanState.sessionId,
+            coveragePct: autoScanState.lastPct,
+            distM: autoScanState.lastDist
+        });
+        const url = `${BASE_URL}/api/v1/maps/save-slam?${params.toString()}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: { 'ngrok-skip-browser-warning': '69420' }
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const mapId = data.mapId || data.MapId;
+            appendSerialLog(`[AUTO-SCAN] ✅ Map đã lưu! MapId=${mapId}`);
+            const resultEl = document.getElementById('autoScanResult');
+            resultEl.className = 'text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-lg p-3';
+            resultEl.innerHTML += `<br>💾 Đã lưu map xuống Server — MapId: <strong>${mapId}</strong>. Bạn có thể mở "Map Editor" để tạo nodes/edges cho waypoint.`;
+        } else {
+            const err = await res.text();
+            appendSerialLog(`[AUTO-SCAN] ❌ Lỗi lưu map: ${res.status} ${err}`);
+        }
+    } catch (e) {
+        appendSerialLog(`[AUTO-SCAN] ❌ Exception khi lưu map: ${e.message}`);
+    }
+}
+
+/**
+ * Render occupancyGrid hiện tại ra PNG blob với median filter và chuẩn màu ROS2 Light.
+ * Lấy dữ liệu từ window.occupancyGrid (đã có sẵn trong app.js).
+ *
+ * @param {Object} opts
+ * @param {number} opts.medianRadius  Bán kính median filter (1=3x3, 2=5x5). Default 1.
+ * @param {number} opts.smoothing     Làm mịn (0..1). Default 0.6.
+ * @param {boolean} opts.mirrorVertical  Lật ảnh theo trục Y (WebManager ROS convention).
+ */
+async function renderOccupancyGridAsPng(opts = {}) {
+    try {
+        const og = (typeof window !== 'undefined' && window.occupancyGrid) || (typeof occupancyGrid !== 'undefined' ? occupancyGrid : null);
+        if (!og || !og.data || og.data.length === 0) return null;
+
+        const medianRadius = (opts.medianRadius !== undefined) ? opts.medianRadius : 1;
+        const smoothing    = (opts.smoothing    !== undefined) ? opts.smoothing    : 0.6;
+        const mirrorVertical = (opts.mirrorVertical !== undefined) ? opts.mirrorVertical : true;
+
+        const W = og.COLS, H = og.ROWS;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(W, H);
+        const pixels = imgData.data;
+        const L_THRESH_FREE = og.L_THRESH_FREE || -0.5;
+        const L_OCC = og.L_OCC || 1.8;
+
+        // ===== Step 1: classify 3 states (occupied, free, unknown) =====
+        // -1 = free, 0 = unknown, 1 = occupied, 2 = filtered (sẽ dùng median)
+        const classified = new Int8Array(W * H);
+        for (let i = 0; i < og.data.length; i++) {
+            const lo = og.data[i];
+            if (lo >= L_OCC * 0.85) classified[i] = 1;       // occupied
+            else if (lo < L_THRESH_FREE) classified[i] = -1; // free
+            else classified[i] = 0;                          // unknown
+        }
+
+        // ===== Step 2: median filter (mode of 3x3 neighborhood) =====
+        if (medianRadius >= 1) {
+            const filtered = new Int8Array(W * H);
+            const r = medianRadius;
+            for (let row = 0; row < H; row++) {
+                for (let col = 0; col < W; col++) {
+                    // Count: occupied / free / unknown
+                    let cOcc = 0, cFree = 0, cUnk = 0;
+                    for (let dy = -r; dy <= r; dy++) {
+                        const y2 = row + dy;
+                        if (y2 < 0 || y2 >= H) continue;
+                        for (let dx = -r; dx <= r; dx++) {
+                            const x2 = col + dx;
+                            if (x2 < 0 || x2 >= W) continue;
+                            const v = classified[y2 * W + x2];
+                            if (v === 1) cOcc++;
+                            else if (v === -1) cFree++;
+                            else cUnk++;
+                        }
+                    }
+                    // Mode (chiếm đa số)
+                    if (cOcc > cFree && cOcc > cUnk) filtered[row * W + col] = 1;
+                    else if (cFree > cOcc && cFree > cUnk) filtered[row * W + col] = -1;
+                    else filtered[row * W + col] = 0;
+                }
+            }
+            for (let i = 0; i < W * H; i++) classified[i] = filtered[i];
+        }
+
+        // ===== Step 3: render to pixels with ROS2 Light theme =====
+        const occupiedColor = [10, 10, 10];         // tường: #0a0a0a
+        const freeColor     = [240, 242, 245];      // sàn:  #f0f2f5
+        const unknownColor  = [127, 140, 141];      // unknown: #7f8c8d
+        const gridColor     = [220, 220, 225];      // grid lines (1px mỗi 10 ô)
+
+        for (let row = 0; row < H; row++) {
+            for (let col = 0; col < W; col++) {
+                const idx = row * W + col;
+                const v = classified[idx];
+                let r, g, b;
+                // Add grid lines mỗi 10 cell (1m nếu resolution = 0.05m)
+                const isGrid = (row % 10 === 0 || col % 10 === 0);
+                if (v === 1) {
+                    r = occupiedColor[0]; g = occupiedColor[1]; b = occupiedColor[2];
+                } else if (v === -1) {
+                    r = freeColor[0]; g = freeColor[1]; b = freeColor[2];
+                } else {
+                    r = unknownColor[0]; g = unknownColor[1]; b = unknownColor[2];
+                }
+                if (isGrid && v !== 1) {
+                    // Blend grid color
+                    const alpha = (v === -1) ? 0.3 : 0.15;
+                    r = Math.round(r * (1 - alpha) + gridColor[0] * alpha);
+                    g = Math.round(g * (1 - alpha) + gridColor[1] * alpha);
+                    b = Math.round(b * (1 - alpha) + gridColor[2] * alpha);
+                }
+                // Mirror Y (ROS convention: y tăng lên = bắc, nhưng canvas y tăng xuống)
+                let canvasRow = row;
+                if (mirrorVertical) canvasRow = H - 1 - row;
+                const base = (canvasRow * W + col) * 4;
+                pixels[base]   = r;
+                pixels[base+1] = g;
+                pixels[base+2] = b;
+                pixels[base+3] = 255;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), 'image/png');
+        });
+    } catch (e) {
+        console.error('[renderOccupancyGridAsPng] error:', e);
+        return null;
+    }
+}
+
 // Gắn sự kiện click cho các nút chế độ điều khiển
 document.getElementById('btnModeManual')?.addEventListener('click', () => changeRobotMode(0));
-document.getElementById('btnModeAuto')?.addEventListener('click', () => changeRobotMode(1));
+document.getElementById('btnModeAutoExplore')?.addEventListener('click', () => openAutoScanModal());
 document.getElementById('btnModeWaypoint')?.addEventListener('click', () => changeRobotMode(2));
 document.getElementById('btnModeLine')?.addEventListener('click', () => changeRobotMode(3));
 
@@ -2797,7 +3270,64 @@ document.getElementById('btnToggleSlamTheme')?.addEventListener('click', () => {
     draw();
 });
 
-// Toggle Fullscreen Canvas (Phóng to / Thu nhỏ toàn màn hình)
+// ============================================================
+// NÚT XOAY MAP (Rotate Map 90°): 0° → 90° → 180° → 270° → 0°
+// Mỗi lần click xoay occupancyGrid + scan points 90° (CW).
+// Dùng khi map hiển thị bị ngược hoặc xoay so với thực tế.
+// ============================================================
+let mapRotationDeg = 0;  // 0, 90, 180, 270
+document.getElementById('btnRotateMap')?.addEventListener('click', () => {
+    mapRotationDeg = (mapRotationDeg + 90) % 360;
+    const btn = document.getElementById('btnRotateMap');
+    if (btn) {
+        btn.innerHTML = `<i data-lucide="rotate-cw" class="w-4 h-4"></i> Map: ${mapRotationDeg}°`;
+        btn.title = `Xoay bản đồ thêm 90°. Click tiếp: 90° → 180° → 270° → 0°`;
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (occupancyGrid) occupancyGrid.dirty = true;
+    draw();
+});
+
+// ============================================================
+// NÚT LẬT MAP (Flip Map): trái↔phải (horizontal) + trên↔dưới (vertical)
+// 3 mode: 0=normal, 1=flip horizontal (trái/phải), 2=flip vertical (trên/dưới)
+// ============================================================
+let mapFlipMode = 0;  // 0=normal, 1=flipX, 2=flipY
+document.getElementById('btnFlipMap')?.addEventListener('click', () => {
+    mapFlipMode = (mapFlipMode + 1) % 3;
+    const btn = document.getElementById('btnFlipMap');
+    if (btn) {
+        const labels = ['', '↔ Lật ngang', '↕ Lật dọc'];
+        btn.innerHTML = `<i data-lucide="flip-horizontal-2" class="w-4 h-4"></i> ${labels[mapFlipMode]}`;
+        btn.title = 'Lật bản đồ: normal → ngang → dọc → normal';
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (occupancyGrid) occupancyGrid.dirty = true;
+    draw();
+});
+
+// ============================================================
+// NÚT LIVE RENDER: Bật/Tắt render mượt 30fps (real-time SLAM update)
+// Mặc định BẬT. Khi TẮT → chỉ redraw khi có event (tiết kiệm CPU)
+// ============================================================
+document.getElementById('btnLiveRender')?.addEventListener('click', () => {
+    const btn = document.getElementById('btnLiveRender');
+    if (typeof window.setLiveRender === 'function') {
+        // Đảo trạng thái hiện tại (đọc từ innerHTML)
+        const isLive = btn?.innerHTML.includes('Live');
+        window.setLiveRender(!isLive);
+        if (btn) {
+            if (!isLive) {
+                btn.innerHTML = '<i data-lucide="zap" class="w-4 h-4"></i> Live';
+                btn.className = "px-2.5 py-1 bg-green-500/20 text-green-300 border border-green-500/30 rounded text-xs font-semibold hover:bg-green-500 hover:text-white transition-all flex items-center gap-1.5";
+            } else {
+                btn.innerHTML = '<i data-lucide="zap-off" class="w-4 h-4"></i> Off';
+                btn.className = "px-2.5 py-1 bg-slate-800 text-slate-500 border border-slate-700 rounded text-xs font-semibold transition-all flex items-center gap-1.5";
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+});
 let isCanvasFullscreen = false;
 document.getElementById('btnResetView')?.addEventListener('click', () => {
     const centerSection = document.querySelector('section.flex-1');
@@ -2832,15 +3362,27 @@ document.getElementById('btnResetView')?.addEventListener('click', () => {
     }, 100);
 });
 
-document.getElementById('btnCaptureSlamMap')?.addEventListener('click', () => {
-    const dataUrl = graphCanvas.toDataURL('image/png');
+document.getElementById('btnCaptureSlamMap')?.addEventListener('click', async () => {
+    // Ưu tiên render occupancyGrid (đã qua median filter + ROS Light theme) thay vì
+    // chụp graphCanvas (đám mây điểm thô — nguyên nhân chính gây nhiều đốm đen).
+    const pngBlob = await renderOccupancyGridAsPng({ medianRadius: 2, mirrorVertical: true, smoothing: 0.7 });
+    if (!pngBlob) {
+        alert('⚠ Chưa có dữ liệu occupancyGrid. Hãy đợi SLAM quét xong một số scan.');
+        return;
+    }
     const img = new Image();
     img.onload = () => {
         mapImage = img;
+        // Fit toàn bộ map vào viewport
+        const scaleX = graphCanvas.width / img.width;
+        const scaleY = graphCanvas.height / img.height;
+        scale = Math.min(scaleX, scaleY) * 0.92;
+        offsetX = (graphCanvas.width - img.width * scale) / 2;
+        offsetY = (graphCanvas.height - img.height * scale) / 2;
         draw();
-        alert('📸 Đã chụp mây điểm mặt bằng SLAM thành công và nạp làm Ảnh Nền Bản Đồ!');
+        appendSerialLog('[SLAM] ✅ Đã chụp occupancyGrid → set làm Background (đã lọc nhiễu + median).');
     };
-    img.src = dataUrl;
+    img.src = URL.createObjectURL(pngBlob);
 });
 
 // ============================================================================
@@ -3043,7 +3585,9 @@ const Ros2BridgeManager = {
         // Phát cây tọa độ TF trước khi đẩy mây điểm
         this.publishTf();
 
-        const numSamples = 360;
+        // Resolution cao để SLAM map mịn nhất.
+        // 1500 samples → angle_increment = 2π/1500 ≈ 0.24° → chi tiết rất cao
+        const numSamples = 1500;
         const ranges = new Float32Array(numSamples).fill(0.0);
 
         for (const pt of rawPts) {
@@ -3052,7 +3596,10 @@ const Ros2BridgeManager = {
             if (angle < 0) angle += 2 * Math.PI;
 
             const idx = Math.floor((angle / (2 * Math.PI)) * numSamples) % numSamples;
-            ranges[idx] = r;
+            // Lấy giá trị MIN (closest hit) nếu có nhiều điểm cùng cung
+            if (ranges[idx] === 0 || r < ranges[idx]) {
+                ranges[idx] = r;
+            }
         }
 
         const scanMsg = new ROSLIB.Message({
@@ -3079,6 +3626,20 @@ const Ros2BridgeManager = {
         const H = gridMsg.info.height;
         const res = gridMsg.info.resolution;
         const rawData = gridMsg.data;
+
+        // ★ Log throttling: chỉ log mỗi 5 giây (slam_toolbox publish ~1 Hz)
+        const now = Date.now();
+        if (!this._lastMapLogMs || now - this._lastMapLogMs > 5000) {
+            this._lastMapLogMs = now;
+            let unknown = 0, free = 0, occ = 0;
+            for (let i = 0; i < rawData.length; i++) {
+                const v = rawData[i];
+                if (v < 0) unknown++;
+                else if (v === 0) free++;
+                else if (v >= 100) occ++;
+            }
+            console.log(`[ROS2 /map] ${W}x${H} res=${res}m  unknown=${unknown} free=${free} occ=${occ}`);
+        }
 
         occupancyGrid.COLS = W;
         occupancyGrid.ROWS = H;
@@ -3113,6 +3674,7 @@ const Ros2BridgeManager = {
             }
         }
         occupancyGrid.dirty = true;
+        _mapStatsCache.grid = '';   // force re-count
         draw();
     },
 
@@ -3407,7 +3969,7 @@ const SlamEngine = {
     // Consecutive Motion Filter: số frame liên tiếp phát hiện chuyển động
     // Phải đạt MOTION_STREAK_NEEDED frame liên tiếp mới cập nhật pose
     motionStreak: 0,
-    MOTION_STREAK_NEEDED: 2,
+    MOTION_STREAK_NEEDED: 1,   // ★ LIVE: 1 frame để phản hồi tức thì (cũ = 2 → lag)
 
     // Bật/tắt SLAM (UI toggle)
     enabled: true,
@@ -3635,11 +4197,11 @@ const SlamEngine = {
             if (this.trail.length > this.MAX_TRAIL) this.trail.shift();
         }
 
-        // ── Bước 5: Cập nhật Occupancy Grid ────────────────────────────────
-        this.frameCount++;
-        if (this.frameCount % 2 === 0) {
-            occupancyGrid.updateWithScan(rawPts, this.pose);
-        }
+// ── Bước 5: Cập nhật Occupancy Grid ────────────────────────────────
+    this.frameCount++;
+    // ★ LIVE-MODE: cập nhật occupancyGrid MỖI frame (không skip %2) để map mượt như RViz realtime
+    occupancyGrid.updateWithScan(rawPts, this.pose);
+    occupancyGrid.dirty = true;   // Đánh dấu cần render lại (render loop sẽ pick up)
 
         // Cập nhật prev
         this.prevBins = currBins;
@@ -3755,17 +4317,31 @@ if (_origDraw) {
 
             const gx = slamOriginX - occupancyGrid.ORIGIN_COL * cellPx;
             const gy = slamOriginY - occupancyGrid.ORIGIN_ROW * cellPx;
+            const mapW = occupancyGrid.COLS * cellPx;
+            const mapH = occupancyGrid.ROWS * cellPx;
 
             ctx.save();
             // Bật Bilinear Subpixel Smoothing mịn màng như RViz / ROS2
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.globalAlpha = 1.0;
+
+            // ★ Áp dụng Rotation + Flip quanh ROBOT CENTER (robCanvasX, robCanvasY)
+            // Khi user click "Xoay Map" hoặc "Lật Map", toàn bộ occupancyGrid sẽ xoay/lật
+            // nhưng ROBOT vẫn đứng yên ở tâm - giúp người dùng dễ định hướng.
+            if (mapRotationDeg !== 0 || mapFlipMode !== 0) {
+                ctx.translate(robCanvasX, robCanvasY);
+                if (mapFlipMode === 1) ctx.scale(-1, 1);     // Lật ngang (trái↔phải)
+                if (mapFlipMode === 2) ctx.scale(1, -1);     // Lật dọc (trên↔dưới)
+                if (mapRotationDeg !== 0) ctx.rotate(mapRotationDeg * Math.PI / 180);
+                ctx.translate(-robCanvasX, -robCanvasY);
+            }
+
             ctx.drawImage(
                 occupancyGrid.offscreen,
                 gx, gy,
-                occupancyGrid.COLS * cellPx,
-                occupancyGrid.ROWS * cellPx
+                mapW,
+                mapH
             );
             ctx.restore();
 
