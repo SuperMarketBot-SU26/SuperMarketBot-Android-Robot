@@ -293,6 +293,35 @@ cd ~/ros2_ws && ./test_robot.sh
 
 ## 6. Troubleshooting
 
+### Lỗi: `ros2: command not found` sau khi source setup.bash
+- Triệu chứng: script source distro OK nhưng `ros2` không có trong PATH
+- Nguyên nhân phổ biến:
+  1. Folder `/opt/ros/<distro>/` rỗng (cài đặt chưa hoàn tất) — kiểm tra: `ls /opt/ros/<distro>/ | head -5`
+  2. Source sai file — phải là `setup.bash` (không phải `setup.sh` hay file khác)
+  3. Cài thiếu package — ROS2 trên Ubuntu 26.04 cần `ros-lyrical-ros-base` chứ không chỉ `ros-lyrical-desktop`
+- Script v2.4 sẽ in diagnostic rõ ràng + hướng dẫn `apt install ros-${ROS_DISTRO}-ros-base` + exit 1 sạch sẽ
+- Fix:
+  ```bash
+  # Kiểm tra distro thực sự có sẵn và có file ros2
+  ls /opt/ros/<distro>/ros2/
+
+  # Ép dùng distro cụ thể
+  ./start_smb_e2e.sh --distro=lyrical
+
+  # Cài bổ sung ros-base nếu thiếu
+  sudo apt install ros-<distro>-ros-base ros-<distro>-rosbridge-server
+  ```
+
+### Lưu ý: ROS2 distro cho từng Ubuntu version
+- Ubuntu 26.04+ → **lyrical** (chính thức từ May 2026, theo REP 2000)
+- Ubuntu 24.04 → kilted / jazzy / rolling
+- Ubuntu 22.04 → humble (LTS) / iron (EOL)
+- Ubuntu 20.04 → foxy (EOL, không khuyến nghị)
+- Script v2.4 auto-pick theo thứ tự: `lyrical > kilted > jazzy > rolling > humble > iron`
+
+### Lỗi: Script crash với `unbound variable` khi source setup.bash
+- Script v2.3 đã bỏ `set -u` để xử lý. Nếu vẫn gặp → báo lại (đây là bug distro cụ thể).
+
 ### Lỗi: Bridge (Terminal #1) không connect ESP32
 - Check IP trong Serial Monitor ESP32 lúc boot → đảm bảo khớp `-p esp32_ip:=192.168.1.178`
 - Ping thử: `ping 192.168.1.178` (từ Ubuntu)
@@ -359,6 +388,8 @@ cd ~/ros2_ws && ./test_robot.sh
 
 ---
 
-*Phiên bản: v2.2 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
+*Phiên bản: v2.4 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
 *Thay đổi v2.1: Chuẩn hóa quy trình Ubuntu theo 3 terminal (bridge + rosbridge + test_robot.sh) — bỏ start_ros2_web_bridge.sh gộp; đổi IP ESP32 → 192.168.1.178.*
 *Thay đổi v2.2: Thêm `start_smb_e2e.sh` (1 lệnh duy nhất) làm workflow chính; 3 terminal làm fallback. Thêm `test_robot.sh` E2E test (7 test cases: topics + rate + battery + cmd_vel).*
+*Thay đổi v2.3: Fix bug `set -u` crash + auto-detect distro hợp lệ + thêm flags `--distro=`, `--skip-test`, `--no-bridge`, `--no-rosbridge`.*
+*Thay đổi v2.4: Hỗ trợ chính thức ROS2 Lyrical Luth cho Ubuntu 26.04+ (theo REP 2000, phát hành May 2026). Priority: lyrical > kilted > jazzy > rolling > humble > iron.*

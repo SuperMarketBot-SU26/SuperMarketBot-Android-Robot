@@ -14,22 +14,48 @@
 #   6. In hướng dẫn mở WebManager
 #
 # Usage:
-#   ./start_smb_e2e.sh                    # dùng IP mặc định 192.168.1.178
-#   ./start_smb_e2e.sh 192.168.1.50       # custom IP
-#   ESP_IP=192.168.1.50 ./start_smb_e2e.sh
+#   ./start_smb_e2e.sh                          # dùng IP mặc định 192.168.1.178
+#   ./start_smb_e2e.sh 192.168.1.50             # custom ESP IP
+#   ESP_IP=192.168.1.50 ./start_smb_e2e.sh      # qua env var
+#   ./start_smb_e2e.sh --distro=jazzy           # ép dùng distro cụ thể (vd khi có nhiều distro)
+#   ./start_smb_e2e.sh --skip-test              # bỏ chạy test_robot.sh
+#   ./start_smb_e2e.sh --no-bridge              # bỏ start ESP32 bridge (debug)
+#   ./start_smb_e2e.sh --no-rosbridge           # bỏ start rosbridge (debug)
 #
 # Stop:
 #   ./start_smb_e2e.sh stop                # kill cả 3 process
 #   hoặc: kill $(cat /tmp/smb_bridge.pid /tmp/smb_rosbridge.pid)
 # ============================================================================
 
-set -euo pipefail
+# Lưu ý: KHÔNG dùng `set -euo pipefail` vì:
+#   - `set -u` (unbound var): /opt/ros/*/setup.bash có thể tham chiếu biến AMENT_TRACE_SETUP_FILES chưa export → crash
+#   - `set -e`: nếu 1 step fail (vd ros2 chưa cài), ta muốn in diagnostic + dừng các step sau thay vì thoát im lặng
+# Tuy nhiên ta MUỐN dừng script khi source ROS2 fail (exit code != 0) → dùng explicit `|| exit 1` ở dưới.
 
 # ---------- Config ----------
 ESP_IP="${1:-${ESP_IP:-192.168.1.178}}"
 ESP_WS_PORT="${ESP_WS_PORT:-81}"
 ROSBRIDGE_PORT="${ROSBRIDGE_PORT:-9090}"
 ROS_DOMAIN_ID_VALUE="${ROS_DOMAIN_ID:-0}"
+
+# Xử lý CLI flags: --distro=NAME, --skip-test, --no-bridge, --no-rosbridge
+SKIP_TEST=false
+SKIP_BRIDGE=false
+SKIP_ROSBRIDGE=false
+ROS_DISTRO_OVERRIDE=""
+for arg in "$@"; do
+  case "$arg" in
+    --distro=*)     ROS_DISTRO_OVERRIDE="${arg#*=}" ;;
+    --skip-test)    SKIP_TEST=true ;;
+    --no-bridge)    SKIP_BRIDGE=true ;;
+    --no-rosbridge) SKIP_ROSBRIDGE=true ;;
+  esac
+done
+
+# Nếu positional arg đầu tiên không phải IP, có thể là distro cũ positional → bỏ qua (dùng --distro=)
+if [[ -n "${ROS_DISTRO_OVERRIDE:-}" ]]; then
+  export ROS_DISTRO_OVERRIDE
+fi
 
 SMB_HOME_DEFAULT="$HOME/ros2_ws"
 SMB_HOME="${SMB_HOME:-$SMB_HOME_DEFAULT}"
@@ -79,23 +105,73 @@ print_banner
 
 # ---------- 1. Auto-detect ROS2 distro ----------
 echo "[1/6] Auto-detecting ROS2 distro..."
+
+# Tìm các distro HỢP LỆ (chỉ nhận distros chính thức)
+# Bỏ qua "lyrical", "foxy" (EOL) và các folder lạ
+VALID_DISTROS="humble iron jazzy rolling kilted ardent bouncy crystal dashing eloquent foxy galactic geotic humble Hawksbill iron Irwini jazzy Jalisco"
+ROSDISTRO_FILE="/etc/rosdistro"
+
 ROS_SETUP=""
+ROS_DISTRO=""
+
+# List tất cả setup.bash tìm được
+echo "  Found in /opt/ros/:"
 for d in /opt/ros/*/setup.bash; do
   if [[ -f "$d" ]]; then
-    ROS_SETUP="$d"
-    ROS_DISTRO="$(basename "$(dirname "$d")")"
-    break
+    distro="$(basename "$(dirname "$d")")"
+    echo "    - $distro"
   fi
 done
 
+# Ưu tiên distro theo biến ROS_DISTRO nếu user export
+if [[ -n "${ROS_DISTRO_OVERRIDE:-}" ]] && [[ -f "/opt/ros/${ROS_DISTRO_OVERRIDE}/setup.bash" ]]; then
+  ROS_DISTRO="$ROS_DISTRO_OVERRIDE"
+  ROS_SETUP="/opt/ros/${ROS_DISTRO}/setup.bash"
+else
+  # Auto-pick: ưu tiên theo platform Ubuntu
+  # Ubuntu 26.04+ → lyrical (chính thức từ May 2026, theo REP 2000)
+  # Ubuntu 24.04 → kilted > jazzy > rolling
+  # Ubuntu 22.04 → humble (LTS)
+  # Ubuntu 20.04 → foxy (EOL)
+  for preferred in lyrical kilted jazzy rolling humble iron; do
+    if [[ -f "/opt/ros/${preferred}/setup.bash" ]]; then
+      ROS_DISTRO="$preferred"
+      ROS_SETUP="/opt/ros/${preferred}/setup.bash"
+      break
+    fi
+  done
+fi
+
 if [[ -z "$ROS_SETUP" ]]; then
-  echo "[ERROR] Không tìm thấy ROS2 distro nào trong /opt/ros/"
-  echo "        Cài đặt: sudo apt install ros-humble-desktop"
+  echo ""
+  echo "[ERROR] Không tìm thấy ROS2 distro HỢP LỆ trong /opt/ros/"
+  echo "        Cần một trong: lyrical (Ubuntu 26.04+), kilted/jazzy (Ubuntu 24.04), humble (Ubuntu 22.04), rolling"
+  echo "        Cài đặt:"
+  echo "          Ubuntu 26.04: sudo apt install ros-lyrical-desktop   # chính thức từ May 2026"
+  echo "          Ubuntu 24.04: sudo apt install ros-jazzy-desktop    # hoặc ros-kilted-desktop"
+  echo "          Ubuntu 22.04: sudo apt install ros-humble-desktop"
+  echo ""
+  echo "        Nếu bạn đang ở WSL/Docker và cần cài nhanh, dùng:"
+  echo "          sudo apt update && sudo apt install -y ros-humble-desktop"
+  echo ""
+  echo "[FATAL] Không thể tiếp tục. Dừng script."
   exit 1
 fi
 
-# shellcheck source=/dev/null
-source "$ROS_SETUP"
+echo ""
+echo "  → Selected: $ROS_DISTRO ($ROS_SETUP)"
+
+# Source với error handling
+# Lưu ý: KHÔNG dùng `set -u` ở đây vì setup.bash có thể tham chiếu unbound var
+if ! source "$ROS_SETUP" 2>/tmp/smb_source_err.log; then
+  echo "[ERROR] Không thể source $ROS_SETUP"
+  echo "        Error log:"
+  cat /tmp/smb_source_err.log | sed 's/^/          /'
+  echo ""
+  echo "[FATAL] Dừng script."
+  exit 1
+fi
+
 export ROS_DOMAIN_ID="$ROS_DOMAIN_ID_VALUE"
 echo "[OK]   Sourced $ROS_DISTRO (ROS_DOMAIN_ID=$ROS_DOMAIN_ID)"
 
@@ -103,6 +179,15 @@ echo "[OK]   Sourced $ROS_DISTRO (ROS_DOMAIN_ID=$ROS_DOMAIN_ID)"
 echo "[2/6] Verifying ros2 CLI..."
 if ! command -v ros2 >/dev/null 2>&1; then
   echo "[ERROR] 'ros2' không có trong PATH sau khi source $ROS_SETUP"
+  echo "        Distro đã source: $ROS_DISTRO"
+  echo "        PATH hiện tại: $PATH"
+  echo ""
+  echo "        Có thể distro $ROS_DISTRO không có 'ros-humble-ros-base' package."
+  echo "        Cài bổ sung:"
+  echo "          sudo apt install ros-${ROS_DISTRO}-ros-base"
+  echo "          sudo apt install ros-${ROS_DISTRO}-rosbridge-server"
+  echo ""
+  echo "[FATAL] Dừng script."
   exit 1
 fi
 echo "[OK]   $(ros2 --version 2>&1 | head -n1)"
@@ -134,7 +219,9 @@ sleep 1
 # ---------- 5. Start ESP32 ↔ ROS2 bridge ----------
 echo "[5/6] Starting ESP32 ↔ ROS2 bridge (background)..."
 BRIDGE_LOG="$LOG_DIR/smb_bridge.log"
-if [[ -d "$BRIDGE_DIR" ]]; then
+if $SKIP_BRIDGE; then
+  echo "[SKIP] --no-bridge flag → bỏ qua"
+elif [[ -d "$BRIDGE_DIR" ]]; then
   cd "$BRIDGE_DIR"
   nohup python3 esp32_ros2_bridge.py \
       --ros-args -p esp32_ip:="$ESP_IP" \
@@ -149,10 +236,14 @@ fi
 # ---------- 6. Start rosbridge_server ----------
 echo "[6/6] Starting rosbridge_server (background)..."
 ROSBRIDGE_LOG="$LOG_DIR/smb_rosbridge.log"
-nohup ros2 launch rosbridge_server rosbridge_websocket_launch.xml \
-    >"$ROSBRIDGE_LOG" 2>&1 &
-echo $! > "$ROSBRIDGE_PID_FILE"
-echo "[OK]   PID $(cat "$ROSBRIDGE_PID_FILE") — log: $ROSBRIDGE_LOG"
+if $SKIP_ROSBRIDGE; then
+  echo "[SKIP] --no-rosbridge flag → bỏ qua"
+else
+  nohup ros2 launch rosbridge_server rosbridge_websocket_launch.xml \
+      >"$ROSBRIDGE_LOG" 2>&1 &
+  echo $! > "$ROSBRIDGE_PID_FILE"
+  echo "[OK]   PID $(cat "$ROSBRIDGE_PID_FILE") — log: $ROSBRIDGE_LOG"
+fi
 
 # ---------- Wait for topics ----------
 echo
@@ -186,7 +277,9 @@ echo "  /battery: $(ros2 topic hz /battery --window 5 2>/dev/null | tail -1 || e
 
 # ---------- Run test_robot.sh ----------
 echo
-if [[ -x "$SMB_HOME/test_robot.sh" ]]; then
+if $SKIP_TEST; then
+  echo "[TEST] Bỏ qua: --skip-test flag"
+elif [[ -x "$SMB_HOME/test_robot.sh" ]]; then
   echo "[TEST] Chạy test_robot.sh..."
   cd "$SMB_HOME" && ./test_robot.sh
   TEST_RC=$?
