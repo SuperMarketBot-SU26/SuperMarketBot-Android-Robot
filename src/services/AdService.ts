@@ -60,7 +60,7 @@ export const AdService = {
     const query = semanticObjectId ? `?semanticObjectId=${semanticObjectId}` : '';
     const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/robot-playlist/${robotId}${query}`, {
       method: 'GET',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true'
       },

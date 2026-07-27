@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, XStack, YStack, Button, Card, Image } from 'tamagui';
-import { Search, Mic, Camera, Tag, Clock, Utensils, TrendingDown, Sparkles, ArrowRight } from 'lucide-react-native';
+import { Search, Mic, Camera, Tag, Clock, Utensils, TrendingDown, Sparkles, ArrowRight, MapPin } from 'lucide-react-native';
 import { MemberHeader } from '../layout/MemberHeader';
 import { useVoiceRouter, useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import { useFocusEffect } from 'expo-router';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, FadeInDown } from 'react-native-reanimated';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { MemberService, MemberDealDto, SponsoredRecommendationDto, MemberAlertDto } from '../../services/MemberService';
 import { CartService, CartDto } from '../../services/CartService';
@@ -13,9 +14,12 @@ import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { ShoppingCart } from 'lucide-react-native';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+import { useGeofencing } from '../../context/GeofencingContext';
+import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 
 export default function MemberHomeScreen() {
   const { member, token } = useRobotAuth();
+  const { currentZone, isInZone } = useGeofencing();
   const [deals, setDeals] = useState<MemberDealDto[]>([]);
   const [sponsoredRecs, setSponsoredRecs] = useState<SponsoredRecommendationDto[]>([]);
   const [alerts, setAlerts] = useState<MemberAlertDto[]>([]);
@@ -28,34 +32,34 @@ export default function MemberHomeScreen() {
   const [selectedIsRecipe, setSelectedIsRecipe] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
 
-    if (member?.memberId) {
-      const id = Number(member.memberId);
-      MemberService.getMemberDeals(id).then(res => { if (mounted) setDeals(res?.deals || []) });
-      MemberService.getSponsoredRecommendations(id).then(res => { if (mounted) setSponsoredRecs(res?.items || []) });
-      MemberService.getMemberAlerts(id).then(res => { if (mounted) setAlerts(res?.alerts || []) });
-      MemberService.getPersonalizedProducts(token || '').then(res => { if (mounted) setPersonalizedProducts(res || []) });
-      MemberService.getPersonalizedMeals(token || '').then(res => { if (mounted) setPersonalizedMeals(res || []) });
-      SearchService.getDeals(id).then(res => { if (mounted) setSystemDeals(res || []) }).catch(console.error);
-    }
-    
-    // Auto sync cart
-    const fetchCart = () => {
-      if (token) {
-        CartService.getCart(token).then(res => { if (mounted) setCart(res) }).catch(e => console.log('Cart Error:', e));
+      if (member?.memberId) {
+        const id = Number(member.memberId);
+        MemberService.getMemberDeals(id).then(res => { if (mounted) setDeals(res?.deals || []) });
+        MemberService.getSponsoredRecommendations(id).then(res => { if (mounted) setSponsoredRecs(res?.items || []) });
+        MemberService.getMemberAlerts(id).then(res => { if (mounted) setAlerts(res?.alerts || []) });
+        MemberService.getPersonalizedProducts(token || '').then(res => { if (mounted) setPersonalizedProducts(res || []) });
+        MemberService.getPersonalizedMeals(token || '').then(res => { if (mounted) setPersonalizedMeals(res || []) });
+        SearchService.getDeals(id).then(res => { if (mounted) setSystemDeals(res || []) }).catch(console.error);
       }
-    };
 
-    fetchCart();
-    const interval = setInterval(fetchCart, 3000);
+      // Auto sync cart
+      const fetchCart = () => {
+        if (token) {
+          CartService.getCart(token).then(res => { if (mounted) setCart(res) }).catch(e => console.log('Cart Error:', e));
+        }
+      };
 
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [member, token]);
+      fetchCart();
+
+      return () => {
+        mounted = false;
+      };
+    }, [member, token])
+  );
 
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
@@ -96,7 +100,21 @@ export default function MemberHomeScreen() {
 
   return (
     <View flex={1} backgroundColor="#f9fbf9" paddingTop={insets.top} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 0)}>
+
+      {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
+      <ZoneAdOverlay />
+
       <MemberHeader />
+
+      {/* Zone status banner */}
+      {isInZone && currentZone && (
+        <Animated.View entering={FadeInDown.duration(400)} style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <MapPin size={13} color="#059669" />
+          <Text fontSize={12} fontWeight="700" color="#059669">
+            Đang ở khu vực: {currentZone.objectName}
+          </Text>
+        </Animated.View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24 }}>
 
@@ -113,146 +131,188 @@ export default function MemberHomeScreen() {
         <YStack gap="$4" marginBottom="$8">
           <XStack gap="$4">
 
-          {/* Card 1: Tìm kiếm */}
-          <Pressable
-            style={{ flex: 1 }}
-            onPressIn={() => {
-              card1Scale.value = withSpring(0.93);
-            }}
-            onPressOut={() => {
-              card1Scale.value = withSpring(1);
-            }}
-            onPress={() => {
-              router.push('/member-search' as any);
-            }}
-          >
-            <AnimatedView
-              style={[{
-                flex: 1,
-                borderWidth: 1,
-                borderRadius: 24,
-                padding: 16,
-                backgroundColor: 'white',
-                borderColor: '#f0fcf4',
-                shadowColor: '#00A550',
-                shadowOffset: { width: 0, height: 4 },
-                shadowRadius: 15,
-                shadowOpacity: 0.03,
-                elevation: 2,
-                height: '100%',
-              }, animatedCard1Style]}
+            {/* Card 1: Tìm kiếm */}
+            <Pressable
+              style={{ flex: 1 }}
+              onPressIn={() => {
+                card1Scale.value = withSpring(0.93);
+              }}
+              onPressOut={() => {
+                card1Scale.value = withSpring(1);
+              }}
+              onPress={() => {
+                router.push('/member-search' as any);
+              }}
             >
-              <YStack justifyContent="space-between" flex={1} gap="$4">
-                <XStack justifyContent="space-between" alignItems="flex-start">
-                  <View width={50} height={50} borderRadius={25} backgroundColor="#f0fdf4" justifyContent="center" alignItems="center">
-                    <Search size={22} color="#00A550" />
-                  </View>
-                </XStack>
-                <YStack gap="$1.5">
-                  <Text fontSize={16} fontWeight="bold" color="#333">Tìm kiếm sản phẩm</Text>
-                  <Text fontSize={13} color="#888" lineHeight={18}>Nhập tên món hàng bạn cần tìm, SmartBot sẽ dẫn bạn đến đúng vị trí.</Text>
+              <AnimatedView
+                style={[{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderRadius: 24,
+                  padding: 16,
+                  backgroundColor: 'white',
+                  borderColor: '#f0fcf4',
+                  shadowColor: '#00A550',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowRadius: 15,
+                  shadowOpacity: 0.03,
+                  elevation: 2,
+                  height: '100%',
+                }, animatedCard1Style]}
+              >
+                <YStack justifyContent="space-between" flex={1} gap="$4">
+                  <XStack justifyContent="space-between" alignItems="flex-start">
+                    <View width={50} height={50} borderRadius={25} backgroundColor="#f0fdf4" justifyContent="center" alignItems="center">
+                      <Search size={22} color="#00A550" />
+                    </View>
+                  </XStack>
+                  <YStack gap="$1.5">
+                    <Text fontSize={16} fontWeight="bold" color="#333">Tìm kiếm sản phẩm</Text>
+                    <Text fontSize={13} color="#888" lineHeight={18}>Nhập tên món hàng bạn cần tìm, SmartBot sẽ dẫn bạn đến đúng vị trí.</Text>
+                  </YStack>
+                  <XStack backgroundColor="white" borderWidth={1} borderColor="#e5e7eb" borderRadius={30} paddingHorizontal="$4" height={44} alignItems="center" gap="$2" marginTop="auto">
+                    <Text color="#aaa" fontSize={13} flex={1} numberOfLines={1}>Tìm sản phẩm...</Text>
+                    <Search size={16} color="#00A550" />
+                  </XStack>
                 </YStack>
-                <XStack backgroundColor="white" borderWidth={1} borderColor="#e5e7eb" borderRadius={30} paddingHorizontal="$4" height={44} alignItems="center" gap="$2" marginTop="auto">
-                  <Text color="#aaa" fontSize={13} flex={1} numberOfLines={1}>Tìm sản phẩm...</Text>
-                  <Search size={16} color="#00A550" />
-                </XStack>
-              </YStack>
-            </AnimatedView>
-          </Pressable>
+              </AnimatedView>
+            </Pressable>
 
-          {/* Card 2: Giọng nói */}
-          <Pressable
-            style={{ flex: 1 }}
-            onPress={() => {
-              router.push('/voice-search' as any);
-            }}
-          >
-            <Card size="$4" borderWidth={1} borderRadius={24} flex={1} padding="$4" backgroundColor="white" borderColor="#f0fcf4" shadowColor="#00A550" shadowRadius={15} shadowOpacity={0.03} style={{ elevation: 2, height: '100%' }}>
-              <YStack justifyContent="space-between" flex={1} gap="$4">
-                <View width={50} height={50} borderRadius={25} backgroundColor="#22c55e" justifyContent="center" alignItems="center" shadowColor="#22c55e" shadowRadius={8} shadowOpacity={0.3}>
-                  <Mic size={22} color="white" />
-                </View>
-                <YStack gap="$1.5">
-                  <Text fontSize={16} fontWeight="bold" color="#333">Tìm bằng Giọng nói</Text>
-                  <Text fontSize={13} color="#888" lineHeight={18}>Nói tên món hàng bạn cần, SmartBot sẽ dẫn bạn đến tận kệ hàng.</Text>
+            {/* Card 2: Giọng nói */}
+            <Pressable
+              style={{ flex: 1 }}
+              onPress={() => {
+                router.push('/voice-search' as any);
+              }}
+            >
+              <Card size="$4" borderWidth={1} borderRadius={24} flex={1} padding="$4" backgroundColor="white" borderColor="#f0fcf4" shadowColor="#00A550" shadowRadius={15} shadowOpacity={0.03} style={{ elevation: 2, height: '100%' }}>
+                <YStack justifyContent="space-between" flex={1} gap="$4">
+                  <View width={50} height={50} borderRadius={25} backgroundColor="#22c55e" justifyContent="center" alignItems="center" shadowColor="#22c55e" shadowRadius={8} shadowOpacity={0.3}>
+                    <Mic size={22} color="white" />
+                  </View>
+                  <YStack gap="$1.5">
+                    <Text fontSize={16} fontWeight="bold" color="#333">Tìm bằng Giọng nói</Text>
+                    <Text fontSize={13} color="#888" lineHeight={18}>Nói tên món hàng bạn cần, SmartBot sẽ dẫn bạn đến tận kệ hàng.</Text>
+                  </YStack>
+                  <XStack alignItems="center" gap="$2" marginTop="auto" height={44}>
+                    <Text color="#00A550" fontWeight="bold" fontSize={13} numberOfLines={1}>Nhấn để nói</Text>
+                    <Mic size={16} color="#00A550" />
+                  </XStack>
                 </YStack>
-                <XStack alignItems="center" gap="$2" marginTop="auto" height={44}>
-                  <Text color="#00A550" fontWeight="bold" fontSize={13} numberOfLines={1}>Nhấn để nói</Text>
-                  <Mic size={16} color="#00A550" />
-                </XStack>
-              </YStack>
-            </Card>
-          </Pressable>
+              </Card>
+            </Pressable>
 
           </XStack>
           <XStack gap="$4">
 
-          {/* Card 3: Camera */}
-          <Pressable
-            style={{ flex: 1 }}
-            onPress={() => {
-              router.push('/image-search' as any);
-            }}
-          >
-            <Card size="$4" borderWidth={1} borderRadius={24} flex={1} padding="$4" backgroundColor="white" borderColor="#f0fcf4" shadowColor="#00A550" shadowRadius={15} shadowOpacity={0.03} style={{ elevation: 2, height: '100%' }}>
-              <YStack justifyContent="space-between" flex={1} gap="$4">
-                <View width={50} height={50} borderRadius={25} backgroundColor="#eff6ff" justifyContent="center" alignItems="center">
-                  <Camera size={22} color="#3b82f6" />
-                </View>
-                <YStack gap="$1.5">
-                  <Text fontSize={16} fontWeight="bold" color="#333">Quét sản phẩm</Text>
-                  <Text fontSize={13} color="#888" lineHeight={18}>Nhận diện & định vị kệ hàng thông qua camera AI thời gian thực.</Text>
-                </YStack>
-                <XStack alignItems="center" gap="$2" marginTop="auto" height={44}>
-                  <Text color="#3b82f6" fontWeight="bold" fontSize={13} numberOfLines={1}>Mở Camera</Text>
-                  <Camera size={16} color="#3b82f6" />
-                </XStack>
-              </YStack>
-            </Card>
-          </Pressable>
-
-          {/* Card 4: Ưu đãi (Click: /member-offers) */}
-          <Pressable
-            onPress={() => {
-              // Click: navigate to Voucher list
-              router.push('/member-offers' as any);
-            }}
-            style={{ flex: 1 }}
-          >
-            <View
-              style={[{
-                flex: 1,
-                borderWidth: 1,
-                borderRadius: 24,
-                padding: 16,
-                backgroundColor: 'white',
-                shadowColor: '#00A550',
-                shadowOffset: { width: 0, height: 4 },
-                shadowRadius: 15,
-                shadowOpacity: 0.03,
-                elevation: 2,
-                overflow: 'hidden',
-                position: 'relative',
-                borderColor: '#f0fcf4',
-              }]}
+            {/* Card 3: Sản phẩm dành riêng cho bạn (Thay thế Quét sản phẩm bằng hình ảnh) */}
+            <Pressable
+              style={{ flex: 1 }}
+              onPress={() => {
+                router.push('/personalized-products' as any);
+              }}
             >
+              <Card
+                size="$4"
+                borderWidth={1.5}
+                borderRadius={24}
+                flex={1}
+                padding="$4"
+                backgroundColor="#f0fdf4"
+                borderColor="#bbf7d0"
+                shadowColor="#00A550"
+                shadowRadius={15}
+                shadowOpacity={0.06}
+                style={{ elevation: 3, height: '100%' }}
+              >
+                <YStack justifyContent="space-between" flex={1} gap="$3">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <View
+                      width={48}
+                      height={48}
+                      borderRadius={24}
+                      backgroundColor="#00A550"
+                      justifyContent="center"
+                      alignItems="center"
+                      shadowColor="#00A550"
+                      shadowRadius={8}
+                      shadowOpacity={0.3}
+                    >
+                      <Sparkles size={22} color="white" />
+                    </View>
+                  </XStack>
 
-              <YStack justifyContent="space-between" flex={1} gap="$4">
-                <View width={50} height={50} borderRadius={25} backgroundColor="#ecfccb" justifyContent="center" alignItems="center">
-                  <Tag size={22} color="#4d7c0f" />
-                </View>
-                <YStack gap="$1.5">
-                  <Text fontSize={16} fontWeight="bold" color="#333">Ưu đãi cho bạn</Text>
-                  <Text fontSize={13} color="#888" lineHeight={18}>Khám phá các ưu đãi đặc quyền dành riêng cho thành viên Premium.</Text>
+                  <YStack gap="$1.5">
+                    <Text fontSize={16} fontWeight="bold" color="#005b2b">
+                      Dành riêng cho bạn
+                    </Text>
+                    <Text fontSize={12} color="#166534" lineHeight={17}>
+                      Gợi ý chuẩn xác dựa trên lịch sử mua sắm &amp; thể trạng sức khỏe.
+                    </Text>
+                  </YStack>
+
+                  <XStack
+                    backgroundColor="white"
+                    borderWidth={1}
+                    borderColor="#86efac"
+                    borderRadius={30}
+                    paddingHorizontal="$3.5"
+                    height={40}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    marginTop="auto"
+                  >
+                    <Text color="#00A550" fontWeight="bold" fontSize={12} numberOfLines={1}>
+                      Khám phá gợi ý
+                    </Text>
+                    <ArrowRight size={15} color="#00A550" />
+                  </XStack>
                 </YStack>
+              </Card>
+            </Pressable>
 
-                <XStack alignItems="center" gap="$2" marginTop="auto" height={44}>
-                  <Text color="#00A550" fontWeight="bold" fontSize={13} numberOfLines={2}>Xem Ưu đãi</Text>
-                  <ArrowRight size={16} color="#00A550" />
-                </XStack>
-              </YStack>
-            </View>
-          </Pressable>
+            {/* Card 4: Ưu đãi (Click: /member-offers) */}
+            <Pressable
+              onPress={() => {
+                // Click: navigate to Voucher list
+                router.push('/member-offers' as any);
+              }}
+              style={{ flex: 1 }}
+            >
+              <View
+                style={[{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderRadius: 24,
+                  padding: 16,
+                  backgroundColor: 'white',
+                  shadowColor: '#00A550',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowRadius: 15,
+                  shadowOpacity: 0.03,
+                  elevation: 2,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  borderColor: '#f0fcf4',
+                }]}
+              >
+
+                <YStack justifyContent="space-between" flex={1} gap="$4">
+                  <View width={50} height={50} borderRadius={25} backgroundColor="#ecfccb" justifyContent="center" alignItems="center">
+                    <Tag size={22} color="#4d7c0f" />
+                  </View>
+                  <YStack gap="$1.5">
+                    <Text fontSize={16} fontWeight="bold" color="#333">Ưu đãi cho bạn</Text>
+                    <Text fontSize={13} color="#888" lineHeight={18}>Khám phá các ưu đãi đặc quyền dành riêng cho thành viên Premium.</Text>
+                  </YStack>
+
+                  <XStack alignItems="center" gap="$2" marginTop="auto" height={44}>
+                    <Text color="#00A550" fontWeight="bold" fontSize={13} numberOfLines={2}>Xem Ưu đãi</Text>
+                    <ArrowRight size={16} color="#00A550" />
+                  </XStack>
+                </YStack>
+              </View>
+            </Pressable>
           </XStack>
         </YStack>
 
@@ -262,7 +322,9 @@ export default function MemberHomeScreen() {
         {/* SMART SUGGESTIONS SECTION */}
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
           <Text fontSize={18} fontWeight="bold" color="$textPrimary">Gợi ý thông minh cho bạn</Text>
-          <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả</Text>
+          <Pressable onPress={() => router.push('/member-offers' as any)}>
+            <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả</Text>
+          </Pressable>
         </XStack>
 
         {/* Giỏ hàng nhỏ gọn trên màn hình Robot */}
@@ -294,20 +356,36 @@ export default function MemberHomeScreen() {
             <Pressable key={`personal-${index}`} onPress={() => { setSelectedProductId(p.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                <Image src={p.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
-                <YStack flex={1} gap="$2" justifyContent="space-between">
-                  <YStack gap="$1">
-                    <XStack alignItems="center" gap="$1">
-                      <Sparkles size={12} color="#00A550" />
-                      <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">PHÙ HỢP VỚI BẠN</Text>
-                    </XStack>
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{p.productName}</Text>
+                  <Image src={p.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <YStack flex={1} gap="$2" justifyContent="space-between">
+                    <YStack gap="$1">
+                      <XStack alignItems="center" gap="$1">
+                        <Sparkles size={12} color="#00A550" />
+                        <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">PHÙ HỢP VỚI BẠN</Text>
+                      </XStack>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{p.productName}</Text>
+                    </YStack>
+                    <Button
+                      size="$3"
+                      borderRadius={12}
+                      backgroundColor="#f0fdf4"
+                      color="#00A550"
+                      fontWeight="bold"
+                      fontSize={11}
+                      height={32}
+                      paddingHorizontal="$3"
+                      alignSelf="flex-start"
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setSelectedProductId(p.productId);
+                        setSelectedIsRecipe(false);
+                        setSheetOpen(true);
+                      }}
+                    >
+                      {p.unitPrice.toLocaleString('vi-VN')}đ
+                    </Button>
                   </YStack>
-                  <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                    {p.unitPrice.toLocaleString('vi-VN')}đ
-                  </Button>
-                </YStack>
-              </XStack>
+                </XStack>
               </Card>
             </Pressable>
           ))}
@@ -317,24 +395,40 @@ export default function MemberHomeScreen() {
             <Pressable key={`meal-${index}`} onPress={() => { setSelectedProductId(meal.recipeId); setSelectedIsRecipe(true); setSheetOpen(true); }}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                <Image src={meal.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
-                <YStack flex={1} gap="$2" justifyContent="space-between">
-                  <YStack gap="$1">
-                    <XStack alignItems="center" gap="$1">
-                      <Utensils size={12} color="#f97316" />
-                      <Text fontSize={10} fontWeight="bold" color="#f97316" textTransform="uppercase">MÓN NGON GỢI Ý</Text>
+                  <Image src={meal.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <YStack flex={1} gap="$2" justifyContent="space-between">
+                    <YStack gap="$1">
+                      <XStack alignItems="center" gap="$1">
+                        <Utensils size={12} color="#f97316" />
+                        <Text fontSize={10} fontWeight="bold" color="#f97316" textTransform="uppercase">MÓN NGON GỢI Ý</Text>
+                      </XStack>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{meal.recipeName}</Text>
+                    </YStack>
+                    <XStack gap="$2" alignItems="center">
+                      <Clock size={12} color="#888" />
+                      <Text fontSize={12} color="#888">{meal.yieldPortions} khẩu phần</Text>
                     </XStack>
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{meal.recipeName}</Text>
+                    <Button
+                      size="$3"
+                      borderRadius={12}
+                      backgroundColor="#fff7ed"
+                      color="#f97316"
+                      fontWeight="bold"
+                      fontSize={11}
+                      height={32}
+                      paddingHorizontal="$3"
+                      alignSelf="flex-start"
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setSelectedProductId(meal.recipeId);
+                        setSelectedIsRecipe(true);
+                        setSheetOpen(true);
+                      }}
+                    >
+                      Xem công thức
+                    </Button>
                   </YStack>
-                  <XStack gap="$2" alignItems="center">
-                    <Clock size={12} color="#888" />
-                    <Text fontSize={12} color="#888">{meal.yieldPortions} khẩu phần</Text>
-                  </XStack>
-                  <Button size="$3" borderRadius={12} backgroundColor="#fff7ed" color="#f97316" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                    Xem công thức
-                  </Button>
-                </YStack>
-              </XStack>
+                </XStack>
               </Card>
             </Pressable>
           ))}
@@ -344,21 +438,37 @@ export default function MemberHomeScreen() {
             <Pressable key={`deal-${index}`} onPress={() => { setSelectedProductId(deal.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
-                <YStack flex={1} gap="$2" justifyContent="space-between">
-                  <YStack gap="$1">
-                    <XStack alignItems="center" gap="$1">
-                      <TrendingDown size={12} color="#00A550" />
-                      <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">{deal.dealType || 'GIÁ TỐT'}</Text>
-                    </XStack>
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{deal.productName}</Text>
+                  <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <YStack flex={1} gap="$2" justifyContent="space-between">
+                    <YStack gap="$1">
+                      <XStack alignItems="center" gap="$1">
+                        <TrendingDown size={12} color="#00A550" />
+                        <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">{deal.dealType || 'GIÁ TỐT'}</Text>
+                      </XStack>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{deal.productName}</Text>
+                    </YStack>
+                    {deal.reason ? <Text fontSize={12} color="#d97706">{deal.reason}</Text> : null}
+                    <Button
+                      size="$3"
+                      borderRadius={12}
+                      backgroundColor="#f0fdf4"
+                      color="#00A550"
+                      fontWeight="bold"
+                      fontSize={11}
+                      height={32}
+                      paddingHorizontal="$3"
+                      alignSelf="flex-start"
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setSelectedProductId(deal.productId);
+                        setSelectedIsRecipe(false);
+                        setSheetOpen(true);
+                      }}
+                    >
+                      Chỉ {deal.discountedPrice.toLocaleString()}đ
+                    </Button>
                   </YStack>
-                  {deal.reason ? <Text fontSize={12} color="#d97706">{deal.reason}</Text> : null}
-                  <Button size="$3" borderRadius={12} backgroundColor="#f0fdf4" color="#00A550" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                    Chỉ {deal.discountedPrice.toLocaleString()}đ
-                  </Button>
-                </YStack>
-              </XStack>
+                </XStack>
               </Card>
             </Pressable>
           ))}
@@ -368,20 +478,36 @@ export default function MemberHomeScreen() {
             <Pressable key={`rec-${index}`} onPress={() => { setSelectedProductId(rec.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
-                <YStack flex={1} gap="$2" justifyContent="space-between">
-                  <YStack gap="$1">
-                    <XStack alignItems="center" gap="$1">
-                      <Sparkles size={12} color="#d97706" />
-                      <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý TỪ {rec.brandName?.toUpperCase()}</Text>
-                    </XStack>
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{rec.productName}</Text>
+                  <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <YStack flex={1} gap="$2" justifyContent="space-between">
+                    <YStack gap="$1">
+                      <XStack alignItems="center" gap="$1">
+                        <Sparkles size={12} color="#d97706" />
+                        <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý TỪ {rec.brandName?.toUpperCase()}</Text>
+                      </XStack>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{rec.productName}</Text>
+                    </YStack>
+                    <Button
+                      size="$3"
+                      borderRadius={12}
+                      backgroundColor="#fffbeb"
+                      color="#d97706"
+                      fontWeight="bold"
+                      fontSize={11}
+                      height={32}
+                      paddingHorizontal="$3"
+                      alignSelf="flex-start"
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setSelectedProductId(rec.productId);
+                        setSelectedIsRecipe(false);
+                        setSheetOpen(true);
+                      }}
+                    >
+                      {rec.promotionPrice ? `Chỉ ${rec.promotionPrice.toLocaleString()}đ` : `Giá ${rec.unitPrice.toLocaleString()}đ`}
+                    </Button>
                   </YStack>
-                  <Button size="$3" borderRadius={12} backgroundColor="#fffbeb" color="#d97706" fontWeight="bold" fontSize={11} height={32} paddingHorizontal="$3" alignSelf="flex-start">
-                    {rec.promotionPrice ? `Chỉ ${rec.promotionPrice.toLocaleString()}đ` : `Giá ${rec.unitPrice.toLocaleString()}đ`}
-                  </Button>
-                </YStack>
-              </XStack>
+                </XStack>
               </Card>
             </Pressable>
           ))}
@@ -396,28 +522,28 @@ export default function MemberHomeScreen() {
                     <Pressable key={product.productId} onPress={() => { setSelectedProductId(product.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
                       <Card width={180} borderRadius={16} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={10} shadowOpacity={0.05} style={{ elevation: 2 }}>
                         <View position="relative" height={120} backgroundColor="#f5f5f5">
-                        <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
-                        {product.discountPercent ? (
-                          <View position="absolute" top={8} left={8} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={8}>
-                            <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <YStack padding="$3" gap="$2">
-                        <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
-                        <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$1">
-                          <YStack>
-                            {product.promotionPrice ? (
-                              <>
-                                <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
-                                <Text fontSize={14} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
-                              </>
-                            ) : (
-                              <Text fontSize={14} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
-                            )}
-                          </YStack>
-                        </XStack>
-                      </YStack>
+                          <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
+                          {product.discountPercent ? (
+                            <View position="absolute" top={8} left={8} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={8}>
+                              <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <YStack padding="$3" gap="$2">
+                          <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
+                          <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$1">
+                            <YStack>
+                              {product.promotionPrice ? (
+                                <>
+                                  <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                                  <Text fontSize={14} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
+                                </>
+                              ) : (
+                                <Text fontSize={14} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                              )}
+                            </YStack>
+                          </XStack>
+                        </YStack>
                       </Card>
                     </Pressable>
                   ))}
@@ -438,11 +564,11 @@ export default function MemberHomeScreen() {
                 <Text fontSize={14} fontWeight="bold" color="$textPrimary" textAlign="center" lineHeight={20}>
                   {alert.alertMessage}
                 </Text>
-                <Button 
-                  size="$3" width="100%" borderRadius={20} backgroundColor="#ef4444" color="white" fontWeight="bold" fontSize={13} marginTop="$2" 
+                <Button
+                  size="$3" width="100%" borderRadius={20} backgroundColor="#ef4444" color="white" fontWeight="bold" fontSize={13} marginTop="$2"
                   onPress={() => {
                     MemberService.markAlertsAsRead(Number(member?.memberId));
-                    setAlerts(prev => prev.map(a => a.alertId === alert.alertId ? {...a, isRead: true} : a));
+                    setAlerts(prev => prev.map(a => a.alertId === alert.alertId ? { ...a, isRead: true } : a));
                   }}
                 >
                   Đã hiểu
@@ -450,18 +576,18 @@ export default function MemberHomeScreen() {
               </YStack>
             </Card>
           ))}
-          
+
           {deals.length === 0 && sponsoredRecs.length === 0 && alerts.filter(a => !a.isRead).length === 0 && (
-             <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$4" alignItems="center">
-                <Text fontSize={14} color="$textSecondary">Chưa có gợi ý nào cho bạn lúc này.</Text>
-             </Card>
+            <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$4" alignItems="center">
+              <Text fontSize={14} color="$textSecondary">Chưa có gợi ý nào cho bạn lúc này.</Text>
+            </Card>
           )}
 
         </YStack>
 
       </ScrollView>
 
-      <ProductDetailSheet 
+      <ProductDetailSheet
         productId={selectedProductId}
         isOpen={sheetOpen}
         onOpenChange={setSheetOpen}

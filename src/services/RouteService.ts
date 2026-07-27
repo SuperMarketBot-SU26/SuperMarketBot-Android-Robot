@@ -91,3 +91,25 @@ export async function fetchRoutesByMap(mapId: number): Promise<RobotRoute[]> {
     return [];
   }
 }
+export async function optimizeShoppingRoute(productIds: number[], startX: number = 1.5, startY: number = 2.8) {
+  const url = `${BASE_URL}/api/Navigation/optimize-shopping-route`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productIds, startX, startY, robotId: 1 }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.log('[RouteService] API Error:', res.status, errorText);
+      return null;
+    }
+    const raw = await res.json();
+    // The C# API returns OptimizeShoppingRouteResponseDto directly
+    if (!raw || !raw.waypoints) return null;
+    return raw;
+  } catch (e) {
+    console.warn('[RouteService] L?i optimize:', e);
+    return null;
+  }
+}

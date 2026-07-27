@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, XStack, YStack, Avatar, Progress, Button } from 'tamagui';
 import { Cloud, Trash2, MapPin, User, Settings, LogOut, ShoppingCart } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService } from '../../services/CartService';
@@ -16,39 +16,38 @@ export function MemberHeader() {
   const [actualBudget, setActualBudget] = useState<number | null>(member?.shoppingBudget || null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(member?.avatarUrl || null);
 
-  useEffect(() => {
-    let mounted = true;
-    
-    const fetchCart = () => {
-      if (token) {
-        CartService.getCart(token).then((res) => {
-          if (mounted && res) {
-            setCurrentSpending(res.totalPrice || 0);
-          }
-        }).catch(err => console.log('Cart fetch error in header:', err));
-      }
-    };
-
-    const fetchProfile = async () => {
-      if (token) {
-        const profile = await MemberService.getProfile(token);
-        if (mounted && profile) {
-          if (profile.spendingLimit) setActualBudget(profile.spendingLimit);
-          if (profile.avatarUrl) setAvatarUrl(profile.avatarUrl);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      
+      const fetchCart = () => {
+        if (token) {
+          CartService.getCart(token).then((res) => {
+            if (mounted && res) {
+              setCurrentSpending(res.totalPrice || 0);
+            }
+          }).catch(err => console.log('Cart fetch error in header:', err));
         }
-      }
-    };
+      };
 
-    fetchProfile();
+      const fetchProfile = async () => {
+        if (token && member) {
+          const profile = await MemberService.getProfile(token);
+          if (mounted && profile) {
+            if (profile.spendingLimit) setActualBudget(profile.spendingLimit);
+            if (profile.avatarUrl) setAvatarUrl(profile.avatarUrl);
+          }
+        }
+      };
 
-    fetchCart(); // Initial fetch
-    const interval = setInterval(fetchCart, 3000); // Sync every 3 seconds
+      fetchProfile();
+      fetchCart(); // Single fetch on screen focus
 
-    return () => { 
-      mounted = false; 
-      clearInterval(interval);
-    };
-  }, [token]);
+      return () => { 
+        mounted = false; 
+      };
+    }, [token, member])
+  );
 
   const handleLogout = () => {
     setMenuOpen(false);
@@ -204,3 +203,4 @@ export function MemberHeader() {
     </YStack>
   );
 }
+

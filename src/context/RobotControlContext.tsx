@@ -47,10 +47,11 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
   const connRef = useRef<(c: boolean) => void | undefined>(undefined);
 
   useEffect(() => {
-    connRef.current = (c: boolean) => setConnected(c);
-  });
+    let isMounted = true;
+    connRef.current = (c: boolean) => {
+      if (isMounted) setConnected(c);
+    };
 
-  useEffect(() => {
     const onConn = (c: boolean) => connRef.current?.(c);
     RobotControlService.onConnection(onConn);
 
@@ -58,6 +59,7 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
     RobotControlService.connect();
 
     return () => {
+      isMounted = false;
       RobotControlService.offConnection(onConn);
       RobotControlService.disconnect();
     };

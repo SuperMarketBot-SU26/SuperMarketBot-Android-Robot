@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Avatar } from 'tamagui';
-import { Mic, Camera, Search, MapPin, QrCode, Bot, User, Settings, LogOut, ShoppingCart } from 'lucide-react-native';
+import { Mic, Camera, Search, MapPin, QrCode, Bot, User, Settings, LogOut, ShoppingCart, ShoppingBag } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, FadeInRight, FadeOutUp, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
@@ -9,12 +9,15 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
+import { useGeofencing } from '../../context/GeofencingContext';
+import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 
 export default function GuestHomeScreen() {
   const insets = useSafeAreaInsets();
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
   const { speak, stop, isSpeaking } = useRobotVoice();
+  const { currentZone, isInZone, isHubConnected } = useGeofencing();
 
   // Trạng thái điều hướng bằng giọng nói cho Camera Quét sản phẩm
   const [shouldNavigateToImageSearch, setShouldNavigateToImageSearch] = useState(false);
@@ -69,21 +72,29 @@ export default function GuestHomeScreen() {
   }));
 
   return (
-    <View flex={1} backgroundColor="#fcfdfd" paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 30)}>
+    <View flex={1} backgroundColor="#fcfdfd" paddingTop={insets.top}>
+
+      {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
+      <ZoneAdOverlay />
 
       {/* HEADER */}
-      <XStack width="100%" justifyContent="space-between" alignItems="center" paddingHorizontal="$6" paddingVertical="$4" backgroundColor="white" borderBottomWidth={1} borderBottomColor="#f0f0f0" zIndex={100}>
-        <Text fontSize={22} fontWeight="900" color="#00A550">SmartMarketBot</Text>
+      <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$4" paddingVertical="$4" backgroundColor="white" borderBottomWidth={1} borderBottomColor="#f0f0f0" zIndex={100}>
+        <YStack>
+          <Text fontSize={22} fontWeight="900" color="#00A550">SmartMarketBot</Text>
+          {/* Zone status badge */}
+          {isInZone && currentZone && (
+            <Animated.View entering={FadeInDown.duration(400)}>
+              <XStack alignItems="center" gap="$1" marginTop="$1">
+                <MapPin size={11} color="#059669" />
+                <Text fontSize={11} color="#059669" fontWeight="700">
+                  Khu vực: {currentZone.objectName}
+                </Text>
+              </XStack>
+            </Animated.View>
+          )}
+        </YStack>
 
         <XStack alignItems="center" gap="$5">
-          {/* Location Badge */}
-          <XStack backgroundColor="#f0fdf4" paddingHorizontal="$3" paddingVertical="$1.5" borderRadius={20} alignItems="center" gap="$1.5">
-            <MapPin size={14} color="#00A550" />
-            <Text fontSize={12} color="#00A550" fontWeight="bold">Cửa hàng Quận 1</Text>
-          </XStack>
-
-          <View width={1} height={20} backgroundColor="#e0e0e0" />
-
           {/* Guest Avatar with Dropdown */}
           <View position="relative" zIndex={100}>
             <XStack
@@ -158,20 +169,20 @@ export default function GuestHomeScreen() {
         </XStack>
       </XStack>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
 
         {/* BANNER SECTION */}
         <Animated.View entering={FadeInDown.duration(600).springify()}>
           <Card size="$4" borderRadius={24} padding="$6" backgroundColor="#f2fcf5" overflow="hidden" marginBottom="$6">
             <YStack justifyContent="space-between" alignItems="center" gap="$4">
-              <YStack flex={1} gap="$4" maxWidth={600}>
-                <Text fontSize={18} fontWeight="bold" color="$textPrimary">
+              <YStack flex={1} gap="$4">
+                <Text fontSize={20} fontWeight="bold" color="$textPrimary" textAlign="center">
                   Chào quý khách! Sẵn sàng mua sắm cùng <Text color="#00A550">SmartMarketBot</Text> chứ?
                 </Text>
-                <Text fontSize={14} color="$textSecondary" lineHeight={22}>
+                <Text fontSize={14} color="$textSecondary" lineHeight={22} textAlign="center">
                   Khám phá hàng ngàn sản phẩm tươi ngon mỗi ngày với sự trợ giúp của AI thông minh.
                 </Text>
-                <XStack gap="$3" marginTop="$2">
+                <XStack gap="$3" marginTop="$2" justifyContent="center">
                   <Button size="$3" backgroundColor="#00A550" color="white" fontWeight="bold" borderRadius={30} paddingHorizontal="$5">
                     Đăng ký Thành viên
                   </Button>
@@ -182,7 +193,7 @@ export default function GuestHomeScreen() {
               </YStack>
 
               {/* QR Code Floating Card */}
-              <Card size="$2" backgroundColor="white" borderRadius={20} padding="$4" shadowColor="black" shadowRadius={20} shadowOpacity={0.06} alignItems="center" gap="$2" style={{ elevation: 5 }}>
+              <Card size="$2" backgroundColor="white" borderRadius={20} padding="$4" shadowColor="black" shadowRadius={20} shadowOpacity={0.06} alignItems="center" gap="$2" style={{ elevation: 5, alignSelf: 'center' }}>
                 <View width={80} height={80} backgroundColor="#f9f9f9" borderRadius={10} justifyContent="center" alignItems="center">
                   <QrCode size={40} color="#ccc" />
                 </View>
@@ -221,12 +232,11 @@ export default function GuestHomeScreen() {
             </Pressable>
           </Animated.View>
 
-          {/* Camera */}
+          {/* Sản phẩm toàn hệ thống */}
           <Animated.View entering={FadeInUp.delay(300).duration(500).springify()} style={{ flex: 1 }}>
             <Pressable
               onPress={() => {
-                // Nhấn phát đi luôn không cần qua voice trung gian
-                router.push('/image-search' as any);
+                router.push('/member-search' as any);
               }}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.9 : 1,
@@ -236,12 +246,12 @@ export default function GuestHomeScreen() {
             >
               <Card size="$3" borderRadius={20} flex={1} padding="$4" backgroundColor="white" shadowColor="black" shadowRadius={15} shadowOpacity={0.03} style={{ elevation: 2 }}>
                 <XStack gap="$4" alignItems="center">
-                  <View width={50} height={50} borderRadius={16} backgroundColor="#3b82f6" justifyContent="center" alignItems="center" shadowColor="#3b82f6" shadowRadius={10} shadowOpacity={0.3}>
-                    <Camera size={24} color="white" />
+                  <View width={50} height={50} borderRadius={16} backgroundColor="#0284c7" justifyContent="center" alignItems="center" shadowColor="#0284c7" shadowRadius={10} shadowOpacity={0.3}>
+                    <ShoppingBag size={24} color="white" />
                   </View>
                   <YStack flex={1} gap="$1">
-                    <Text fontSize={14} fontWeight="bold" color="$textPrimary">Quét sản phẩm</Text>
-                    <Text fontSize={12} color="$textSecondary" numberOfLines={2}>Nhận diện & định vị kệ hàng</Text>
+                    <Text fontSize={14} fontWeight="bold" color="$textPrimary">Sản phẩm toàn hệ thống</Text>
+                    <Text fontSize={12} color="$textSecondary" numberOfLines={2}>Tìm kiếm bằng văn bản & tra cứu nhanh</Text>
                   </YStack>
                 </XStack>
               </Card>
@@ -342,38 +352,7 @@ export default function GuestHomeScreen() {
 
       </ScrollView>
 
-      {/* FLOATING SMARTBOT WIDGET */}
-      <Animated.View style={{ position: 'absolute', bottom: 30, right: Math.max(insets.right, 30) }} entering={FadeInRight.delay(800).duration(600).springify()}>
-        <Animated.View style={botFloatStyle}>
-          <Card borderRadius={24} padding="$4" backgroundColor="white" shadowColor="black" shadowRadius={30} shadowOpacity={0.1} style={{ elevation: 10, borderWidth: 1, borderColor: '#f0fcf4' }}>
 
-            {/* Top Green Glow */}
-            <View position="absolute" top={0} left={20} right={20} height={40} backgroundColor="#00A550" opacity={0.1} />
-
-            <YStack alignItems="center" gap="$3">
-              <View width={60} height={60} borderRadius={30} backgroundColor="#f0fdf4" justifyContent="center" alignItems="center" borderWidth={2} borderColor="#00A550">
-                <Bot size={32} color="#00A550" />
-              </View>
-
-              <YStack alignItems="center" gap="$1">
-                <Text fontSize={12} fontWeight="900" color="#111">SmartBot v2.1</Text>
-                <XStack alignItems="center" gap="$1.5">
-                  <View width={6} height={6} borderRadius={3} backgroundColor="#00A550" />
-                  <Text fontSize={9} color="#00A550" fontWeight="bold">Đang hoạt động</Text>
-                </XStack>
-              </YStack>
-
-              <View width="100%" height={1} backgroundColor="#f0f0f0" marginVertical="$1" />
-
-              <YStack alignItems="center">
-                <Text fontSize={9} color="#888" fontWeight="bold">VỊ TRÍ</Text>
-                <Text fontSize={11} color="$textPrimary" fontWeight="bold">Cửa ra vào</Text>
-              </YStack>
-            </YStack>
-
-          </Card>
-        </Animated.View>
-      </Animated.View>
 
     </View>
   );

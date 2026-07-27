@@ -114,7 +114,7 @@ export default function FaceScanScreen() {
     console.log('[FaceScanScreen] Bắt đầu chụp ảnh khuôn mặt...');
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6, shutterSound: false });
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.35, shutterSound: false });
 
       if (!photo?.base64) {
         console.error('[FaceScanScreen] Lỗi: Không thể chụp ảnh từ Camera');

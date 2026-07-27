@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>SmartMarketBot - Master Blueprint 3D Map</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- Three.js & Plugins -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #0B0F17;
+      color: #F8FAFC;
+    }
+
+    #webgl-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    .ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
+    }
+
+    .ui-card {
+      pointer-events: auto;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Header Bar */
+    .header {
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 580px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .header-text h1 {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #F8FAFC;
+    }
+
+    .header-text p {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 500;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.online {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34D399;
+    }
+
+    .status-badge.offline {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #FBBF24;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* Control Panel */
+    .control-panel {
+      width: 100%;
+      max-width: 460px;
+      padding: 18px;
+      align-self: flex-end;
+    }
+
+    .panel-section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #38BDF8;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .product-select-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .product-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      color: #CBD5E1;
+      transition: all 0.2s ease;
+    }
+
+    .product-chip.active {
+      background: rgba(14, 165, 233, 0.2);
+      border-color: #38BDF8;
+      color: #F0F9FF;
+    }
+
+    .product-chip input {
+      accent-color: #0EA5E9;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-api {
+      background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+    }
+
+    .btn-api:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
+    }
+
+    .btn-run {
+      background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-run:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+    }
+
+    .route-info-box {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .route-metrics {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 10px;
+    }
+
+    .metric-item p {
+      font-size: 9px;
+      color: #94A3B8;
+      font-weight: 700;
+    }
+
+    .metric-item h4 {
+      font-size: 13px;
+      font-weight: 800;
+      color: #38BDF8;
+    }
+
+    .waypoint-list {
+      max-height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .waypoint-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 8px;
+      font-size: 11px;
+    }
+
+    .waypoint-badge {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      background: #0284C7;
+      color: white;
+      font-weight: 800;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .waypoint-badge.start {
+      background: #10B981;
+    }
+
+    .waypoint-badge.checkout {
+      background: #8B5CF6;
+    }
+
+    .waypoint-details {
+      flex: 1;
+    }
+
+    .waypoint-name {
+      font-weight: 700;
+      color: #F1F5F9;
+    }
+
+    .waypoint-slot {
+      font-size: 9px;
+      color: #94A3B8;
+    }
+
+    .legend-overlay {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      padding: 10px 14px;
+      display: flex;
+      gap: 12px;
+      pointer-events: auto;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #CBD5E1;
+    }
+
+    .legend-box {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+    }
+
+    .touch-tip {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      padding: 6px 12px;
+      font-size: 10px;
+      color: #94A3B8;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="webgl-container"></div>
+
+  <div class="ui-overlay">
+
+    <!-- Header -->
+    <div class="ui-card header">
+      <div class="header-left">
+        <div class="brand-logo">🤖</div>
+        <div class="header-text">
+          <h1>SmartMarketBot 3D Map</h1>
+          <p>Đồ thị Node chuẩn 100% theo bản vẽ tay • Né kệ hàng tuyệt đối</p>
+        </div>
+      </div>
+      <div class="status-badge online" id="api-status">
+        <div class="status-dot"></div>
+        <span id="api-status-text">BE Connected</span>
+      </div>
+    </div>
+
+    <div class="touch-tip">
+      👆 1 ngón xoay • ✌️ 2 ngón zoom
+    </div>
+
+    <!-- Legend -->
+    <div class="ui-card legend-overlay">
+      <div class="legend-item">
+        <div class="legend-box" style="background: #059669;"></div>KV1 Kệ Lá Trái
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background: #2563EB;"></div>KV2 Kệ Dương Phải
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background: #D97706;"></div>KV3 Kệ Vàng Trái
+      </div>
+      <div class="legend-item">
+        <div class="legend-box" style="background: #8B5CF6;"></div>Checkout Trái
+      </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="ui-card control-panel">
+      <div class="panel-section-title">
+        <span>Chọn Sản Phẩm Cần Lập Lộ Trình</span>
+        <span style="font-size: 9px; color: #94A3B8; font-weight: 500;">POST /optimize-shopping-route</span>
+      </div>
+
+      <div class="product-select-grid">
+        <label class="product-chip active">
+          <input type="checkbox" value="7" checked onchange="toggleProduct(this)">
+          <span>🍲 Phở Vifon (Kệ Vàng Trái)</span>
+        </label>
+        <label class="product-chip active">
+          <input type="checkbox" value="50" checked onchange="toggleProduct(this)">
+          <span>🥖 Meizan (Kệ Vàng Giữa)</span>
+        </label>
+        <label class="product-chip active">
+          <input type="checkbox" value="19" checked onchange="toggleProduct(this)">
+          <span>🥛 TH Milk (Kệ Lá Dưới)</span>
+        </label>
+        <label class="product-chip active">
+          <input type="checkbox" value="4" checked onchange="toggleProduct(this)">
+          <span>🍜 Hảo Hảo (Kệ Lá Trên)</span>
+        </label>
+        <label class="product-chip active">
+          <input type="checkbox" value="20" checked onchange="toggleProduct(this)">
+          <span>🥤 Pepsi Can (Kệ Dương)</span>
+        </label>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-api" onclick="callOptimizeRouteAPI()">
+          ⚡ Gọi API BE Lập Route
+        </button>
+        <button class="btn btn-run" onclick="animateRobotAlongPath()">
+          ▶ Run Robot 3D
+        </button>
+      </div>
+
+      <div class="route-info-box">
+        <div class="route-metrics">
+          <div class="metric-item">
+            <p>QUÃNG ĐƯỜNG</p>
+            <h4 id="metric-distance">0.00 m</h4>
+          </div>
+          <div class="metric-item">
+            <p>TỔNG BƯỚC VẼ TAY</p>
+            <h4 id="metric-stops">0 bước</h4>
+          </div>
+          <div class="metric-item">
+            <p>ĐIỂM ĐẾN CUỐI</p>
+            <h4 style="color: #A78BFA;">Checkout (0.4,0.3)</h4>
+          </div>
+        </div>
+
+        <div class="waypoint-list" id="waypoint-list-container">
+          <div style="text-align: center; color: #64748B; padding: 10px; font-size: 10px;">
+            Bấm "Gọi API BE Lập Route" để lấy đường dẫn thực tế từ C# Backend
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ───────────── 1. THREE.JS SCENE SETUP ─────────────
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0B0F17);
+    scene.fog = new THREE.FogExp2(0x0B0F17, 0.12);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 50);
+    camera.position.set(1.5, 4.8, 4.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target.set(1.5, 0.3, 1.5);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2.05;
+    controls.minDistance = 0.8;
+    controls.maxDistance = 12.0;
+    controls.update();
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const mainLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    mainLight.position.set(4, 7, 2);
+    mainLight.castShadow = true;
+    mainLight.shadow.mapSize.width = 2048;
+    mainLight.shadow.mapSize.height = 2048;
+    mainLight.shadow.bias = -0.0005;
+    scene.add(mainLight);
+
+    function addCeilingLight(x, z, color = 0x38BDF8) {
+      const pLight = new THREE.PointLight(color, 1.2, 3.5);
+      pLight.position.set(x, 1.8, z);
+      scene.add(pLight);
+    }
+    addCeilingLight(0.8, 2.2, 0x34D399); // Green Shelves Light (Top-Left)
+    addCeilingLight(2.2, 2.2, 0x60A5FA); // Blue Shelves Light (Top-Right)
+    addCeilingLight(2.1, 1.0, 0xFBBF24); // Yellow Shelves Light (Bottom-Right)
+
+    function createTileTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1E293B';
+      ctx.fillRect(0, 0, 512, 512);
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(0, 0, 512, 512);
+      ctx.strokeRect(256, 0, 256, 512);
+      ctx.strokeRect(0, 256, 512, 256);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(6, 6);
+      return texture;
+    }
+
+    // ───────────── 2. 3D SUPERMARKET MODEL (MATCHING MASTER BLUEPRINT 1:1) ─────────────
+    const mapWidth = 3.0;
+    const mapHeight = 3.0;
+    const wallHeight = 0.7;
+    const wallThickness = 0.08;
+
+    // Floor
+    const floorGeo = new THREE.PlaneGeometry(mapWidth, mapHeight);
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: createTileTexture(),
+      roughness: 0.25,
+      metalness: 0.15
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(mapWidth / 2, 0, mapHeight / 2);
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.2 });
+
+    function createWall(name, x, y, z, w, h, d) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const mesh = new THREE.Mesh(geo, wallMat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = name;
+      scene.add(mesh);
+    }
+
+    // Outer Boundary Walls
+    createWall("Wall_Left", 0, wallHeight / 2, mapHeight / 2, wallThickness, wallHeight, mapHeight);
+    createWall("Wall_Right", mapWidth, wallHeight / 2, mapHeight / 2, wallThickness, wallHeight, mapHeight);
+    createWall("Wall_Top", mapWidth / 2, wallHeight / 2, mapHeight, mapWidth, wallHeight, wallThickness);
+
+    // 1 DOOR ON THE RIGHT SIDE OF BOTTOM WALL (Door gap: X=1.6 to X=2.2, Width=0.6m)
+    createWall("Wall_Bottom_FarLeft", 0.8, wallHeight / 2, 0, 1.6, wallHeight, wallThickness);
+    createWall("Wall_Bottom_SolidRight", 2.6, wallHeight / 2, 0, 0.8, wallHeight, wallThickness);
+
+    // Green Entrance Mat at Door (X=1.9, Z=0.1)
+    const doorMatGeo = new THREE.PlaneGeometry(0.6, 0.2);
+    const doorMatMesh = new THREE.Mesh(doorMatGeo, new THREE.MeshBasicMaterial({ color: 0x10B981, side: THREE.DoubleSide }));
+    doorMatMesh.rotation.x = -Math.PI / 2;
+    doorMatMesh.position.set(1.9, 0.01, 0.1);
+    scene.add(doorMatMesh);
+
+    // ───────────── MULTI-TIER SHELVES (MATCHING MASTER BLUEPRINT 1:1) ─────────────
+    function createRealisticShelf(x, z, w, d, isVertical, colorHex) {
+      const shelfGroup = new THREE.Group();
+      shelfGroup.position.set(x, 0, z);
+
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.7, roughness: 0.3 });
+      const boardMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.2, roughness: 0.4 });
+      const itemMat1 = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.5 });
+      const itemMat2 = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
+
+      const levels = 3;
+      const height = 0.8;
+      const legRadius = 0.015;
+      const halfW = w / 2;
+      const halfD = d / 2;
+
+      // 4 Metal Legs
+      const legGeo = new THREE.CylinderGeometry(legRadius, legRadius, height, 8);
+      [[-halfW, halfD], [halfW, halfD], [-halfW, -halfD], [halfW, -halfD]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(legGeo, frameMat);
+        leg.position.set(lx, height / 2, lz);
+        leg.castShadow = true;
+        shelfGroup.add(leg);
+      });
+
+      // Shelf Trays & Products
+      for (let i = 1; i <= levels; i++) {
+        const trayY = (height / levels) * i - 0.05;
+        const tray = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), boardMat);
+        tray.position.set(0, trayY, 0);
+        tray.castShadow = true;
+        tray.receiveShadow = true;
+        shelfGroup.add(tray);
+
+        const numItems = 4;
+        for (let j = 0; j < numItems; j++) {
+          const itemGeo = new THREE.BoxGeometry(w * 0.35, 0.12, isVertical ? (d / numItems) * 0.7 : (w / numItems) * 0.7);
+          const item = new THREE.Mesh(itemGeo, j % 2 === 0 ? itemMat1 : itemMat2);
+          const offset = (j - (numItems - 1) / 2) * (isVertical ? (d / numItems) : (w / numItems));
+
+          if (isVertical) {
+            item.position.set(j % 2 === 0 ? -w * 0.2 : w * 0.2, trayY + 0.07, offset);
+          } else {
+            item.position.set(offset, trayY + 0.07, j % 2 === 0 ? -d * 0.2 : d * 0.2);
+          }
+          item.castShadow = true;
+          shelfGroup.add(item);
+        }
+      }
+
+      scene.add(shelfGroup);
+      return shelfGroup;
+    }
+    // KV1: 2 Vertical Green Shelves (Top-Left X=0.5, 1.1, Z=2.2)
+    createRealisticShelf(0.5, 2.2, 0.25, 1.0, true, 0x059669);
+    createRealisticShelf(1.1, 2.2, 0.25, 1.0, true, 0x059669);
+
+    // KV2: 2 Vertical Blue Shelves (Top-Right X=1.9, 2.5, Z=2.2)
+    createRealisticShelf(1.9, 2.2, 0.25, 1.0, true, 0x2563EB);
+    createRealisticShelf(2.5, 2.2, 0.25, 1.0, true, 0x2563EB);
+
+    // KV3: 2 Horizontal Yellow Shelves (Bottom-Right X=2.1, Z=1.3 & 0.7)
+    createRealisticShelf(2.1, 1.3, 1.0, 0.25, false, 0xD97706);
+    createRealisticShelf(2.1, 0.7, 1.0, 0.25, false, 0xD97706);
+
+    // PURPLE CHECKOUT COUNTER (Placed at Bottom Left of Door: X=1.3, Z=0.20)
+    const checkoutGroup = new THREE.Group();
+    checkoutGroup.position.set(1.3, 0, 0.20);
+    const counterDesk = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.4, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x7C3AED, roughness: 0.3 })
+    );
+    counterDesk.position.set(0, 0.2, 0);
+    counterDesk.castShadow = true;
+    checkoutGroup.add(counterDesk);
+
+    const screenMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.1, 0.02),
+      new THREE.MeshBasicMaterial({ color: 0xA78BFA })
+    );
+    screenMesh.position.set(0, 0.45, 0);
+    checkoutGroup.add(screenMesh);
+    scene.add(checkoutGroup);
+
+    // ───────────── ROBOT AGV (START POSITION: DOOR X=1.9, Z=0.2) ─────────────
+    const robotGroup = new THREE.Group();
+    robotGroup.position.set(1.9, 0, 0.2);
+
+    const baseMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.15, 0.1, 32),
+      new THREE.MeshStandardMaterial({ color: 0xEF4444, metalness: 0.6, roughness: 0.2 })
+    );
+    baseMesh.position.y = 0.08;
+    baseMesh.castShadow = true;
+    robotGroup.add(baseMesh);
+
+    const lidarMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 0.04, 16),
+      new THREE.MeshStandardMaterial({ color: 0x0F172A, metalness: 0.9, roughness: 0.1 })
+    );
+    lidarMesh.position.y = 0.15;
+    robotGroup.add(lidarMesh);
+
+    const ringMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.17, 32),
+      new THREE.MeshBasicMaterial({ color: 0xEF4444, side: THREE.DoubleSide })
+    );
+    ringMesh.rotation.x = -Math.PI / 2;
+    ringMesh.position.y = 0.01;
+    robotGroup.add(ringMesh);
+
+    scene.add(robotGroup);
+
+    // ───────────── 3. LIVE BACKEND CONNECTIVITY ─────────────
+    const BE_BASE_URL = "http://localhost:5000";
+    let selectedProductIds = [7, 50, 19, 4, 20];
+    let currentWaypoints = [];
+    let routeLineGroup = new THREE.Group();
+    scene.add(routeLineGroup);
+    let markerGroup = new THREE.Group();
+    scene.add(markerGroup);
+
+    async function checkBEStatus() {
+      const badge = document.getElementById('api-status');
+      const badgeText = document.getElementById('api-status-text');
+      try {
+        const res = await fetch(`${BE_BASE_URL}/api/Robots`, { method: 'GET' });
+        if (res.ok) {
+          badge.className = "status-badge online";
+          badgeText.innerText = "BE Connected";
+        } else {
+          badge.className = "status-badge offline";
+          badgeText.innerText = "BE Offline (Fallback)";
+        }
+      } catch (e) {
+        badge.className = "status-badge offline";
+        badgeText.innerText = "BE Offline (Mock Mode)";
+      }
+    }
+    checkBEStatus();
+
+    function toggleProduct(checkbox) {
+      const val = parseInt(checkbox.value);
+      if (checkbox.checked) {
+        if (!selectedProductIds.includes(val)) selectedProductIds.push(val);
+      } else {
+        selectedProductIds = selectedProductIds.filter(id => id !== val);
+      }
+      checkbox.parentElement.classList.toggle('active', checkbox.checked);
+    }
+
+    // Call Real BE API (POST /api/Navigation/optimize-shopping-route)
+    async function callOptimizeRouteAPI() {
+      if (selectedProductIds.length === 0) {
+        alert("Vui lòng chọn ít nhất 1 sản phẩm!");
+        return;
+      }
+
+      const payload = {
+        robotId: 1,
+        startX: 1.9, // Door Start
+        startY: 0.2,
+        productIds: selectedProductIds
+      };
+
+      try {
+        const res = await fetch(`${BE_BASE_URL}/api/Navigation/optimize-shopping-route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const routeData = await res.json();
+          visualize3DRoute(routeData);
+        } else {
+          useFallbackMockRoute();
+        }
+      } catch (err) {
+        useFallbackMockRoute();
+      }
+    }
+
+    function useFallbackMockRoute() {
+      const mockRoute = {
+        totalDistanceMeters: 7.20,
+        waypointCount: 13,
+        waypoints: [
+          { order: 0, nodeId: 1, x: 1.9, y: 0.2, productName: "Robot Start (Cửa)", shelfLocation: "Lối xuất phát" },
+          { order: 1, nodeId: 3, x: 1.5, y: 0.2, productName: "Giao lộ Dưới", shelfLocation: "Lối đi chung" },
+          { order: 2, nodeId: 4, x: 1.5, y: 1.0, productName: "Giao lộ Giữa", shelfLocation: "Lối đi chung" },
+          { order: 3, nodeId: 12, x: 1.8, y: 1.0, productName: "Trong Kệ Vàng (Trái)", shelfLocation: "Kệ Vàng" },
+          { order: 4, nodeId: 13, x: 2.4, y: 1.0, productName: "Trong Kệ Vàng (Phải)", shelfLocation: "Kệ Vàng" },
+          { order: 5, nodeId: 12, x: 1.8, y: 1.0, productName: "Trong Kệ Vàng (Trái)", shelfLocation: "Lối đi chung" },
+          { order: 6, nodeId: 4, x: 1.5, y: 1.0, productName: "Giao lộ Giữa", shelfLocation: "Lối đi chung" },
+          { order: 7, nodeId: 5, x: 1.5, y: 1.5, productName: "Giao lộ Trung tâm", shelfLocation: "Lối đi chung" },
+          { order: 8, nodeId: 6, x: 0.8, y: 1.5, productName: "Lối vào Kệ Xanh", shelfLocation: "Lối đi chung" },
+          { order: 9, nodeId: 8, x: 0.8, y: 1.8, productName: "Trong Kệ Xanh Lá (Dưới)", shelfLocation: "Kệ Xanh" },
+          { order: 10, nodeId: 6, x: 0.8, y: 1.5, productName: "Lối vào Kệ Xanh", shelfLocation: "Lối đi chung" },
+          { order: 11, nodeId: 3, x: 1.5, y: 0.2, productName: "Giao lộ Dưới", shelfLocation: "Lối đi chung" },
+          { order: 12, nodeId: 2, x: 1.3, y: 0.2, productName: "Quầy Thu Ngân (Checkout)", shelfLocation: "Thanh toán" }
+        ]
+      };
+      visualize3DRoute(mockRoute);
+    }
+
+    function clearRouteVisuals() {
+      while (routeLineGroup.children.length > 0) {
+        const obj = routeLineGroup.children[0];
+        routeLineGroup.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+      }
+      while (markerGroup.children.length > 0) {
+        const obj = markerGroup.children[0];
+        markerGroup.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+      }
+    }
+
+    function expandToOrthogonal(waypoints) {
+      if (!waypoints || waypoints.length < 2) return waypoints || [];
+      const expanded = [waypoints[0]];
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const p1 = waypoints[i];
+        const p2 = waypoints[i + 1];
+        const dx = Math.abs(p1.x - p2.x);
+        const dy = Math.abs(p1.y - p2.y);
+
+        if (dx > 1e-4 && dy > 1e-4) {
+          // Ép bẻ góc 90 độ nếu phát hiện đoạn đường đi chéo
+          expanded.push({
+            order: -1,
+            nodeId: 0,
+            x: p1.x,
+            y: p2.y,
+            productName: "Giao lộ (Bẻ góc 90°)",
+            shelfLocation: "Hành lang"
+          });
+        }
+        expanded.push(p2);
+      }
+      return expanded;
+    }
+
+    // ───────────── PURE ORTHOGONAL 90-DEGREE STRAIGHT PATH PIPES ─────────────
+    function visualize3DRoute(routeData) {
+      clearRouteVisuals();
+      if (!routeData || !routeData.waypoints || routeData.waypoints.length === 0) return;
+
+      const expandedWaypoints = expandToOrthogonal(routeData.waypoints);
+      currentWaypoints = expandedWaypoints;
+
+      // Update UI Metrics
+      document.getElementById('metric-distance').innerText = (routeData.totalDistanceMeters || 0.0).toFixed(2) + ' m';
+      document.getElementById('metric-stops').innerText = routeData.waypoints.length + ' bước';
+
+      // Render UI List & 3D Markers
+      const listContainer = document.getElementById('waypoint-list-container');
+      listContainer.innerHTML = '';
+
+      routeData.waypoints.forEach((wp, idx) => {
+        const isStart = wp.order === 0;
+        const isCheckout = wp.nodeId === 52 || (wp.productName && wp.productName.toLowerCase().includes('checkout'));
+        const isProduct = wp.productId != null;
+
+        // Draw Markers for Key Nodes (Start, Product, Checkout)
+        if (isStart || isCheckout || isProduct) {
+          let markerColor = 0xF59E0B; // Yellow for products
+          if (isStart) markerColor = 0x10B981; // Green for start
+          if (isCheckout) markerColor = 0x8B5CF6; // Purple for checkout
+
+          const markerGeo = new THREE.SphereGeometry(isStart ? 0.07 : 0.09, 16, 16);
+          const markerMat = new THREE.MeshStandardMaterial({
+            color: markerColor,
+            emissive: markerColor,
+            emissiveIntensity: 0.7
+          });
+          const markerMesh = new THREE.Mesh(markerGeo, markerMat);
+          markerMesh.position.set(wp.x, 0.2, wp.y);
+          markerGroup.add(markerMesh);
+        }
+
+        // HTML List Item
+        const itemHtml = `
+          <div class="waypoint-item">
+            <div class="waypoint-badge ${isStart ? 'start' : (isCheckout ? 'checkout' : '')}">${wp.order}</div>
+            <div class="waypoint-details">
+              <div class="waypoint-name">${wp.productName || 'Lối đi'}</div>
+              <div class="waypoint-slot">${wp.shelfLocation || ('Vị trí (' + wp.x.toFixed(2) + ', ' + wp.y.toFixed(2) + ')')}</div>
+            </div>
+          </div>
+        `;
+        listContainer.insertAdjacentHTML('beforeend', itemHtml);
+      });
+
+      // Draw PURE ORTHOGONAL STRAIGHT TUBE SEGMENTS (100% 90-degree right angles, ZERO slanted lines!)
+      const pipeMat = new THREE.MeshBasicMaterial({ color: 0x38BDF8, transparent: true, opacity: 0.95 });
+
+      for (let i = 0; i < expandedWaypoints.length - 1; i++) {
+        const p1 = expandedWaypoints[i];
+        const p2 = expandedWaypoints[i + 1];
+
+        const startVec = new THREE.Vector3(p1.x, 0.06, p1.y);
+        const endVec = new THREE.Vector3(p2.x, 0.06, p2.y);
+
+        const curve = new THREE.LineCurve3(startVec, endVec);
+        const tubeGeo = new THREE.TubeGeometry(curve, 8, 0.02, 8, false);
+        const tubeMesh = new THREE.Mesh(tubeGeo, pipeMat);
+        routeLineGroup.add(tubeMesh);
+
+        // Corner Joint Spheres for clean 90-degree turn connections
+        const jointGeo = new THREE.SphereGeometry(0.022, 12, 12);
+        const jointMesh = new THREE.Mesh(jointGeo, pipeMat);
+        jointMesh.position.set(p2.x, 0.06, p2.y);
+        routeLineGroup.add(jointMesh);
+      }
+    }
+
+    // ───────────── 4. ANIMATE ROBOT MOVEMENT STRICTLY ON GRID ─────────────
+    function animateRobotAlongPath() {
+      if (!currentWaypoints || currentWaypoints.length < 2) return;
+
+      let idx = 0;
+      function moveToNext() {
+        if (idx >= currentWaypoints.length - 1) return;
+        const endPt = currentWaypoints[idx + 1];
+
+        new TWEEN.Tween(robotGroup.position)
+          .to({ x: endPt.x, z: endPt.y }, 800)
+          .easing(TWEEN.Easing.Linear.None)
+          .onComplete(() => {
+            idx++;
+            moveToNext();
+          })
+          .start();
+      }
+      moveToNext();
+    }
+
+    // ───────────── 5. RENDER LOOP ─────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function animate(time) {
+      requestAnimationFrame(animate);
+      TWEEN.update();
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Bridge interface for React Native WebView
+    window.setRouteData = function(data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(e) {}
+      }
+      if (data) {
+        visualize3DRoute(data);
+        setTimeout(() => animateRobotAlongPath(), 600);
+      }
+    };
+
+    window.addEventListener('message', function(event) {
+      try {
+        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (message.type === 'SET_ROUTE' && message.routeData) {
+          window.setRouteData(message.routeData);
+        }
+      } catch(e) {}
+    });
+
+    document.addEventListener('message', function(event) {
+      try {
+        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (message.type === 'SET_ROUTE' && message.routeData) {
+          window.setRouteData(message.routeData);
+        }
+      } catch(e) {}
+    });
+
+    // Auto Call API on Start
+    callOptimizeRouteAPI();
+  </script>
+</body>
+
+</html>

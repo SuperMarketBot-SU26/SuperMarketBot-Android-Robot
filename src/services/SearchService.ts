@@ -18,6 +18,33 @@ export interface MobileProductSearchResultDto {
   discountPercent?: number;
 }
 
+export interface SearchResultItemDto {
+  productId: number;
+  productName: string;
+  description?: string;
+  unitPrice: number;
+  promotionPrice?: number;
+  imageUrl?: string;
+  status: string;
+  categoryName?: string;
+  subcategoryName?: string;
+  productTypeName?: string;
+  relevanceScore: number;
+  healthTags: string[];
+  aisleCode?: string;
+  levelNumber?: number;
+  slotCode?: string;
+}
+
+export interface SearchResponseDto {
+  query: string;
+  totalMatches: number;
+  results: SearchResultItemDto[];
+  aiRanked: boolean;
+  aiExplanation?: string;
+}
+
+
 export const SearchService = {
   async searchProducts(keyword: string): Promise<MobileProductSearchResultDto[]> {
     try {
@@ -49,7 +76,7 @@ export const SearchService = {
     sortBy?: string;
     useAi?: boolean;
     token?: string | null;
-  }): Promise<any> {
+  }): Promise<SearchResponseDto> {
     const { q, limit = 20, sortBy = 'relevance', useAi = false, token } = params;
 
     let url = `${BASE_URL}/api/search/personalized?q=${encodeURIComponent(q)}&limit=${limit}&sortBy=${sortBy}&useAi=${useAi}`;
@@ -83,7 +110,7 @@ export const SearchService = {
     sortBy?: string;
     useAi?: boolean;
     token?: string | null;
-  }): Promise<any> {
+  }): Promise<SearchResponseDto> {
     const { q, limit = 20, sortBy = 'relevance', useAi = false, token } = params;
 
     let url = `${BASE_URL}/api/search/all?q=${encodeURIComponent(q)}&limit=${limit}&sortBy=${sortBy}&useAi=${useAi}`;
