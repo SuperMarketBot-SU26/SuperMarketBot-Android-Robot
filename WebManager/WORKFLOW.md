@@ -11,35 +11,146 @@
 1. Mở Arduino IDE, mở project `SuperMarketBot-IOT/ESP32-S3/SuperMarketBot-IOT/SuperMarketBot-IOT.ino`
 2. **Verify Config.h** đã đúng:
    - `USE_ENCODER_HARDWARE = 1` ✅
-   - `USE_MICRO_ROS = 1` (nếu muốn dùng ROS2 native thay vì WS bridge)
    - `ENC_L = 35`, `ENC_R = 36` đã cắm đúng 2 dây signal encoder
-3. Flash firmware → ESP32 boot, kết nối WiFi `FPTH_Student`, IP `192.168.0.105`
+3. Flash firmware → ESP32 boot, kết nối WiFi (AP/STA tùy cấu hình), IP `192.168.1.178` (ghi nhận IP in ra Serial Monitor lúc boot để dùng bước sau)
 
-### Bước 1.2 — Ubuntu (PC ROS2)
+### Bước 1.2 — Ubuntu (PC ROS2) — 🚀 KHUYẾN NGHỊ: chạy 1 lệnh duy nhất
+
+> **Bạn tôi chỉ cần 1 lệnh.** Hai script tự động hóa toàn bộ: source ROS2, ping ESP32, khởi bridge + rosbridge, đợi topics, chạy test E2E.
+
 ```bash
-cd ~/SuperMarketBot-Android-Robot/WebManager
-chmod +x start_ros2_web_bridge.sh
-./start_ros2_web_bridge.sh
+# 1) Copy 2 script vào ros2 workspace (lần đầu tiên)
+mkdir -p ~/ros2_ws
+cp SuperMarketBot-Android-Robot/WebManager/start_smb_e2e.sh ~/ros2_ws/
+cp SuperMarketBot-Android-Robot/WebManager/test_robot.sh      ~/ros2_ws/
+chmod +x ~/ros2_ws/start_smb_e2e.sh ~/ros2_ws/test_robot.sh
+
+# 2) Chạy
+cd ~/ros2_ws
+./start_smb_e2e.sh                       # dùng IP mặc định 192.168.1.178
+# hoặc: ./start_smb_e2e.sh 192.168.1.50  # custom IP
+# hoặc: ESP_IP=192.168.1.50 ./start_smb_e2e.sh
 ```
 
-Script sẽ tự động:
-- Source ROS2 (Lyrical/Humble/Kilted/Jazzy tuỳ box)
-- Verify `ros2 --version`
-- Khởi Rosbridge WebSocket port 9090
-- Khởi SLAM Toolbox (config YDLIDAR X3)
-- Khởi robot_localization EKF
-- Khởi ESP32 ROS2 Bridge (publish /scan, /odom, /imu/data)
-- Optional: Nav2 nếu đã save map
+**Script tự động làm:**
+1. Source ROS2 distro (auto-detect Humble/Lyrical/Kilted/Jazzy)
+2. Verify `ros2 --version`
+3. Ping ESP32 (3s timeout — warn nếu fail nhưng vẫn chạy tiếp)
+4. Khởi **ESP32 ↔ ROS2 bridge** (background, log → `~/.smb_logs/smb_bridge.log`)
+5. Khởi **rosbridge_server** (background, log → `~/.smb_logs/smb_rosbridge.log`)
+6. Đợi topics xuất hiện (tối đa 30s, hiển thị `/scan`, `/odom`, `/battery` rate)
+7. Chạy `test_robot.sh` E2E test (7 test cases: topics + rate + battery + cmd_vel)
+8. In hướng dẫn mở WebManager
 
-Sau ~5s sẽ in danh sách topic đang hoạt động.
+**Verify cuối:**
+```
+============================================================
+  ✅ SuperMarketBot E2E đã khởi động
+============================================================
+  📡 ESP32 WS     : ws://192.168.1.178:81
+  🌉 Rosbridge WS : ws://<ubuntu_ip>:9090
+  📋 Logs:
+    - bridge    : /home/<user>/.smb_logs/smb_bridge.log
+    - rosbridge : /home/<user>/.smb_logs/smb_rosbridge.log
+  🌐 Bước tiếp theo: Mở WebManager (Chrome)
+============================================================
+```
+
+**Dừng hệ thống:**
+```bash
+./start_smb_e2e.sh stop
+# hoặc: kill $(cat /tmp/smb_bridge.pid /tmp/smb_rosbridge.pid)
+```
+
+**Xem log real-time:**
+```bash
+tail -f ~/.smb_logs/smb_bridge.log
+tail -f ~/.smb_logs/smb_rosbridge.log
+```
+
+---
+
+### Bước 1.2-bis — Fallback: Quy trình 3 terminal (nếu script lỗi)
+
+> Dùng khi `start_smb_e2e.sh` không hoạt động (vd: package rosbridge_server chưa cài, bridge script ở path khác).
+
+**Terminal #1 — ESP32 ↔ ROS2 bridge** (publish `/scan`, `/odom`, `/imu`, `/battery`, nhận `/cmd_vel`)
+```bash
+python3 esp32_ros2_bridge.py --ros-args -p esp32_ip:=192.168.1.178
+```
+- Verify: `[Bridge] Connected to ESP32 WS://192.168.1.178:81`
+- Verify: `[Bridge] Publishing /scan, /odom, /imu, /battery, /cmd_vel`
+
+**Terminal #2 — rosbridge_server** (WebSocket port 9090 — WebManager kết nối vào đây)
+```bash
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+```
+- Verify: `[rosbridge_websocket_server] WebSocket server started on port 9090`
+
+**Terminal #3 — Verify topics & test**
+```bash
+# Mở terminal mới (giữ 2 terminal trên chạy nền)
+ros2 topic list                    # phải thấy: /scan, /odom, /imu/data, /battery, /cmd_vel, /tf, /tf_static
+ros2 topic hz /scan                # ~5–10 Hz (YDLIDAR X3)
+ros2 topic hz /odom                # ~50 Hz (từ ESP32)
+ros2 topic echo /odom --once       # pose hợp lệ (x, y, heading thay đổi khi robot chuyển động)
+ros2 topic echo /battery --once    # % pin > 0
+```
+
+Sau ~5s, danh sách topic đang hoạt động phải đầy đủ. Nếu thiếu → xem **Bước 6 — Troubleshooting**.
 
 ### Bước 1.3 — WebManager
 1. Mở `index.html` trong Chrome (Chrome hỗ trợ WebSocket tốt nhất)
-2. Đợi ~3s để kết nối Rosbridge + ESP32 WS
+2. Đợi ~3s để kết nối Rosbridge (`ws://<ubuntu_ip>:9090`) + ESP32 WS (`ws://192.168.1.178:81`)
 3. Kiểm tra:
    - **LiDAR Log panel** → hiển thị `[YDLIDAR X3] 360° Scan #N | Points: ~350` (nếu firmware ESP32 đã chạy)
    - **Robot Status badge** → xanh "ONLINE"
    - **Pose (x, y, heading)** → cập nhật mỗi 100ms
+
+### Bước 1.4 — Chạy `test_robot.sh` (script test tự động E2E)
+
+> **Nếu dùng `start_smb_e2e.sh`** (Bước 1.2 khuyến nghị) → `test_robot.sh` đã được chạy tự động. Bỏ qua bước này.
+>
+> **Nếu dùng quy trình 3 terminal** (Bước 1.2-bis fallback) → mở Terminal mới và chạy:
+
+```bash
+cd ~/ros2_ws && ./test_robot.sh
+# Options:
+#   ./test_robot.sh --skip-cmdvel       # bỏ test publish /cmd_vel
+#   ./test_robot.sh --esp-ip=192.168.1.50
+```
+
+**Script sẽ tự động (7 test cases):**
+1. Source ROS2 distro
+2. Verify topic list có `/scan`, `/odom`, `/battery`
+3. Verify `/scan` có publisher
+4. Verify `/odom` có publisher
+5. Đo rate `/scan` (đòi hỏi ≥ 2 Hz)
+6. Đo rate `/odom` (đòi hỏi ≥ 20 Hz)
+7. Verify `/battery` có data
+8. (Optional) Pub `/cmd_vel` 0.1 m/s trong 1s — **đẩy robot ra chỗ trống trước!**
+
+**Verify kết quả cuối:**
+```
+============================================================
+  TEST SUMMARY
+============================================================
+  PASS: Topic list có /scan, /odom, /battery
+  PASS: Topic /scan tồn tại
+  PASS: Topic /odom tồn tại
+  PASS: /scan rate 8.5 Hz
+  PASS: /odom rate 50.2 Hz
+  PASS: /battery data
+  ✅ ALL TESTS PASSED
+============================================================
+```
+
+**Exit codes:**
+- `0` = tất cả PASS → hệ thống sẵn sàng cho **Bước 2 — AUTO_EXPLORE** hoặc **Bước 3 — WAYPOINT**
+- `1` = có FAIL → xem log:
+  - `~/.smb_logs/smb_bridge.log` (bridge)
+  - `~/.smb_logs/smb_rosbridge.log` (rosbridge)
+  - ESP32 Serial Monitor
 
 ---
 
@@ -129,22 +240,29 @@ Sau ~5s sẽ in danh sách topic đang hoạt động.
 ## 5. End-to-end Test Checklist
 
 ### Test 1: ESP32 ↔ Ubuntu (basic)
-- [ ] ESP32 connect WiFi `FPTH_Student` → IP `192.168.0.105`
-- [ ] Ubuntu connect cùng WiFi → IP `192.168.0.X`
-- [ ] Ping 2 chiều OK
+- [ ] ESP32 connect WiFi → IP `192.168.1.178` (hoặc IP in ra Serial Monitor lúc boot)
+- [ ] Ubuntu connect cùng WiFi → IP cùng subnet (vd `192.168.1.X`)
+- [ ] Ping 2 chiều OK (`ping 192.168.1.178` từ Ubuntu và ngược lại nếu cần)
 - [ ] ESP32 Serial log hiển thị `[YDLIDAR X3] 360° Scan #N`
 
 ### Test 2: ROS2 stack
-- [ ] `ros2 topic list` có `/scan`, `/map`, `/odom`, `/imu/data`, `/tf`
-- [ ] RViz2 visualize `/scan` + `/map` → thấy tường từ LiDAR
-- [ ] `ros2 topic hz /scan` → ~10Hz
-- [ ] `ros2 topic hz /odom` → ~50Hz (từ ESP32)
+- [ ] Terminal #1 (bridge) in `[Bridge] Connected to ESP32 WS://192.168.1.178:81`
+- [ ] Terminal #2 (rosbridge) in `[rosbridge_websocket_server] WebSocket server started on port 9090`
+- [ ] Terminal #3: `ros2 topic list` có `/scan`, `/odom`, `/imu/data`, `/battery`, `/cmd_vel`, `/tf`
+- [ ] `ros2 topic hz /scan` → ~5–10 Hz
+- [ ] `ros2 topic hz /odom` → ~50 Hz
+- [ ] `ros2 topic echo /battery --once` → % pin > 0
 
 ### Test 3: WebManager
-- [ ] Mở index.html → WebSocket connected badge xanh
+- [ ] Mở `index.html` → WebSocket connected badge xanh
 - [ ] Pose (x,y,heading) cập nhật real-time
 - [ ] LiDAR Log có log mỗi 5s
-- [ ] Occupancy grid render (sau khi SLAM build map)
+- [ ] Occupancy grid render (nếu SLAM build map)
+
+### Test 4: test_robot.sh
+- [ ] `cd ~/ros2_ws && ./test_robot.sh` → in `ALL TESTS PASSED ✅`
+- [ ] Bridge log có `[WS] cmd_vel ack` từ ESP32
+- [ ] ESP32 Serial có `[CMD] v=0.10 w=0.00` (hoặc tương tự) khi script pub /cmd_vel
 
 ### Test 4: AUTO_EXPLORE
 - [ ] Click AUTO_SCAN_START → robot bắt đầu bám tường
@@ -174,6 +292,31 @@ Sau ~5s sẽ in danh sách topic đang hoạt động.
 ---
 
 ## 6. Troubleshooting
+
+### Lỗi: Bridge (Terminal #1) không connect ESP32
+- Check IP trong Serial Monitor ESP32 lúc boot → đảm bảo khớp `-p esp32_ip:=192.168.1.178`
+- Ping thử: `ping 192.168.1.178` (từ Ubuntu)
+- Nếu ESP32 reset liên tục → mở Serial Monitor xem lỗi boot
+- Nếu WiFi OK nhưng WS fail → ESP32 đã ngừng lắng nghe WS port 81 → reset ESP32
+
+### Lỗi: rosbridge (Terminal #2) không start được
+- Lỗi `package rosbridge_server not found` → `sudo apt install ros-<distro>-rosbridge-server`
+- Lỗi port 9090 đã bị chiếm → `sudo lsof -i :9090` rồi kill process
+- Sau khi launch, test: `ros2 service list | grep rosbridge`
+
+### Lỗi: `ros2 topic list` rỗng
+- Terminal #1 (bridge) đã chạy và in `[Bridge] Publishing...` chưa? Nếu chưa → fix bridge trước
+- Terminal #2 (rosbridge) đã in `WebSocket server started` chưa? Nếu chưa → fix rosbridge trước
+- Cả 2 OK mà topic vẫn rỗng → check `ROS_DOMAIN_ID` phải giống nhau giữa các terminal:
+  ```bash
+  echo $ROS_DOMAIN_ID    # chạy ở mỗi terminal phải ra cùng giá trị
+  ```
+
+### Lỗi: test_robot.sh fail
+- Quyền thực thi: `chmod +x ~/ros2_ws/test_robot.sh`
+- `ros2_ws` chưa build: `cd ~/ros2_ws && colcon build --symlink-install`
+- Source ROS2 trong script sai → kiểm tra dòng `source /opt/ros/<distro>/setup.bash`
+- Xem log terminal tương ứng (bridge/rosbridge) trước khi retry
 
 ### Lỗi: Robot không di chuyển sau khi nhấn AUTO_SCAN
 - Check Serial Monitor: `[AUTO-EXPLORE] Front US < 25cm → AVOID_US` liên tục?
@@ -216,4 +359,6 @@ Sau ~5s sẽ in danh sách topic đang hoạt động.
 
 ---
 
-*Phiên bản: v2.0 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
+*Phiên bản: v2.2 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
+*Thay đổi v2.1: Chuẩn hóa quy trình Ubuntu theo 3 terminal (bridge + rosbridge + test_robot.sh) — bỏ start_ros2_web_bridge.sh gộp; đổi IP ESP32 → 192.168.1.178.*
+*Thay đổi v2.2: Thêm `start_smb_e2e.sh` (1 lệnh duy nhất) làm workflow chính; 3 terminal làm fallback. Thêm `test_robot.sh` E2E test (7 test cases: topics + rate + battery + cmd_vel).*
