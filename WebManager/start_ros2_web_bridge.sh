@@ -27,7 +27,7 @@ BRIDGE_PY="$WORKSPACE_ROOT/ros2_bridge/esp32_ros2_bridge.py"
 # 1. Source ROS2 Humble Environment
 if [ -f "/opt/ros/humble/setup.bash" ]; then
     # shellcheck disable=SC1091
-    source /opt/ros/humble/setup.bash
+    source /opt/ros/lyrical/setup.bash
     echo "✅ [1/5] Đã nạp môi trường ROS2 Humble."
 else
     echo "⚠️ ROS2 Humble chưa được cài đặt tại /opt/ros/humble!"
