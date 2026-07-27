@@ -8,6 +8,7 @@ import { MapViewerProvider } from '../context/MapViewerContext';
 import { RobotControlProvider } from '../context/RobotControlContext';
 import { RouteProvider } from '../context/RouteContext';
 import { NotificationProvider } from '../context/NotificationContext';
+import { GeofencingProvider } from '../context/GeofencingContext';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -29,13 +30,15 @@ export default function RootLayout() {
       <PortalProvider shouldAddRootHost>
         <NotificationProvider>
           <RobotAuthProvider>
-            <MapViewerProvider>
-              <RouteProvider>
-                <RobotControlProvider>
-                  <RootLayoutContent />
-                </RobotControlProvider>
-              </RouteProvider>
-            </MapViewerProvider>
+            <GeofencingProvider>
+              <MapViewerProvider>
+                <RouteProvider>
+                  <RobotControlProvider>
+                    <RootLayoutContent />
+                  </RobotControlProvider>
+                </RouteProvider>
+              </MapViewerProvider>
+            </GeofencingProvider>
           </RobotAuthProvider>
         </NotificationProvider>
       </PortalProvider>

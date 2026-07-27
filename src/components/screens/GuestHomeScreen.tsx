@@ -9,12 +9,15 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
+import { useGeofencing } from '../../context/GeofencingContext';
+import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 
 export default function GuestHomeScreen() {
   const insets = useSafeAreaInsets();
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
   const { speak, stop, isSpeaking } = useRobotVoice();
+  const { currentZone, isInZone, isHubConnected } = useGeofencing();
 
   // Trạng thái điều hướng bằng giọng nói cho Camera Quét sản phẩm
   const [shouldNavigateToImageSearch, setShouldNavigateToImageSearch] = useState(false);
@@ -71,9 +74,25 @@ export default function GuestHomeScreen() {
   return (
     <View flex={1} backgroundColor="#fcfdfd" paddingTop={insets.top}>
 
+      {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
+      <ZoneAdOverlay />
+
       {/* HEADER */}
       <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$4" paddingVertical="$4" backgroundColor="white" borderBottomWidth={1} borderBottomColor="#f0f0f0" zIndex={100}>
-        <Text fontSize={22} fontWeight="900" color="#00A550">SmartMarketBot</Text>
+        <YStack>
+          <Text fontSize={22} fontWeight="900" color="#00A550">SmartMarketBot</Text>
+          {/* Zone status badge */}
+          {isInZone && currentZone && (
+            <Animated.View entering={FadeInDown.duration(400)}>
+              <XStack alignItems="center" gap="$1" marginTop="$1">
+                <MapPin size={11} color="#059669" />
+                <Text fontSize={11} color="#059669" fontWeight="700">
+                  Khu vực: {currentZone.objectName}
+                </Text>
+              </XStack>
+            </Animated.View>
+          )}
+        </YStack>
 
         <XStack alignItems="center" gap="$5">
           {/* Guest Avatar with Dropdown */}

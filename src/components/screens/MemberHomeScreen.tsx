@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, XStack, YStack, Button, Card, Image } from 'tamagui';
-import { Search, Mic, Camera, Tag, Clock, Utensils, TrendingDown, Sparkles, ArrowRight } from 'lucide-react-native';
+import { Search, Mic, Camera, Tag, Clock, Utensils, TrendingDown, Sparkles, ArrowRight, MapPin } from 'lucide-react-native';
 import { MemberHeader } from '../layout/MemberHeader';
 import { useVoiceRouter, useRobotVoice, isRobotVoiceSpeaking } from '../../hooks/useRobotVoice';
 import { useFocusEffect } from 'expo-router';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, FadeInDown } from 'react-native-reanimated';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { MemberService, MemberDealDto, SponsoredRecommendationDto, MemberAlertDto } from '../../services/MemberService';
 import { CartService, CartDto } from '../../services/CartService';
@@ -14,9 +14,12 @@ import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { ShoppingCart } from 'lucide-react-native';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+import { useGeofencing } from '../../context/GeofencingContext';
+import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 
 export default function MemberHomeScreen() {
   const { member, token } = useRobotAuth();
+  const { currentZone, isInZone } = useGeofencing();
   const [deals, setDeals] = useState<MemberDealDto[]>([]);
   const [sponsoredRecs, setSponsoredRecs] = useState<SponsoredRecommendationDto[]>([]);
   const [alerts, setAlerts] = useState<MemberAlertDto[]>([]);
@@ -97,7 +100,21 @@ export default function MemberHomeScreen() {
 
   return (
     <View flex={1} backgroundColor="#f9fbf9" paddingTop={insets.top} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 0)}>
+
+      {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
+      <ZoneAdOverlay />
+
       <MemberHeader />
+
+      {/* Zone status banner */}
+      {isInZone && currentZone && (
+        <Animated.View entering={FadeInDown.duration(400)} style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <MapPin size={13} color="#059669" />
+          <Text fontSize={12} fontWeight="700" color="#059669">
+            Đang ở khu vực: {currentZone.objectName}
+          </Text>
+        </Animated.View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24 }}>
 

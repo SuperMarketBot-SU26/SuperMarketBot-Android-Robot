@@ -72,8 +72,8 @@ export default function MapViewerScreen() {
   const router = useRouter();
   const {
     isLidarConnected, latestFrame, robotPose,
-    currentMap, loadMap, isLoadingMap,
-    startLidar, stopLidar,
+    currentMap, loadMap, loadActiveMap, isLoadingMap,
+    startLidar, stopLidar, rosToPixel,
   } = useMapViewer();
 
   const { selectedRoute, isMock } = useRoute();
@@ -87,20 +87,18 @@ export default function MapViewerScreen() {
     text: string;
   }>({ type: null, text: '' });
 
-  // Tải bản đồ mặc định (MapID=1) khi vào màn hình
+  // Tải Active Map khi vào màn hình
   useEffect(() => {
-    loadMap(1);
+    loadActiveMap(1);
     startLidar();
     return () => stopLidar();
   }, []);
 
-  // Tọa độ robot trên canvas (pixel)
-  const robotScreenX = currentMap
-    ? currentMap.originX + (robotPose?.x ?? 0) * currentMap.scalePixelPerMeter
-    : SW / 2;
-  const robotScreenY = currentMap
-    ? currentMap.originY - (robotPose?.y ?? 0) * currentMap.scalePixelPerMeter
-    : SH / 2;
+  // Tọa độ robot trên canvas (pixel) — dùng công thức ROS chuẩn
+  const canvasHForRobot = SH * 0.65;
+  const robotCoords = rosToPixel(robotPose?.x ?? 0, robotPose?.y ?? 0, canvasHForRobot);
+  const robotScreenX = currentMap ? robotCoords.px : SW / 2;
+  const robotScreenY = currentMap ? robotCoords.py : canvasHForRobot / 2;
 
   const scale = currentMap?.scalePixelPerMeter ?? 80;
   const heading = robotPose?.headingRad ?? 0;

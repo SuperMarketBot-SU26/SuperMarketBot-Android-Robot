@@ -5,6 +5,7 @@
   "dependencies": {
     "@azesmway/react-native-unity": "^1.1.0",
     "@expo/ui": "~56.0.22",
+    "@microsoft/signalr": "^10.0.0",
     "@react-native-voice/voice": "^3.2.3",
     "@shopify/react-native-skia": "2.6.2",
     "@tamagui/config": "^2.0.0",
