@@ -1676,6 +1676,20 @@ function applyLiveTelemetry(d) {
     updateRpm('valRpmFR', d.rFR, encOn ? !!encOn[2] : true);
     updateRpm('valRpmRR', d.rRR, encOn ? !!encOn[3] : true);
     
+    // Cập nhật tốc độ Encoder Trái (GPIO 35) & Phải (GPIO 36) lên ô Giám Sát Trực Tiếp
+    const encLeftEl = document.getElementById('robotEncLeft');
+    const encRightEl = document.getElementById('robotEncRight');
+    if (encLeftEl) {
+        const rpmL = (d.rFL !== undefined) ? Math.round(d.rFL) : ((d.rRL !== undefined) ? Math.round(d.rRL) : 0);
+        const mpsL = (rpmL * (Math.PI * 0.065) / 60);
+        encLeftEl.textContent = `${rpmL} RPM (${mpsL.toFixed(2)}m/s)`;
+    }
+    if (encRightEl) {
+        const rpmR = (d.rFR !== undefined) ? Math.round(d.rFR) : ((d.rRR !== undefined) ? Math.round(d.rRR) : 0);
+        const mpsR = (rpmR * (Math.PI * 0.065) / 60);
+        encRightEl.textContent = `${rpmR} RPM (${mpsR.toFixed(2)}m/s)`;
+    }
+    
     const valImuHeading = document.getElementById('valImuHeading');
     if (valImuHeading && d.HeadingRad !== undefined) {
         const headingDeg = Math.round(d.HeadingRad * 180 / Math.PI);

@@ -589,6 +589,22 @@
                             </div>
                             <div class="text-sm font-mono text-slate-300 font-bold mt-1" id="robotBattery">--</div>
                         </div>
+                        <!-- Encoder Left (GPIO 35) -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center justify-between">
+                                <span>Enc Trái (GPIO 35)</span>
+                                <i data-lucide="gauge" class="w-3.5 h-3.5 text-cyan-400"></i>
+                            </div>
+                            <div class="text-xs font-mono text-cyan-300 font-bold mt-1 truncate" id="robotEncLeft">0 RPM (0.00m/s)</div>
+                        </div>
+                        <!-- Encoder Right (GPIO 36) -->
+                        <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 flex flex-col justify-between">
+                            <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center justify-between">
+                                <span>Enc Phải (GPIO 36)</span>
+                                <i data-lucide="gauge" class="w-3.5 h-3.5 text-cyan-400"></i>
+                            </div>
+                            <div class="text-xs font-mono text-cyan-300 font-bold mt-1 truncate" id="robotEncRight">0 RPM (0.00m/s)</div>
+                        </div>
                     </div>
 
                     <!-- Robot Modes & States -->
