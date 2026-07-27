@@ -341,11 +341,44 @@ cd ~/ros2_ws && ./test_robot.sh
   echo $ROS_DOMAIN_ID    # chạy ở mỗi terminal phải ra cùng giá trị
   ```
 
-### Lỗi: test_robot.sh fail
-- Quyền thực thi: `chmod +x ~/ros2_ws/test_robot.sh`
-- `ros2_ws` chưa build: `cd ~/ros2_ws && colcon build --symlink-install`
-- Source ROS2 trong script sai → kiểm tra dòng `source /opt/ros/<distro>/setup.bash`
-- Xem log terminal tương ứng (bridge/rosbridge) trước khi retry
+### Lỗi: Topics không xuất hiện sau 30s (case "Lyrical" / Ubuntu 26.04 OK nhưng topics rỗng)
+
+- **Triệu chứng**: Script chạy đến `[WAIT] Đợi các topic xuất hiện (tối đa 30s)` rồi fail với `[WARN] Topics chưa xuất hiện sau 30s`.
+- **Script v2.5 sẽ tự động**:
+  1. Probe ESP32 WS port 81 (đảm bảo port open)
+  2. Print 20 dòng cuối của `smb_bridge.log`
+  3. Check bridge process còn alive không (kill -0)
+  4. Print 5 dòng log cuối nếu alive
+- **Nguyên nhân phổ biến** (theo thứ tự):
+  1. **ESP32 chưa flash firmware** → Serial Monitor trống → bridge chờ WS không kết nối được
+  2. **ESP32 firmware start nhưng chưa init YDLIDAR X3** → Serial log thiếu `[YDLIDAR X3] 360° Scan #N`
+  3. **Sai IP ESP32** → bridge thử connect IP cũ nhưng ESP32 đã đổi IP khi reconnect WiFi
+  4. **Bridge script path sai** → bridge không tìm thấy `esp32_ros2_bridge.py`
+  5. **Linux firewall** → port 81 bị chặn
+- **Diagnose thủ công**:
+  ```bash
+  # 1. Ping ESP32
+  ping -c3 $ESP_IP
+
+  # 2. Probe WS port 81
+  nc -zv $ESP_IP 81         # cài: sudo apt install netcat
+
+  # 3. Xem bridge log live
+  tail -f ~/.smb_logs/smb_bridge.log
+
+  # 4. Test bridge manually (foreground, không nohup)
+  cd ~/SuperMarketBot-Android-Robot/SuperMarketBot-IOT/ros2_bridge
+  python3 esp32_ros2_bridge.py --ros-args -p esp32_ip:=$ESP_IP
+  ```
+
+### Lỗi: Bridge chạy nhưng topics rỗng (case Lyrical-specific)
+- Triệu chứng: bridge log OK nhưng `ros2 topic list` rỗng
+- Lý do khả nghi nhất trên Ubuntu 26.04 + Lyrical: **ROS_DOMAIN_ID không khớp** giữa bridge và rosbridge
+- Script v2.5 đã set `ROS_DOMAIN_ID=$ROS_DOMAIN_ID_VALUE` (default 0) ở cả 2 process → đã fix.
+- Nếu vẫn lệch → check:
+  ```bash
+  echo $ROS_DOMAIN_ID    # phải ra cùng giá trị ở mọi terminal
+  ```
 
 ### Lỗi: Robot không di chuyển sau khi nhấn AUTO_SCAN
 - Check Serial Monitor: `[AUTO-EXPLORE] Front US < 25cm → AVOID_US` liên tục?
@@ -367,13 +400,20 @@ cd ~/ros2_ws && ./test_robot.sh
 - Nếu `Không tìm thấy ROS2 distro nào` → cài `ros-humble-desktop` hoặc `ros-lyrical-desktop`
 - Check `command -v ros2` có trả về đường dẫn không
 
+### Lỗi: test_robot.sh fail
+- Quyền thực thi: `chmod +x ~/ros2_ws/test_robot.sh`
+- `ros2_ws` chưa build: `cd ~/ros2_ws && colcon build --symlink-install`
+- Source ROS2 trong script sai → kiểm tra dòng `source /opt/ros/<distro>/setup.bash`
+- Xem log terminal tương ứng (bridge/rosbridge) trước khi retry
+- Trên Ubuntu 26.04 + Lyrical: phải dùng ROS_DOMAIN_ID=0 khớp cả bridge + rosbridge + test_robot.sh
+
 ---
 
 ## 7. File quan trọng đã thay đổi
 
 | File | Thay đổi |
 |------|----------|
-| `start_ros2_web_bridge.sh` | Fix bug source ROS2 + auto-detect distro + verify CLI |
+| `start_smb_e2e.sh` | v2.5: Fix `set -u` + auto-detect distro (ưu tiên Lyrical cho Ubuntu 26.04) + WS port 81 probe + bridge alive check + wait progress + flags `--distro=`, `--skip-test`, `--no-bridge`, `--no-rosbridge` |
 | `mapper_params_online_async.yaml` | Thêm `max_update_range`, `map_update_interval` |
 | `Odometry.h` | Viết lại: ISR encoder + RPM/dist thật |
 | `Localization.h` | Overload `locUpdate(dsL, dsR, dt)` + rate-limit slam_pose + debug log |
@@ -388,8 +428,9 @@ cd ~/ros2_ws && ./test_robot.sh
 
 ---
 
-*Phiên bản: v2.4 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
+*Phiên bản: v2.5 (2026-07-27) — Tác giả: Cursor Agent (claude-fable-5)*
 *Thay đổi v2.1: Chuẩn hóa quy trình Ubuntu theo 3 terminal (bridge + rosbridge + test_robot.sh) — bỏ start_ros2_web_bridge.sh gộp; đổi IP ESP32 → 192.168.1.178.*
 *Thay đổi v2.2: Thêm `start_smb_e2e.sh` (1 lệnh duy nhất) làm workflow chính; 3 terminal làm fallback. Thêm `test_robot.sh` E2E test (7 test cases: topics + rate + battery + cmd_vel).*
 *Thay đổi v2.3: Fix bug `set -u` crash + auto-detect distro hợp lệ + thêm flags `--distro=`, `--skip-test`, `--no-bridge`, `--no-rosbridge`.*
 *Thay đổi v2.4: Hỗ trợ chính thức ROS2 Lyrical Luth cho Ubuntu 26.04+ (theo REP 2000, phát hành May 2026). Priority: lyrical > kilted > jazzy > rolling > humble > iron.*
+*Thay đổi v2.5: Thêm WS port 81 probe + bridge alive check + wait progress (5s) + auto-print 20 dòng log khi topics fail → tự diagnose không cần hỏi.*

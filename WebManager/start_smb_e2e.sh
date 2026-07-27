@@ -203,6 +203,20 @@ else
   echo "        - Vẫn tiếp tục chạy, có thể ESP32 sẽ reconnect sau..."
 fi
 
+# Probe WebSocket port 81
+echo "       Checking WS port ${ESP_WS_PORT}..."
+if command -v nc >/dev/null 2>&1; then
+  if timeout 3 bash -c "exec 3<>/dev/tcp/${ESP_IP}/${ESP_WS_PORT}" 2>/dev/null; then
+    echo "[OK]   WS port ${ESP_WS_PORT} OPEN"
+  else
+    echo "[WARN] WS port ${ESP_WS_PORT} CLOSED — bridge sẽ fail!"
+    echo "        - ESP32 firmware đã start server WS chưa?"
+    echo "        - Có firewall chặn port ${ESP_WS_PORT} không?"
+  fi
+else
+  echo "[SKIP] nc không có → không probe WS port"
+fi
+
 # ---------- 4. Cleanup old processes ----------
 echo "[4/6] Cleaning up old SMB processes..."
 for pf in "$BRIDGE_PID_FILE" "$ROSBRIDGE_PID_FILE"; do
@@ -250,6 +264,11 @@ echo
 echo "[WAIT] Đợi các topic xuất hiện (tối đa 30s)..."
 TOPICS_OK=false
 for i in $(seq 1 30); do
+  # In progress mỗi 5s để user biết script không bị treo
+  if (( i == 1 )) || (( i % 5 == 0 )); then
+    echo "  (${i}s) Đợi..."
+  fi
+  # Probe topics
   if ros2 topic list 2>/dev/null | grep -qE "/scan|/odom"; then
     TOPICS_OK=true
     echo "[OK]   Topics đã sẵn sàng sau ${i}s"
@@ -259,9 +278,48 @@ for i in $(seq 1 30); do
 done
 
 if ! $TOPICS_OK; then
-  echo "[WARN] Topics chưa xuất hiện sau 30s. Check logs:"
-  echo "       $BRIDGE_LOG"
-  echo "       $ROSBRIDGE_LOG"
+  echo "[WARN] Topics chưa xuất hiện sau 30s."
+  echo ""
+  echo "=========== BRIDGE LOG (last 20 lines) ==========="
+  if [[ -f "$BRIDGE_LOG" ]]; then
+    tail -20 "$BRIDGE_LOG" | sed 's/^/  /'
+  else
+    echo "  (không có log)"
+  fi
+  echo "=================================================="
+  echo ""
+  echo "[FIX-SUGGESTIONS]"
+  echo "  1. Kiểm tra ESP32 đã flash firmware + cắm LiDAR chưa?"
+  echo "     - Serial Monitor ESP32 có in '[YDLIDAR X3] 360° Scan #1' không?"
+  echo "     - ESP32 IP đúng: $ESP_IP ?"
+  echo "  2. Ping ESP32 từ Ubuntu:"
+  echo "     ping -c3 $ESP_IP"
+  echo "  3. WebSocket port 81 ESP32 có mở không?"
+  echo "     nc -zv $ESP_IP 81   # OK = 'succeeded'"
+  echo "  4. Xem full bridge log:"
+  echo "     tail -f $BRIDGE_LOG"
+  echo "  5. Xem full rosbridge log:"
+  echo "     tail -f $ROSBRIDGE_LOG"
+  echo ""
+fi
+
+# ---------- Bridge sanity check ----------
+# Đảm bảo bridge process còn alive (không crash ngay khi start)
+if [[ ! -z "${BRIDGE_PID_FILE:-}" ]] && [[ -f "$BRIDGE_PID_FILE" ]]; then
+  bp="$(cat "$BRIDGE_PID_FILE")"
+  if kill -0 "$bp" 2>/dev/null; then
+    echo "[BRIDGE] Process PID=$bp still ALIVE ✅"
+    # Peek 5 dòng log cuối
+    if [[ -f "$BRIDGE_LOG" ]]; then
+      echo "[BRIDGE] Last 5 lines of log:"
+      tail -5 "$BRIDGE_LOG" | sed 's/^/    /'
+    fi
+  else
+    echo "[BRIDGE] ⚠️  Process PID=$bp DEAD! Xem log:"
+    if [[ -f "$BRIDGE_LOG" ]]; then
+      tail -20 "$BRIDGE_LOG" | sed 's/^/    /'
+    fi
+  fi
 fi
 
 # ---------- Show running topics ----------
