@@ -3419,14 +3419,30 @@ function updateLidarStatusBadge(connected, count = 0) {
 window.setLiveLidarPoints = function(points) {
     window.liveLidarScanPoints = points || [];
     lastLidarScanTimestamp = Date.now();
-    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+    const now = Date.now();
 
-    // Nếu đã kết nối ROS2 Bridge, tự động đẩy mây điểm LiDAR 360° sang topic /scan cho slam_toolbox!
-    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
-        Ros2BridgeManager.publishLaserScan(window.liveLidarScanPoints);
+    // 1. Throttle cập nhật UI Badge (tối đa 2Hz - 500ms) để không gây reflow DOM
+    if (!window._lastBadgeUpdateMs || now - window._lastBadgeUpdateMs >= 500) {
+        window._lastBadgeUpdateMs = now;
+        updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
     }
 
-    draw();
+    // 2. Throttle đẩy scan sang ROS2 Bridge (tối đa 10Hz - 100ms)
+    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
+        if (!window._lastRos2ScanMs || now - window._lastRos2ScanMs >= 100) {
+            window._lastRos2ScanMs = now;
+            Ros2BridgeManager.publishLaserScan(window.liveLidarScanPoints);
+        }
+    }
+
+    // 3. Render Canvas không chặn luồng bằng requestAnimationFrame
+    if (!window._rafScheduled) {
+        window._rafScheduled = true;
+        requestAnimationFrame(() => {
+            window._rafScheduled = false;
+            draw();
+        });
+    }
 };
 
 // ============================================================================
@@ -4258,20 +4274,31 @@ const SlamEngine = {
     }
 };
 
-// ---------- Hook vào setLiveLidarPoints: chạy SLAM sau mỗi scan ----------
+// ---------- Hook vào setLiveLidarPoints: chạy SLAM an toàn không gây lag ----------
 const _origSetLiveLidarPoints = window.setLiveLidarPoints;
 window.setLiveLidarPoints = function(points) {
-    // Gọi logic gốc (cập nhật liveLidarScanPoints, badge, draw)
-    window.liveLidarScanPoints = points || [];
-    lastLidarScanTimestamp = Date.now();
-    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+    // 1. Gọi logic gốc (cập nhật liveLidarScanPoints, badge throttle, RAF draw)
+    if (_origSetLiveLidarPoints) {
+        _origSetLiveLidarPoints(points);
+    } else {
+        window.liveLidarScanPoints = points || [];
+        lastLidarScanTimestamp = Date.now();
+    }
 
-    // Lấy IMU heading hiện tại từ telemetry
-    const imuHeading = (typeof window._lastImuHeadingRad === 'number')
-        ? window._lastImuHeadingRad : 0;
+    // 2. Nếu ROS2 Bridge đang kết nối, ROS2 slam_toolbox đang làm SLAM → bỏ qua SLAM JS để tiết kiệm 100% CPU!
+    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
+        return;
+    }
 
-    // Chạy SLAM pipeline
-    SlamEngine.processScan(points || [], imuHeading);
+    // 3. Nếu chạy SLAM JS nội bộ (không có ROS2), throttle tần số SLAM max 5Hz (200ms) để không khóa UI
+    const now = Date.now();
+    if (!window._lastSlamCpuProcessMs || now - window._lastSlamCpuProcessMs >= 200) {
+        window._lastSlamCpuProcessMs = now;
+        const imuHeading = (typeof window._lastImuHeadingRad === 'number') ? window._lastImuHeadingRad : 0;
+        if (typeof SlamEngine !== 'undefined' && SlamEngine.enabled) {
+            SlamEngine.processScan(points || [], imuHeading);
+        }
+    }
 };
 
 // ---------- Patch applyLiveTelemetry để lưu IMU heading ----------
