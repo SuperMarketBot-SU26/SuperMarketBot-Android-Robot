@@ -55,16 +55,19 @@ export function useRobotVoice() {
       console.warn('Error stopping local TTS speech:', e);
     }
     try {
-      // Dừng và giải phóng bộ nhớ của âm thanh đang phát toàn cục
+      // Dừng âm thanh đang phát một cách an toàn không gây crash C++ thread
       if (globalActiveSound) {
         const sound = globalActiveSound;
         globalActiveSound = null;
         try {
           sound.pause();
         } catch (e) {}
-        try {
-          sound.remove();
-        } catch (e) {}
+        // Hoãn remove 500ms để Android AudioTrack giải phóng buffer mượt mà
+        setTimeout(() => {
+          try {
+            sound.remove();
+          } catch (e) {}
+        }, 500);
       }
     } catch (e) {
       console.warn('Error stopping sound', e);
@@ -188,23 +191,64 @@ export function useRobotVoice() {
     }
   };
 
-  const speakFallback = (text: string) => {
+  const speakFallback = async (text: string) => {
     try {
       isSpeakingGlobal = true;
+      setIsSpeaking(true);
+
+      // Cloud MP3 fallback using Google TTS Stream (bypasses Xiaomi MI AI Speech Engine)
+      const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(text)}`;
+      
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
+        });
+
+        const sound = createAudioPlayer(googleTtsUrl);
+        sound.play();
+
+        globalActiveSound = sound;
+
+        sound.addListener('playbackStatusUpdate', (status) => {
+          if (status.isLoaded && status.playing === false && status.currentTime >= status.duration - 0.5) {
+            isSpeakingGlobal = false;
+            setIsSpeaking(false);
+            if (globalActiveSound === sound) {
+              globalActiveSound = null;
+            }
+            setTimeout(() => {
+              try { sound.remove(); } catch (e) {}
+            }, 100);
+          }
+        });
+        return;
+      } catch (cloudError) {
+        console.warn('Google Cloud MP3 stream failed, attempting local Speech.speak:', cloudError);
+      }
+
+      // Local Speech.speak fallback if network is completely offline
+      const fallbackTimer = setTimeout(() => {
+        isSpeakingGlobal = false;
+        setIsSpeaking(false);
+      }, 10000);
+
       Speech.speak(text, {
         language: 'vi-VN',
-        pitch: 1.1,
-        rate: 0.9,
+        pitch: 1.0,
+        rate: 1.0,
         onDone: () => {
+          clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
         },
-        onError: (err) => {
+        onError: () => {
+          clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
-          console.warn('Local TTS callback error:', err);
         },
         onStopped: () => {
+          clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
         },
@@ -226,3 +270,4 @@ export function useRobotVoice() {
 
   return { speak, stop, isSpeaking };
 }
+

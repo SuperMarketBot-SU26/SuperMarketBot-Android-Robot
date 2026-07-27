@@ -18,6 +18,9 @@ export interface ProductDetailDto {
   isOnSale: boolean;
   isFavorite: boolean;
   healthTags: HealthTagDto[];
+  aisleCode?: string;
+  levelNumber?: number;
+  slotCode?: string;
 }
 
 export class ProductService {

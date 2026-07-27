@@ -7,6 +7,7 @@ import { RobotAuthProvider } from '../context/RobotAuthContext';
 import { MapViewerProvider } from '../context/MapViewerContext';
 import { RobotControlProvider } from '../context/RobotControlContext';
 import { RouteProvider } from '../context/RouteContext';
+import { NotificationProvider } from '../context/NotificationContext';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -26,15 +27,17 @@ export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <PortalProvider shouldAddRootHost>
-        <RobotAuthProvider>
-          <MapViewerProvider>
-            <RouteProvider>
-              <RobotControlProvider>
-                <RootLayoutContent />
-              </RobotControlProvider>
-            </RouteProvider>
-          </MapViewerProvider>
-        </RobotAuthProvider>
+        <NotificationProvider>
+          <RobotAuthProvider>
+            <MapViewerProvider>
+              <RouteProvider>
+                <RobotControlProvider>
+                  <RootLayoutContent />
+                </RobotControlProvider>
+              </RouteProvider>
+            </MapViewerProvider>
+          </RobotAuthProvider>
+        </NotificationProvider>
       </PortalProvider>
     </TamaguiProvider>
   );

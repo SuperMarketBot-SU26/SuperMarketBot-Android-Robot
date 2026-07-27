@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Sheet, YStack, XStack, Text, Button, Image, Spinner, H4, Paragraph, View } from 'tamagui';
-import { X, Sparkles, Heart, Activity, ShoppingCart, Minus, Plus } from 'lucide-react-native';
+import { X, Sparkles, Heart, Activity, ShoppingCart, Minus, Plus, MapPin } from 'lucide-react-native';
 import { ProductService, ProductDetailDto } from '../../services/ProductService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService } from '../../services/CartService';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
+import { useRouter } from 'expo-router';
 import { MealSuggestionService, MenuAssistantResponseDto } from '../../services/MealSuggestionService';
+import { optimizeShoppingRoute } from '../../services/RouteService';
 
 interface ProductDetailSheetProps {
   productId: number | null;
@@ -25,7 +27,9 @@ export function ProductDetailSheet({ productId, isOpen, onOpenChange, onCartUpda
   const [loading, setLoading] = useState(false);
   const [addingToCart, setAddingToCart] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
+  const [navigating, setNavigating] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const router = useRouter();
 
   useEffect(() => {
     if (isOpen && productId) {
@@ -85,6 +89,33 @@ export function ProductDetailSheet({ productId, isOpen, onOpenChange, onCartUpda
       speak(err.message || 'Lỗi thêm vào giỏ hàng');
     } finally {
       setAddingToCart(false);
+    }
+  };
+
+  const handleNavigate = async () => {
+    if (!productId) return;
+    setNavigating(true);
+    speak('Đang tính toán lộ trình đến ' + (detail?.productName || recipeDetail?.recipeName || 'sản phẩm'));
+    
+    // Pass productIds as an array. If it's a recipe, we could pass all ingredient product IDs, but for now we just route to one product if possible, 
+    // or maybe the recipe itself if it has a physical location. Assuming productId is enough.
+    let targetIds = [productId];
+    if (isRecipe && recipeDetail) {
+       targetIds = recipeDetail.ingredients.map(i => i.productId);
+    }
+
+    const optimalRoute = await optimizeShoppingRoute(targetIds, 1);
+    setNavigating(false);
+    
+    if (optimalRoute) {
+      onOpenChange(false); // Đóng sheet hiện tại
+      // Navigate to Map3D screen with JSON stringified route
+      router.push({
+        pathname: '/map-3d',
+        params: { routeData: JSON.stringify(optimalRoute) }
+      });
+    } else {
+      speak('Không tìm thấy lộ trình');
     }
   };
 
@@ -242,7 +273,18 @@ export function ProductDetailSheet({ productId, isOpen, onOpenChange, onCartUpda
             </ScrollView>
 
             {/* Bottom Add to Cart Bar */}
-            <XStack position="absolute" bottom={0} left={0} right={0} padding="$4" backgroundColor="white" borderTopWidth={1} borderTopColor="#f1f5f9" elevation={10}>
+            <XStack position="absolute" bottom={0} left={0} right={0} padding="$4" gap="$3" backgroundColor="white" borderTopWidth={1} borderTopColor="#f1f5f9" elevation={10}>
+              <Button
+                flex={1}
+                size="$5"
+                backgroundColor="#e0f2fe"
+                borderRadius={20}
+                onPress={handleNavigate}
+                disabled={navigating}
+                icon={navigating ? <Spinner color="#0284c7" /> : <MapPin size={20} color="#0284c7" />}
+              >
+                <Text color="#0284c7" fontWeight="bold" fontSize={16}>Chỉ đường</Text>
+              </Button>
               <Button
                 flex={1}
                 size="$5"
@@ -253,7 +295,7 @@ export function ProductDetailSheet({ productId, isOpen, onOpenChange, onCartUpda
                 icon={addingToCart ? <Spinner color="white" /> : (addSuccess ? <Sparkles size={20} color="white" /> : undefined)}
               >
                 <Text color="white" fontWeight="bold" fontSize={16}>
-                  {(!isRecipe && detail?.status === 'OutOfStock') ? 'Hết hàng' : (addSuccess ? 'Đã thêm thành công' : (isRecipe ? 'Thêm nguyên liệu vào giỏ' : 'Thêm vào giỏ hàng'))}
+                  {(!isRecipe && detail?.status === 'OutOfStock') ? 'Hết hàng' : (addSuccess ? 'Đã thêm' : 'Thêm giỏ')}
                 </Text>
               </Button>
             </XStack>

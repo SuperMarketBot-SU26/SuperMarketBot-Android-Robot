@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, Pressable, ToastAndroid } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ScrollView, Pressable } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Progress } from 'tamagui';
-import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket, Clock } from 'lucide-react-native';
+import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket, Clock, Utensils, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
 import { useRobotAuth } from '../../context/RobotAuthContext';
+import { useNotification } from '../../context/NotificationContext';
 import { CartService } from '../../services/CartService';
 import { MemberService, SponsoredRecommendationDto, MemberDealDto } from '../../services/MemberService';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
@@ -15,16 +17,21 @@ export default function MemberOffersScreen() {
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
   const { speak } = useRobotVoice();
+  const { showNotification } = useNotification();
 
   // State cho bộ đếm giờ Flash Sale
   const [timeLeft, setTimeLeft] = useState({ hours: '01', minutes: '45', seconds: '32' });
   const { token, member } = useRobotAuth();
   const [deals, setDeals] = useState<MemberDealDto[]>([]);
   const [generalAds, setGeneralAds] = useState<SponsoredRecommendationDto[]>([]);
+  const [personalizedMeals, setPersonalizedMeals] = useState<any[]>([]);
+  const [personalizedProducts, setPersonalizedProducts] = useState<any[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(true);
+  const [loadingAds, setLoadingAds] = useState(true);
   const [cart, setCart] = useState<any>(null);
 
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedIsRecipe, setSelectedIsRecipe] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Helper để lấy tên và màu hạng thành viên
@@ -50,55 +57,91 @@ export default function MemberOffersScreen() {
       if (token) {
         await CartService.addItem(productId, 1, token);
         speak(`Đã thêm ${productName} vào giỏ hàng của bạn!`);
-        ToastAndroid.show(`Đã thêm ${productName} vào giỏ`, ToastAndroid.SHORT);
+        showNotification({
+          title: 'THÔNG BÁO HỆ THỐNG',
+          message: `Đã thêm ${productName} vào giỏ`,
+          type: 'success',
+        });
       } else {
         speak(`Vui lòng đăng nhập để thêm vào giỏ hàng.`);
+        showNotification({
+          title: 'THÔNG BÁO HỆ THỐNG',
+          message: `Vui lòng đăng nhập để thêm vào giỏ hàng`,
+          type: 'warning',
+        });
       }
     } catch (e) {
       console.log('Lỗi thêm giỏ hàng:', e);
       speak(`Xin lỗi, không thể thêm ${productName} vào giỏ hàng lúc này.`);
-      ToastAndroid.show(`Lỗi khi thêm ${productName} vào giỏ`, ToastAndroid.SHORT);
+      showNotification({
+        title: 'THÔNG BÁO HỆ THỐNG',
+        message: `Lỗi khi thêm ${productName} vào giỏ`,
+        type: 'error',
+      });
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
 
-    // Chào mừng bằng giọng nói robot
-    speak(`Smart Market Bot đã chọn lọc những ưu đãi và khuyến mãi tốt nhất cho ${tier.name.toLowerCase()} của bạn.`);
+      // Chào mừng bằng giọng nói robot
+      speak(`Smart Market Bot đã chọn lọc những ưu đãi và khuyến mãi tốt nhất cho ${tier.name.toLowerCase()} của bạn.`);
 
-    // Fetch Personalized Deals (Khuyến mãi cá nhân hóa)
-    if (member?.memberId) {
-      MemberService.getMemberDeals(Number(member.memberId)).then((res) => {
-        if (!mounted) return;
-        if (res && res.deals) {
-          setDeals(res.deals);
-        }
-        setLoadingDeals(false);
-      });
-
-      // Fetch Personalized Ads (Quảng cáo cá nhân hóa)
-      MemberService.getSponsoredRecommendations(Number(member.memberId)).then((res) => {
-        if (!mounted) return;
-        if (res && res.items) {
-          setGeneralAds(res.items);
-        }
-      }).catch(err => console.log('Error fetching personalized ads', err));
-
-    } else {
-      if (mounted) setLoadingDeals(false);
-    }
-    
-    // Auto sync cart
-    const fetchCart = () => {
+      // Fetch Personalized Products & Meals
       if (token) {
-        CartService.getCart(token).then(res => { if (mounted) setCart(res) }).catch(e => console.log('Cart Error:', e));
+        MemberService.getPersonalizedMeals(token).then((res) => {
+          if (mounted && res) setPersonalizedMeals(res);
+        }).catch(err => console.log('Error fetching meals', err));
+
+        MemberService.getPersonalizedProducts(token).then((res) => {
+          if (mounted && res) setPersonalizedProducts(res);
+        }).catch(err => console.log('Error fetching personalized products', err));
       }
-    };
 
-    fetchCart();
-    const interval = setInterval(fetchCart, 3000);
+      // Fetch Personalized Deals & Sponsored Ads
+      const memberIdNum = Number(member?.memberId || (member as any)?.id || 0);
+      if (memberIdNum > 0) {
+        MemberService.getMemberDeals(memberIdNum).then((res) => {
+          if (!mounted) return;
+          if (res && res.deals) {
+            setDeals(res.deals);
+          }
+          setLoadingDeals(false);
+        }).catch(() => { if (mounted) setLoadingDeals(false); });
 
+        MemberService.getSponsoredRecommendations(memberIdNum).then((res: any) => {
+          if (!mounted) return;
+          const items = Array.isArray(res) ? res : (res?.items || res?.recommendations || []);
+          setGeneralAds(items);
+          setLoadingAds(false);
+        }).catch((err) => {
+          console.log('Error fetching personalized ads', err);
+          if (mounted) setLoadingAds(false);
+        });
+      } else {
+        if (mounted) {
+          setLoadingDeals(false);
+          setLoadingAds(false);
+        }
+      }
+      
+      // Auto sync cart
+      const fetchCart = () => {
+        if (token) {
+          CartService.getCart(token).then(res => { if (mounted) setCart(res) }).catch(e => console.log('Cart Error:', e));
+        }
+      };
+
+      fetchCart();
+
+      return () => {
+        mounted = false;
+      };
+    }, [member, token])
+  );
+
+  useEffect(() => {
     // Countdown logic
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -134,9 +177,7 @@ export default function MemberOffersScreen() {
     }, 1000);
 
     return () => {
-      mounted = false;
       clearInterval(timer);
-      clearInterval(interval);
     };
   }, []);
 
@@ -206,7 +247,7 @@ export default function MemberOffersScreen() {
               <Text fontSize={14} color="#666" fontStyle="italic">Đang tải ưu đãi...</Text>
             ) : deals.length > 0 ? (
               deals.map((deal, idx) => (
-                <Pressable key={idx} onPress={() => { setSelectedProductId(deal.productId); setSheetOpen(true); }}>
+                <Pressable key={idx} onPress={() => { setSelectedProductId(deal.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
                   <Card width={220} borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2 }}>
                     <View position="relative" height={130} backgroundColor="#f5f5f5">
                     <Image 
@@ -263,6 +304,100 @@ export default function MemberOffersScreen() {
           </ScrollView>
         </YStack>
 
+        {/* PERSONALIZED MEAL RECIPES */}
+        {personalizedMeals.length > 0 && (
+          <YStack gap="$3" marginBottom="$6">
+            <XStack alignItems="center" gap="$2">
+              <Utensils size={20} color="#f97316" />
+              <Text fontSize={18} fontWeight="bold" color="#f97316">Món ngon gợi ý (Công thức)</Text>
+            </XStack>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16 }}>
+              {personalizedMeals.map((meal, idx) => (
+                <Pressable key={idx} onPress={() => { setSelectedProductId(meal.recipeId); setSelectedIsRecipe(true); setSheetOpen(true); }}>
+                  <Card width={220} borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#fed7aa" style={{ elevation: 2 }}>
+                    <View position="relative" height={130} backgroundColor="#fff7ed">
+                      <Image 
+                        src={meal.imageUrl || 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&q=80'} 
+                        width="100%" 
+                        height="100%" 
+                        objectFit="cover" 
+                      />
+                      <View position="absolute" top={10} right={10} backgroundColor="#ffffffd0" padding="$1.5" borderRadius={20}>
+                        <Utensils size={12} color="#f97316" />
+                      </View>
+                    </View>
+                    <YStack padding="$3.5" gap="$1.5">
+                      <Text fontSize={14} fontWeight="900" color="#333" numberOfLines={1}>{meal.recipeName}</Text>
+                      <XStack gap="$1.5" alignItems="center">
+                        <Clock size={12} color="#888" />
+                        <Text fontSize={11} color="#666">{meal.yieldPortions} khẩu phần</Text>
+                      </XStack>
+                      <Button
+                        marginTop="$2"
+                        borderRadius={12}
+                        backgroundColor="#fff7ed"
+                        color="#f97316"
+                        fontWeight="bold"
+                        fontSize={11}
+                        height={32}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setSelectedProductId(meal.recipeId);
+                          setSelectedIsRecipe(true);
+                          setSheetOpen(true);
+                        }}
+                        pressStyle={{ backgroundColor: '#ffedd5' }}
+                      >
+                        Xem công thức
+                      </Button>
+                    </YStack>
+                  </Card>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </YStack>
+        )}
+
+        {/* PERSONALIZED PRODUCTS */}
+        {personalizedProducts.length > 0 && (
+          <YStack gap="$3" marginBottom="$6">
+            <XStack alignItems="center" gap="$2">
+              <Sparkles size={20} color="#00A550" />
+              <Text fontSize={18} fontWeight="bold" color="#00A550">Sản phẩm dành riêng cho bạn</Text>
+            </XStack>
+
+            <YStack gap="$3">
+              {personalizedProducts.map((p, idx) => (
+                <Pressable key={idx} onPress={() => { setSelectedProductId(p.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                  <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
+                    <XStack padding="$3" gap="$3" alignItems="center">
+                      <Image src={p.imageUrl || 'https://via.placeholder.com/200x200.png'} width={70} height={70} borderRadius={12} objectFit="cover" />
+                      <YStack flex={1} gap="$1">
+                        <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{p.productName}</Text>
+                        <Text fontSize={11} color="#666" numberOfLines={1}>Phù hợp lịch sử mua sắm của bạn</Text>
+                        <Text fontSize={14} fontWeight="bold" color="#00A550" marginTop="$1">{p.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                      </YStack>
+                      <Button
+                        backgroundColor="#00A550"
+                        size="$2.5"
+                        borderRadius={15}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleAddToCart(p.productName, p.productId);
+                        }}
+                        pressStyle={{ backgroundColor: '#008740' }}
+                      >
+                        <Text color="white" fontSize={11} fontWeight="bold">Thêm giỏ</Text>
+                      </Button>
+                    </XStack>
+                  </Card>
+                </Pressable>
+              ))}
+            </YStack>
+          </YStack>
+        )}
+
         {/* GENERAL ADS / RECOMMENDATIONS */}
         <YStack gap="$3">
           <XStack justifyContent="space-between" alignItems="center">
@@ -273,40 +408,44 @@ export default function MemberOffersScreen() {
           </XStack>
 
           <YStack gap="$4">
-            {generalAds.length > 0 ? generalAds.map((ad, idx) => (
-              <Pressable key={idx} onPress={() => { setSelectedProductId(ad.productId); setSheetOpen(true); }}>
-                <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
-                  <XStack padding="$3" gap="$3" alignItems="center">
-                  <Image src={ad.imageUrl || 'https://via.placeholder.com/200x200.png'} width={80} height={80} borderRadius={12} objectFit="cover" />
-                  <YStack flex={1} gap="$1">
-                    <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{ad.productName}</Text>
-                    <Text fontSize={11} color="#666" numberOfLines={1}>Tài trợ bởi: {ad.brandName}</Text>
-                    <XStack alignItems="center" gap="$2" marginTop="$1">
-                      <Text fontSize={14} fontWeight="bold" color="#b45309">{(ad.promotionPrice || ad.unitPrice).toLocaleString('vi-VN')}đ</Text>
-                      {ad.promotionPrice && (
-                         <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
-                           {ad.unitPrice.toLocaleString('vi-VN')}đ
-                         </Text>
-                      )}
-                    </XStack>
-                  </YStack>
-                  <Button
-                    backgroundColor="#78350f"
-                    size="$2.5"
-                    borderRadius={15}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleAddToCart(ad.productName, ad.productId);
-                    }}
-                    pressStyle={{ backgroundColor: '#5c280b' }}
-                  >
-                    <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
-                  </Button>
-                </XStack>
-                </Card>
-              </Pressable>
-            )) : (
-              <Text fontSize={14} color="#666">Đang tải gợi ý...</Text>
+            {loadingAds ? (
+              <Text fontSize={14} color="#666" fontStyle="italic">Đang tải gợi ý...</Text>
+            ) : generalAds.length > 0 ? (
+              generalAds.map((ad, idx) => (
+                <Pressable key={idx} onPress={() => { setSelectedProductId(ad.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                  <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
+                    <XStack padding="$3" gap="$3" alignItems="center">
+                    <Image src={ad.imageUrl || 'https://via.placeholder.com/200x200.png'} width={80} height={80} borderRadius={12} objectFit="cover" />
+                    <YStack flex={1} gap="$1">
+                      <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{ad.productName}</Text>
+                      <Text fontSize={11} color="#666" numberOfLines={1}>Tài trợ bởi: {ad.brandName}</Text>
+                      <XStack alignItems="center" gap="$2" marginTop="$1">
+                        <Text fontSize={14} fontWeight="bold" color="#b45309">{(ad.promotionPrice || ad.unitPrice).toLocaleString('vi-VN')}đ</Text>
+                        {ad.promotionPrice && (
+                           <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
+                             {ad.unitPrice.toLocaleString('vi-VN')}đ
+                           </Text>
+                        )}
+                      </XStack>
+                    </YStack>
+                    <Button
+                      backgroundColor="#78350f"
+                      size="$2.5"
+                      borderRadius={15}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleAddToCart(ad.productName, ad.productId);
+                      }}
+                      pressStyle={{ backgroundColor: '#5c280b' }}
+                    >
+                      <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
+                    </Button>
+                  </XStack>
+                  </Card>
+                </Pressable>
+              ))
+            ) : (
+              <Text fontSize={13} color="#888" fontStyle="italic">Hiện chưa có sản phẩm tài trợ mới nào.</Text>
             )}
           </YStack>
         </YStack>
@@ -354,7 +493,9 @@ export default function MemberOffersScreen() {
         productId={selectedProductId}
         isOpen={sheetOpen}
         onOpenChange={setSheetOpen}
+        isRecipe={selectedIsRecipe}
       />
     </View>
   );
 }
+

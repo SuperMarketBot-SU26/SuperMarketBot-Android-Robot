@@ -59,10 +59,11 @@ export function MapViewerProvider({ children }: { children: React.ReactNode }) {
   const connRef   = useRef<(c: boolean)   => void | undefined>(undefined);
 
   useEffect(() => {
+    let isMounted = true;
     // Stable wrapper: giữ nguyên reference nhưng delegate vào ref.current
-    frameRef.current = (f: LidarFrame) => setLatestFrame(f);
-    poseRef.current  = (p: RobotPose)  => setRobotPose(p);
-    connRef.current  = (c: boolean)    => setLidarConnected(c);
+    frameRef.current = (f: LidarFrame) => { if (isMounted) setLatestFrame(f); };
+    poseRef.current  = (p: RobotPose)  => { if (isMounted) setRobotPose(p); };
+    connRef.current  = (c: boolean)    => { if (isMounted) setLidarConnected(c); };
 
     const onFrame = (f: LidarFrame) => frameRef.current?.(f);
     const onPose  = (p: RobotPose)  => poseRef.current?.(p);
@@ -73,6 +74,7 @@ export function MapViewerProvider({ children }: { children: React.ReactNode }) {
     LidarService.onConnection(onConn);
 
     return () => {
+      isMounted = false;
       LidarService.offFrame(onFrame);
       LidarService.offPoseUpdate(onPose);
       LidarService.offConnection(onConn);

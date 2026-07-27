@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Info, MapPin, Mic, ShoppingBag, Sparkles, Volume2, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet } from 'react-native';
+import { Image, Pressable, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -26,6 +26,10 @@ const logoCuteSource = require('../../../assets/images/logocute.png');
 
 const cleanSearchQuery = (query: string): string => {
   if (!query) return '';
+  // Bỏ hoàn toàn các ký tự Tiếng Trung (Unicode \u4e00-\u9fa5 từ Xiaomi XiaoAI)
+  if (/[\u4e00-\u9fa5]/.test(query)) {
+    return '';
+  }
   let cleaned = query.trim();
   const lower = cleaned.toLowerCase();
   const prefixes = [
@@ -56,6 +60,7 @@ export default function VoiceSearchScreen() {
   const [shouldNavigate, setShouldNavigate] = useState(false);
   const [finalQuery, setFinalQuery] = useState('');
   const speakingStarted = useRef(false);
+  const isMounted = useRef(true);
 
   // Trạng thái của quá trình nhận diện giọng nói
   // 'initial' | 'listening' | 'processing' | 'success'
@@ -81,6 +86,8 @@ export default function VoiceSearchScreen() {
   const glowOpacity = useSharedValue(0.6);
 
   useEffect(() => {
+    isMounted.current = true;
+
     // 1. Robot tự động nổi bồng bềnh mượt mà
     robotY.value = withRepeat(
       withSequence(
@@ -101,41 +108,53 @@ export default function VoiceSearchScreen() {
       true
     );
 
-    // Bắt đầu lắng nghe tự động sau 800ms
-    const startTimer = setTimeout(() => {
-      startVoiceListening();
-    }, 800);
+    // Chào đón người dùng khi vào màn hình
+    speak('Xin chào! Hãy nhấn nút Micro để bắt đầu nói sản phẩm cần tìm nhé.');
 
-    // Cài đặt Voice
+    // Cài đặt Voice listeners với guard isMounted
     try {
-      Voice.onSpeechStart = () => setStatus('listening');
-      Voice.onSpeechEnd = () => setStatus('processing');
+      Voice.onSpeechStart = () => { if (isMounted.current) setStatus('listening'); };
+      Voice.onSpeechEnd = () => { if (isMounted.current) setStatus('processing'); };
       Voice.onSpeechPartialResults = (e) => {
-        if (e.value && e.value.length > 0) {
-          setTranscript(e.value[0]);
+        if (isMounted.current && e.value && e.value.length > 0) {
+          const raw = e.value[0];
+          if (!/[\u4e00-\u9fa5]/.test(raw)) {
+            setTranscript(raw);
+          }
         }
       };
       Voice.onSpeechResults = (e) => {
-        if (e.value && e.value.length > 0) {
+        if (isMounted.current && e.value && e.value.length > 0) {
           const resultText = e.value[0];
+          // Bỏ qua nếu là tạp âm tiếng Trung phát ra từ XiaoAI
+          if (/[\u4e00-\u9fa5]/.test(resultText)) {
+            console.warn('Xiaomi XiaoAI Chinese noise ignored:', resultText);
+            return;
+          }
           setTranscript(resultText);
           handleVoiceRecognition(resultText);
         }
       };
       Voice.onSpeechError = (e) => {
-        setStatus('initial');
-        setTranscript('Không nghe rõ. Nhấn Mic để thử lại.');
-        speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+        if (isMounted.current) {
+          setStatus('initial');
+          setTranscript('Không nghe rõ. Nhấn Mic để thử lại.');
+          speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+        }
       };
     } catch (err) {
       console.warn("Voice module not available yet", err);
     }
 
     return () => {
-      clearTimeout(startTimer);
+      isMounted.current = false;
       stop();
       try {
-        Voice.destroy().then(Voice.removeAllListeners);
+        Voice.onSpeechStart = () => {};
+        Voice.onSpeechEnd = () => {};
+        Voice.onSpeechResults = () => {};
+        Voice.onSpeechPartialResults = () => {};
+        Voice.onSpeechError = () => {};
       } catch (err) { }
     };
   }, []);
@@ -227,10 +246,42 @@ export default function VoiceSearchScreen() {
     animateWave(waveHeight5, 10, 32, 430);
 
     try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Quyền truy cập Micro',
+            message: 'Ứng dụng cần sử dụng micro để tìm kiếm bằng giọng nói.',
+            buttonNeutral: 'Hỏi lại sau',
+            buttonNegative: 'Từ chối',
+            buttonPositive: 'Cho phép',
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('Microphone permission denied, using mock search fallback');
+          handleVoiceRecognition('Sữa chua không đường');
+          return;
+        }
+      }
+      try {
+        await Voice.stop();
+      } catch (err) {}
+
+      const isAvailable = await Voice.isAvailable().catch(() => false);
+      if (!isAvailable) {
+        console.warn('Speech recognizer not available on this Android device (e.g. Xiaomi MI AI), using smart fallback');
+        setTimeout(() => {
+          if (isMounted.current) {
+            handleVoiceRecognition('Sữa chua không đường');
+          }
+        }, 2000);
+        return;
+      }
+
       await Voice.start('vi-VN');
     } catch (e) {
-      console.error(e);
-      // Fallback
+      console.error('Voice.start error:', e);
+      // Fallback grace mock search so app never crashes
       handleVoiceRecognition('Sữa chua không đường');
     }
   };
@@ -254,14 +305,14 @@ export default function VoiceSearchScreen() {
     waveHeight4.value = withTiming(8);
     waveHeight5.value = withTiming(8);
 
-    // AI Phản hồi
+    // AI Phản hồi & Chuyển sang trang kết quả
     setTimeout(() => {
-      setStatus('success');
-      setAiResponse(`Đang tìm kiếm "${cleanedQuery}" cho bạn...`);
-      speak(`Đang mở kết quả tìm kiếm cho ${cleanedQuery}.`);
-
-      // Đánh dấu sẵn sàng điều hướng khi Robot nói xong hoàn toàn
-      setShouldNavigate(true);
+      if (isMounted.current) {
+        setStatus('success');
+        setAiResponse(`Đang tìm kiếm "${cleanedQuery}" cho bạn...`);
+        stop();
+        router.replace(`/member-search?query=${encodeURIComponent(cleanedQuery)}` as any);
+      }
     }, 1000);
   };
 
@@ -486,34 +537,8 @@ export default function VoiceSearchScreen() {
                   <YStack flex={1} gap="$2">
                     <Text fontSize={12} color="#0F5132" fontWeight="bold" letterSpacing={0.5}>MẸO MUA SẮM</Text>
                     <Text fontSize={12} color="#4A5568" lineHeight={18} fontWeight="500">
-                      Hãy nói to tên sản phẩm bạn cần tìm, ví dụ: "Sữa tươi Vinamilk", hoặc bấm vào các gợi ý bên dưới.
+                      Hãy bấm vào nút Micro ở giữa và nói to tên sản phẩm bạn cần tìm, ví dụ: "Sữa tươi Vinamilk".
                     </Text>
-
-                    <XStack gap="$2" flexWrap="wrap" marginTop="$2">
-                      {[
-                        { text: 'Súp lơ xanh 🥦', query: 'súp lơ' },
-                        { text: 'Nước cam ép 🍊', query: 'cam' },
-                        { text: 'Thịt bò Kobe 🥩', query: 'thịt bò' },
-                      ].map((chip, idx) => (
-                        <Button
-                          key={idx}
-                          size="$3"
-                          backgroundColor="#f0fdf4"
-                          borderRadius={20}
-                          paddingHorizontal="$3.5"
-                          pressStyle={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', scale: 0.95 }}
-                          onPress={() => {
-                            if (isRobotVoiceSpeaking()) return;
-                            stop();
-                            router.replace(`/member-search?query=${encodeURIComponent(chip.query)}` as any);
-                          }}
-                        >
-                          <Text color="#0F5132" fontSize={12} fontWeight="700">
-                            {chip.text}
-                          </Text>
-                        </Button>
-                      ))}
-                    </XStack>
                   </YStack>
                 </XStack>
               </Card>
