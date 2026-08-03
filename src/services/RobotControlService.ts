@@ -265,6 +265,48 @@ class RobotControlServiceClass {
     }
     return false;
   }
+
+  // ─── Dispatch Autonomous (API) ──────────────────────────────────────────────
+
+  /**
+   * Gọi API POST /api/v1/navigation/dispatch-autonomous
+   * Chuyển nhiệm vụ tính toán lộ trình và phát lệnh MQTT cho Backend.
+   */
+  async dispatchAutonomous(payload: {
+    robotCode?: string;
+    flowType: string;
+    productId?: number;
+    aisleId?: number;
+    zoneId?: number;
+  }): Promise<boolean> {
+    if (!API_BASE) {
+      console.warn('[RobotControl.dispatchAutonomous] EXPO_PUBLIC_API_URL chưa set');
+      return false;
+    }
+    const url = `${API_BASE}/api/v1/navigation/dispatch-autonomous`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({
+          robotCode: payload.robotCode || ROBOT_CODE_DEFAULT,
+          flowType: payload.flowType,
+          productId: payload.productId,
+          aisleId: payload.aisleId,
+          zoneId: payload.zoneId,
+        }),
+      });
+      const ok = res.ok;
+      console.log(`[RobotControl.dispatchAutonomous] ${ok ? 'OK' : 'FAIL'} ${res.status}`);
+      return ok;
+    } catch (e) {
+      console.warn('[RobotControl.dispatchAutonomous] Lỗi:', e);
+      return false;
+    }
+  }
 }
 
 export const RobotControlService = new RobotControlServiceClass();

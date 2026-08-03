@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
+import { RobotControlService } from '../../services/RobotControlService';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48 - 16) / 2; // padding 24*2, gap 16
@@ -198,7 +199,13 @@ export default function GuestCampaignScreen() {
                           borderRadius={12}
                           marginTop="$3"
                           icon={<MapPin size={14} color="#d97706" />}
-                          onPress={() => speak(`Sản phẩm ${ad.productName} đang nằm ở kệ hàng gần đây`)}
+                          onPress={async () => {
+                            speak(`Sản phẩm ${ad.productName} đang nằm ở kệ hàng gần đây`);
+                            await RobotControlService.dispatchAutonomous({
+                              flowType: 'guide',
+                              productId: ad.productId,
+                            });
+                          }}
                           pressStyle={{ scale: 0.95, backgroundColor: '#fef3c7' }}
                         >
                           <Text color="#d97706" fontSize={12} fontWeight="bold">Tìm Vị Trí</Text>
@@ -275,7 +282,13 @@ export default function GuestCampaignScreen() {
                           borderRadius={12}
                           marginTop="$3"
                           icon={<MapPin size={14} color="#00A550" />}
-                          onPress={() => speak(`Sản phẩm ${product.productName} đang nằm ở kệ hàng số ${product.location?.shelfName || 'Gần đây'}`)}
+                          onPress={async () => {
+                            speak(`Sản phẩm ${product.productName} đang nằm ở kệ hàng số ${product.location?.shelfName || 'Gần đây'}`);
+                            await RobotControlService.dispatchAutonomous({
+                              flowType: 'guide',
+                              productId: product.productId,
+                            });
+                          }}
                           pressStyle={{ scale: 0.95, backgroundColor: '#dcfce7' }}
                         >
                           <Text color="#00A550" fontSize={12} fontWeight="bold">Tìm Vị Trí</Text>

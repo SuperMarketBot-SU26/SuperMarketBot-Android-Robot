@@ -9,6 +9,7 @@ import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+import { RobotControlService } from '../../services/RobotControlService';
 
 const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
 
@@ -335,7 +336,13 @@ export default function MemberSearchScreen() {
                             borderColor="#bbf7d0"
                             icon={<Navigation size={16} color="#16a34a" />}
                             pressStyle={{ scale: 0.9, backgroundColor: '#dcfce7' }}
-                            onPress={() => speak(`Bắt đầu dẫn đường tới ${product.name} tại ${product.location}. Mời quý khách di chuyển theo mũi tên chỉ dẫn.`)}
+                            onPress={async () => {
+                              speak(`Bắt đầu dẫn đường tới ${product.name} tại ${product.location}. Mời quý khách di chuyển theo mũi tên chỉ dẫn.`);
+                              await RobotControlService.dispatchAutonomous({
+                                flowType: 'guide',
+                                productId: product.id,
+                              });
+                            }}
                           />
                         </YStack>
                       </XStack>
