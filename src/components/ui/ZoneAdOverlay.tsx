@@ -119,8 +119,8 @@ export default function ZoneAdOverlay() {
       statusBarTranslucent
     >
       {/* Backdrop */}
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.backdrop, animatedOverlay]}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={handleClose} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, animatedOverlay]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleClose} />
       </Animated.View>
 
       {/* Sheet */}
