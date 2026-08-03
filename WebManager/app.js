@@ -400,43 +400,37 @@ function draw() {
     }
 
     // ========== SLAM Realtime Overlay (render occupancyGrid nếu có data) ==========
+    // Sửa tối ưu: dùng offscreen cache (occupancyGrid.offscreen) đã render sẵn ở
+    // occupancyGrid.render() → chỉ vẽ lại KHI dirty. Trước đây loop 50000 fillRect
+    // mỗi frame LiDAR → nguyên nhân chính gây lag browser.
     if (showSlamGridLayer && occupancyGrid && occupancyGrid.data && occupancyGrid.data.length > 0) {
         const og = occupancyGrid;
         const ogRes = og.RESOLUTION || 0.05;
-        const cellPx = 1.0 / (PIXEL_TO_METER * ogRes);   // pixel per cell (ở scale=1)
+        const cellPx = 1.0 / (PIXEL_TO_METER * ogRes);
         const occCol = Math.round(og.COLS / 2);
         const occRow = Math.round(og.ROWS / 2);
-        const L_OCC = og.L_OCC || 1.8;
-        const L_FREE = og.L_THRESH_FREE || -0.5;
-        const localScale = scale * PIXEL_TO_METER;  // 1 data-cell = 1 cellPx * localScale pixel
+
+        // Đảm bảo offscreen tồn tại (cho trường hợp ROS2 push grid chưa qua init)
+        if (!og.offscreen || !og.offCtx || og.offscreen.width !== og.COLS * og.SUPER_SCALE) {
+            og.offscreen = document.createElement('canvas');
+            og.offscreen.width  = og.COLS * og.SUPER_SCALE;
+            og.offscreen.height = og.ROWS * og.SUPER_SCALE;
+            og.offCtx = og.offscreen.getContext('2d');
+            og.dirty = true;
+        }
+        if (typeof og.render === 'function') og.render(); // rẻ nếu không dirty
+
+        // Tính vị trí vẽ offscreen lên bg canvas (đã ở world space, gốc (0,0))
+        const mapPxW = og.COLS * cellPx;
+        const mapPxH = og.ROWS * cellPx;
+        const gx = -occCol * cellPx;
+        const gy = -occRow * cellPx;
 
         bgCtx.save();
-        bgCtx.fillStyle = 'rgba(248, 250, 252, 0.85)';
-        // Convert (col, row) → (world x, y) theo ROS convention
-        // x = (col - ORIGIN_COL) * RESOLUTION
-        // y = (row - ORIGIN_ROW) * RESOLUTION
-        // ROS y tăng lên = bắc, canvas y tăng xuống. Cần flip Y.
-        const visibleCells = Math.min(og.data.length, 50000);  // giới hạn tối đa
-        const step = Math.max(1, Math.floor(og.data.length / visibleCells));
-        for (let i = 0; i < og.data.length; i += step) {
-            const lo = og.data[i];
-            const col = i % og.COLS;
-            const row = Math.floor(i / og.COLS);
-            const worldX = (col - occCol) * ogRes;
-            const worldY = -(row - occRow) * ogRes;  // flip Y
-            const pxX = worldX / PIXEL_TO_METER;
-            const pxY = worldY / PIXEL_TO_METER;
-            const cs = cellPx * scale;
-            if (lo >= L_OCC * 0.85) {
-                bgCtx.fillStyle = 'rgba(10, 10, 10, 0.9)';
-                bgCtx.fillRect(pxX, pxY, cellPx, cellPx);
-            } else if (lo < L_FREE) {
-                // Free — không vẽ (để background grid hiện)
-            } else {
-                bgCtx.fillStyle = 'rgba(127, 140, 141, 0.4)';
-                bgCtx.fillRect(pxX, pxY, cellPx, cellPx);
-            }
-        }
+        bgCtx.imageSmoothingEnabled = true;
+        bgCtx.imageSmoothingQuality = 'high';
+        bgCtx.globalAlpha = 0.85;
+        bgCtx.drawImage(og.offscreen, gx, gy, mapPxW, mapPxH);
         bgCtx.restore();
     }
 
@@ -585,27 +579,37 @@ function draw() {
         ctx.fillText("ROBOT", px, py - 20/scale);
 
         // Draw Live 360° LiDAR Scan Cloud around Robot (RViz-style)
+        // Sửa tối ưu: gom tất cả ray vào 1 Path2D, 1 stroke(); 1 Path2D cho hit dots, 1 fill().
+        // Trước đây mỗi điểm 1 beginPath+stroke+fillRect → ~3000 canvas ops/frame + GC string rgba.
         if (showLidarScanCloud && window.liveLidarScanPoints && window.liveLidarScanPoints.length > 0) {
-            // Vẽ tia (ray) từ robot → điểm (gradient alpha theo khoảng cách)
             const maxR = 6.0; // 6m
-            ctx.lineWidth = 1.0 / scale;
-            window.liveLidarScanPoints.forEach(pt => {
+            const rayPath = new Path2D();
+            const hitPath = new Path2D();
+            const invPxM = 1.0 / PIXEL_TO_METER;
+            const hitSize = Math.max(2.0, 4.0) / scale;
+            let visibleCount = 0;
+
+            for (let i = 0, n = window.liveLidarScanPoints.length; i < n; i++) {
+                const pt = window.liveLidarScanPoints[i];
                 const distM = Math.hypot(pt.x, pt.y);
-                const lx = px + (pt.x / PIXEL_TO_METER);
-                const ly = py + (pt.y / PIXEL_TO_METER);
-                const alpha = Math.max(0.15, 1.0 - (distM / maxR));
-                if (alpha < 0.1) return; // bỏ điểm quá xa
-                // Ray
-                ctx.strokeStyle = `rgba(239, 68, 68, ${alpha * 0.5})`;
-                ctx.beginPath();
-                ctx.moveTo(px, py);
-                ctx.lineTo(lx, ly);
-                ctx.stroke();
-                // Hit point
-                ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
-                const r = Math.max(2.0, 4.0 * (1 - distM / maxR)) / scale;
-                ctx.fillRect(lx - r/2, ly - r/2, r, r);
-            });
+                if (distM > maxR) continue;
+                const lx = px + pt.x * invPxM;
+                const ly = py + pt.y * invPxM;
+                rayPath.moveTo(px, py);
+                rayPath.lineTo(lx, ly);
+                hitPath.rect(lx - hitSize * 0.5, ly - hitSize * 0.5, hitSize, hitSize);
+                visibleCount++;
+            }
+
+            if (visibleCount > 0) {
+                ctx.save();
+                ctx.lineWidth = 1.0 / scale;
+                ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+                ctx.stroke(rayPath);
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+                ctx.fill(hitPath);
+                ctx.restore();
+            }
         }
     }
 
@@ -616,9 +620,15 @@ function draw() {
     updateMapStatsOverlay();
 }
 
-// ===== Map Stats Overlay update =====
+// ===== Update Map Stats overlay (góc trên-trái) =====
+// Đã throttle ~2 Hz để tránh 4 lần getElementById + vòng lặp 50000 phần tử mỗi frame LiDAR.
 let _mapStatsCache = { occ: -1, free: -1, grid: '' };
+let _mapStatsLastUpdateMs = 0;
 function updateMapStatsOverlay() {
+    const now = Date.now();
+    if (now - _mapStatsLastUpdateMs < 500) return;
+    _mapStatsLastUpdateMs = now;
+
     const og = (typeof window !== 'undefined' && window.occupancyGrid) || (typeof occupancyGrid !== 'undefined' ? occupancyGrid : null);
     if (!og || !og.data) return;
     const res = og.RESOLUTION || 0.05;
@@ -629,7 +639,7 @@ function updateMapStatsOverlay() {
     const elFree = document.getElementById('mapStatFree');
     if (elRes) elRes.textContent = (res * 100).toFixed(1) + 'cm';
     if (elGrid) elGrid.textContent = grid;
-    // % occupied/free (đếm mỗi 2 frame để tránh lag)
+    // % occupied/free (đếm khi grid thay đổi kích thước)
     if (_mapStatsCache.grid !== grid) {
         _mapStatsCache.grid = grid;
         const L_OCC = og.L_OCC || 1.8;
@@ -1675,6 +1685,20 @@ function applyLiveTelemetry(d) {
     updateRpm('valRpmRL', d.rRL, encOn ? !!encOn[1] : true);
     updateRpm('valRpmFR', d.rFR, encOn ? !!encOn[2] : true);
     updateRpm('valRpmRR', d.rRR, encOn ? !!encOn[3] : true);
+    
+    // Cập nhật tốc độ Encoder Trái (GPIO 35) & Phải (GPIO 36) lên ô Giám Sát Trực Tiếp
+    const encLeftEl = document.getElementById('robotEncLeft');
+    const encRightEl = document.getElementById('robotEncRight');
+    if (encLeftEl) {
+        const rpmL = (d.rFL !== undefined) ? Math.round(d.rFL) : ((d.rRL !== undefined) ? Math.round(d.rRL) : 0);
+        const mpsL = (rpmL * (Math.PI * 0.065) / 60);
+        encLeftEl.textContent = `${rpmL} RPM (${mpsL.toFixed(2)}m/s)`;
+    }
+    if (encRightEl) {
+        const rpmR = (d.rFR !== undefined) ? Math.round(d.rFR) : ((d.rRR !== undefined) ? Math.round(d.rRR) : 0);
+        const mpsR = (rpmR * (Math.PI * 0.065) / 60);
+        encRightEl.textContent = `${rpmR} RPM (${mpsR.toFixed(2)}m/s)`;
+    }
     
     const valImuHeading = document.getElementById('valImuHeading');
     if (valImuHeading && d.HeadingRad !== undefined) {
@@ -3405,14 +3429,43 @@ function updateLidarStatusBadge(connected, count = 0) {
 window.setLiveLidarPoints = function(points) {
     window.liveLidarScanPoints = points || [];
     lastLidarScanTimestamp = Date.now();
-    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+    const now = Date.now();
 
-    // Nếu đã kết nối ROS2 Bridge, tự động đẩy mây điểm LiDAR 360° sang topic /scan cho slam_toolbox!
-    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
-        Ros2BridgeManager.publishLaserScan(window.liveLidarScanPoints);
+    // 1. Throttle cập nhật UI Badge (tối đa 2Hz - 500ms) để không gây reflow DOM
+    if (!window._lastBadgeUpdateMs || now - window._lastBadgeUpdateMs >= 500) {
+        window._lastBadgeUpdateMs = now;
+        updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
     }
 
-    draw();
+    // 2. Throttle đẩy scan sang ROS2 Bridge (tối đa 10Hz - 100ms)
+    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
+        if (!window._lastRos2ScanMs || now - window._lastRos2ScanMs >= 100) {
+            window._lastRos2ScanMs = now;
+            Ros2BridgeManager.publishLaserScan(window.liveLidarScanPoints);
+        }
+    }
+
+    // 3. Render Canvas không chặn luồng bằng requestAnimationFrame, kèm frame cap 30 FPS
+    // để tránh khi LiDAR + grid + telemetry update đồng thời vẫn không vượt 33ms/frame.
+    if (!window._rafScheduled) {
+        window._rafScheduled = true;
+        requestAnimationFrame(() => {
+            window._rafScheduled = false;
+            const nowRaf = performance.now();
+            if (!window._lastDrawMs || nowRaf - window._lastDrawMs >= 33) {
+                window._lastDrawMs = nowRaf;
+                draw();
+            } else {
+                // Quá sớm — lên lịch lại frame kế tiếp
+                window._rafScheduled = true;
+                requestAnimationFrame(() => {
+                    window._rafScheduled = false;
+                    window._lastDrawMs = performance.now();
+                    draw();
+                });
+            }
+        });
+    }
 };
 
 // ============================================================================
@@ -3585,9 +3638,10 @@ const Ros2BridgeManager = {
         // Phát cây tọa độ TF trước khi đẩy mây điểm
         this.publishTf();
 
-        // Resolution cao để SLAM map mịn nhất.
-        // 1500 samples → angle_increment = 2π/1500 ≈ 0.24° → chi tiết rất cao
-        const numSamples = 1500;
+        // Resolution 1° đủ chi tiết cho SLAM và giảm payload WebSocket 4×.
+        // Trước đây 1500 samples (~0.24°) → JSON serialize rất nặng, network + GC.
+        // 360 samples = 1° mỗi tia, vẫn mịn cho visualization và đủ cho slam_toolbox.
+        const numSamples = 360;
         const ranges = new Float32Array(numSamples).fill(0.0);
 
         for (const pt of rawPts) {
@@ -4244,20 +4298,31 @@ const SlamEngine = {
     }
 };
 
-// ---------- Hook vào setLiveLidarPoints: chạy SLAM sau mỗi scan ----------
+// ---------- Hook vào setLiveLidarPoints: chạy SLAM an toàn không gây lag ----------
 const _origSetLiveLidarPoints = window.setLiveLidarPoints;
 window.setLiveLidarPoints = function(points) {
-    // Gọi logic gốc (cập nhật liveLidarScanPoints, badge, draw)
-    window.liveLidarScanPoints = points || [];
-    lastLidarScanTimestamp = Date.now();
-    updateLidarStatusBadge(true, window.liveLidarScanPoints.length);
+    // 1. Gọi logic gốc (cập nhật liveLidarScanPoints, badge throttle, RAF draw)
+    if (_origSetLiveLidarPoints) {
+        _origSetLiveLidarPoints(points);
+    } else {
+        window.liveLidarScanPoints = points || [];
+        lastLidarScanTimestamp = Date.now();
+    }
 
-    // Lấy IMU heading hiện tại từ telemetry
-    const imuHeading = (typeof window._lastImuHeadingRad === 'number')
-        ? window._lastImuHeadingRad : 0;
+    // 2. Nếu ROS2 Bridge đang kết nối, ROS2 slam_toolbox đang làm SLAM → bỏ qua SLAM JS để tiết kiệm 100% CPU!
+    if (typeof Ros2BridgeManager !== 'undefined' && Ros2BridgeManager.isConnected) {
+        return;
+    }
 
-    // Chạy SLAM pipeline
-    SlamEngine.processScan(points || [], imuHeading);
+    // 3. Nếu chạy SLAM JS nội bộ (không có ROS2), throttle tần số SLAM max 5Hz (200ms) để không khóa UI
+    const now = Date.now();
+    if (!window._lastSlamCpuProcessMs || now - window._lastSlamCpuProcessMs >= 200) {
+        window._lastSlamCpuProcessMs = now;
+        const imuHeading = (typeof window._lastImuHeadingRad === 'number') ? window._lastImuHeadingRad : 0;
+        if (typeof SlamEngine !== 'undefined' && SlamEngine.enabled) {
+            SlamEngine.processScan(points || [], imuHeading);
+        }
+    }
 };
 
 // ---------- Patch applyLiveTelemetry để lưu IMU heading ----------
