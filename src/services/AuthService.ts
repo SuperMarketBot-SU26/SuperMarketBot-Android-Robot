@@ -28,7 +28,10 @@ export async function loginFace(imageBase64: string): Promise<FaceLoginResult> {
   console.log(`[AuthService.loginFace] Bắt đầu gọi API: ${BASE_URL}/api/auth/face-login`);
   const response = await fetch(`${BASE_URL}/api/auth/face-login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true'
+    },
     body: JSON.stringify({ imageBase64 }),
   });
 

@@ -39,6 +39,9 @@ interface GeofencingContextType {
 
   /** Xóa zone hiện tại (khi overlay đóng) */
   clearZone: () => void;
+
+  /** Hàm test trigger quảng cáo giả lập */
+  triggerDebugAd: () => void;
 }
 
 const GeofencingContext = createContext<GeofencingContextType | null>(null);
@@ -88,6 +91,9 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       .withUrl(HUB_URL, {
         skipNegotiation: false,
         transport: SignalR.HttpTransportType.WebSockets,
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
       })
       .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
       .configureLogging(SignalR.LogLevel.Warning)
@@ -148,6 +154,30 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
     setCurrentPlaylist([]);
   }, []);
 
+  const triggerDebugAd = useCallback(() => {
+    setCurrentZone({
+      robotCode: 'ROBOT-01',
+      zoneId: 999,
+      semanticObjectId: 999,
+      objectName: 'Kệ Trái Cây (Test)',
+    });
+    setCurrentPlaylist([
+      {
+        adCampaignId: 1,
+        adCampaignName: 'Khuyến mãi Táo',
+        adFormat: 'Image',
+        adContent: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6faa6?auto=format&fit=crop&w=800&q=80',
+        displayDurationSeconds: 8,
+        orderIndex: 0,
+        sponsoredId: 1,
+        sponsoredName: 'VinMart',
+        productId: 101,
+        productName: 'Táo Mỹ Nhập Khẩu',
+        productPrice: 59000,
+      }
+    ]);
+  }, []);
+
   return (
     <GeofencingContext.Provider value={{
       isHubConnected,
@@ -156,6 +186,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       isInZone: currentZone !== null && currentPlaylist.length > 0,
       isLoadingPlaylist,
       clearZone,
+      triggerDebugAd,
     }}>
       {children}
     </GeofencingContext.Provider>

@@ -1,5 +1,7 @@
 import { Stack } from 'expo-router';
-import { TamaguiProvider, PortalProvider } from 'tamagui';
+import { TamaguiProvider } from 'tamagui';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import tamaguiConfig from '../theme/tamagui.config';
 import { View } from 'react-native';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
@@ -9,6 +11,7 @@ import { RobotControlProvider } from '../context/RobotControlContext';
 import { RouteProvider } from '../context/RouteContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { GeofencingProvider } from '../context/GeofencingContext';
+import ZoneAdOverlay from '../components/ui/ZoneAdOverlay';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -20,15 +23,22 @@ function RootLayoutContent() {
       onTouchMove={resetTimer}
     >
       <Stack screenOptions={{ headerShown: false }} />
+      <ZoneAdOverlay />
     </View>
   );
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Ép ẩn Splash Screen sau khi app mount, tránh lỗi kẹt màn hình
+    setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 1000);
+  }, []);
+
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <PortalProvider shouldAddRootHost>
-        <NotificationProvider>
+      <NotificationProvider>
           <RobotAuthProvider>
             <GeofencingProvider>
               <MapViewerProvider>
@@ -41,7 +51,6 @@ export default function RootLayout() {
             </GeofencingProvider>
           </RobotAuthProvider>
         </NotificationProvider>
-      </PortalProvider>
     </TamaguiProvider>
   );
 }

@@ -314,15 +314,14 @@ export default function MapViewerScreen() {
                 .map((w) => ({ x: w.x, y: w.y, nodeId: w.nodeId }));
               const result = await RobotControlService.sendNavigateWithFallback(waypoints);
               if (result.sent) {
-                const ch = result.channel === 'ws' ? 'WebSocket :81' : 'BE → MQTT';
                 setSendStatus({
                   type: 'success',
-                  text: `Đã gửi ${waypoints.length} waypoint qua ${ch}`,
+                  text: `Đã gửi ${waypoints.length} waypoint qua BE → MQTT`,
                 });
               } else {
                 setSendStatus({
                   type: 'error',
-                  text: 'Không gửi được — WS & BE đều lỗi',
+                  text: 'Không gửi được — kiểm tra kết nối Backend',
                 });
               }
               setTimeout(() => setSendStatus({ type: null, text: '' }), 3500);

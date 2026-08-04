@@ -11,11 +11,11 @@ export function useIdleTimeout(timeoutMs: number = 60000) {
       clearTimeout(timerRef.current);
     }
 
-    // Nếu đang ở trang chủ (màn hình avatar) thì không cần đếm giờ để đẩy về nữa
-    if (pathname !== '/') {
+    // Nếu đang ở màn hình Tự hành thì không cần đếm giờ
+    if (pathname !== '/autonomous') {
       timerRef.current = setTimeout(() => {
-        // Hết giờ -> Chuyển về màn hình Welcome (Avatar) và bỏ qua kịch bản loading 3s
-        router.replace('/?skipStartup=true');
+        // Hết giờ -> Chuyển về màn hình Tự hành
+        router.replace('/autonomous');
       }, timeoutMs);
     }
   };

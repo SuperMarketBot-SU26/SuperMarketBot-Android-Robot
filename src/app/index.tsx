@@ -1,2 +1,4 @@
-import WelcomeScreen from '../components/screens/WelcomeScreen';
-export default WelcomeScreen;
+import { Redirect } from 'expo-router';
+export default function Index() {
+  return <Redirect href="/autonomous" />;
+}

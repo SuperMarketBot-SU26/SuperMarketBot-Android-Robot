@@ -21,6 +21,7 @@ import Animated, {
 import { X, MapPin, Zap, Tag } from 'lucide-react-native';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { useGeofencing } from '../../context/GeofencingContext';
+import { useRobotVoice } from '../../hooks/useRobotVoice';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
@@ -29,6 +30,7 @@ const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
 export default function ZoneAdOverlay() {
   const { isInZone, currentZone, currentPlaylist, isLoadingPlaylist, clearZone } = useGeofencing();
+  const { speak } = useRobotVoice();
 
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [visible, setVisible] = useState(false);
@@ -72,6 +74,14 @@ export default function ZoneAdOverlay() {
 
       // Log impression cho ad đầu tiên
       logImpression(currentPlaylist[0]);
+
+      // TTS đọc quảng cáo
+      const ad = currentPlaylist[0];
+      const zoneName = currentZone?.objectName ?? 'khu vực này';
+      const priceStr = ad.productPrice > 0
+        ? ` chỉ ${ad.productPrice.toLocaleString('vi-VN')} đồng`
+        : '';
+      speak(`Chào mừng quý khách đến ${zoneName}! ${ad.productName}${priceStr}. Nhấn vào màn hình để xem thêm ưu đãi hấp dẫn.`);
 
       // Auto-dismiss
       const duration = (currentPlaylist[0].displayDurationSeconds || 8) * 1000;
