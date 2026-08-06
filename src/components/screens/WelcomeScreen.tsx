@@ -3,7 +3,6 @@ import { Sparkles, Gift } from 'lucide-react-native';
 import { TouchableWithoutFeedback, Dimensions, StyleSheet } from 'react-native';
 import { useEffect, useState, useRef } from 'react';
 import { ActivityIndicator, Image } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,7 +10,6 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
-  withSpring,
   FadeIn,
   FadeOut
 } from 'react-native-reanimated';
@@ -30,7 +28,6 @@ export default function WelcomeScreen() {
   const [isStarting, setIsStarting] = useState(!shouldSkip);
   const [startupLog, setStartupLog] = useState('⚡ Đang khởi động hệ thống robot...');
   
-  // Ref to track if TTS has spoken on mount
   const hasSpokenWelcome = useRef(false);
 
   // Animations
@@ -38,14 +35,6 @@ export default function WelcomeScreen() {
   const wobbleRotation = useSharedValue(0);
   const mainContentOpacity = useSharedValue(shouldSkip ? 1 : 0);
   const startupLogoScale = useSharedValue(1);
-  
-  // Background Orbs Animations
-  const orb1X = useSharedValue(0);
-  const orb1Y = useSharedValue(0);
-  const orb2X = useSharedValue(0);
-  const orb2Y = useSharedValue(0);
-  const orb3X = useSharedValue(0);
-  const orb3Y = useSharedValue(0);
 
   // Time state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -62,23 +51,12 @@ export default function WelcomeScreen() {
   useEffect(() => {
     floatY.value = withRepeat(
       withSequence(
-        withTiming(-15, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(-12, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
         withTiming(0, { duration: 2500, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       true
     );
-
-    // Orb Animations - random wandering
-    orb1X.value = withRepeat(withTiming(-50, { duration: 6000, easing: Easing.inOut(Easing.ease) }), -1, true);
-    orb1Y.value = withRepeat(withTiming(80, { duration: 7500, easing: Easing.inOut(Easing.ease) }), -1, true);
-    
-    orb2X.value = withRepeat(withTiming(70, { duration: 8000, easing: Easing.inOut(Easing.ease) }), -1, true);
-    orb2Y.value = withRepeat(withTiming(-60, { duration: 6500, easing: Easing.inOut(Easing.ease) }), -1, true);
-    
-    orb3X.value = withRepeat(withTiming(90, { duration: 9000, easing: Easing.inOut(Easing.ease) }), -1, true);
-    orb3Y.value = withRepeat(withTiming(40, { duration: 8500, easing: Easing.inOut(Easing.ease) }), -1, true);
-
   }, []);
 
   // Startup Sequence
@@ -117,7 +95,7 @@ export default function WelcomeScreen() {
     }
   }, [shouldSkip]);
 
-  // TTS Greeting on Mount (Exactly Once)
+  // TTS Greeting on Mount
   useEffect(() => {
     if (!isStarting && !hasSpokenWelcome.current) {
       speak('Xin chào, tôi là trợ lý thông minh. Hãy chạm vào màn hình để bắt đầu.');
@@ -126,11 +104,10 @@ export default function WelcomeScreen() {
   }, [isStarting]);
 
   const handleStart = () => {
-    router.push('/role-selection');
+    router.replace('/role-selection');
   };
 
   const handleRobotTap = () => {
-    // Wobble effect
     wobbleRotation.value = withSequence(
       withTiming(-10, { duration: 100 }),
       withTiming(10, { duration: 100 }),
@@ -141,7 +118,6 @@ export default function WelcomeScreen() {
     speak('Xin chào! Tôi có thể giúp gì cho bạn?');
   };
 
-  // Reanimated Styles
   const animatedRobotStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: floatY.value },
@@ -157,77 +133,71 @@ export default function WelcomeScreen() {
     opacity: mainContentOpacity.value,
   }));
 
-  const animatedOrb1 = useAnimatedStyle(() => ({ transform: [{ translateX: orb1X.value }, { translateY: orb1Y.value }] }));
-  const animatedOrb2 = useAnimatedStyle(() => ({ transform: [{ translateX: orb2X.value }, { translateY: orb2Y.value }] }));
-  const animatedOrb3 = useAnimatedStyle(() => ({ transform: [{ translateX: orb3X.value }, { translateY: orb3Y.value }] }));
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View flex={1} backgroundColor="#0B132B"> {/* Deep dark blue base */}
+      <View flex={1} backgroundColor="#F8FAFC">
         
         {isStarting ? (
-          // STARTUP SCREEN
-          <Animated.View style={[styles.startupContainer, { backgroundColor: '#0B132B' }]} entering={FadeIn} exiting={FadeOut}>
+          <Animated.View style={[styles.startupContainer, { backgroundColor: '#F8FAFC' }]} entering={FadeIn} exiting={FadeOut}>
             <Animated.View style={[styles.startupLogoWrapper, animatedStartupLogo]}>
-              <Image source={require('../../../assets/images/robot-avatar.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
+              <Image source={require('../../../assets/images/logocute.png')} style={{ width: 100, height: 100 }} resizeMode="contain" />
             </Animated.View>
             <YStack alignItems="center" marginTop={40} gap={16}>
-              <ActivityIndicator size="large" color="#00FFCC" />
-              <Text color="#00FFCC" fontSize={16} fontWeight="600" fontFamily="$body" letterSpacing={1}>
+              <ActivityIndicator size="large" color="#00A550" />
+              <Text color="#0F5132" fontSize={16} fontWeight="600" fontFamily="$body" letterSpacing={1}>
                 {startupLog}
               </Text>
             </YStack>
           </Animated.View>
         ) : (
-          // MAIN IDLE SCREEN
           <TouchableWithoutFeedback onPress={handleStart}>
             <Animated.View style={[StyleSheet.absoluteFill, animatedMainContent]}>
               
-              {/* ANIMATED BACKGROUND ORBS */}
-              <Animated.View style={[styles.orb, { backgroundColor: '#00FFCC', width: 300, height: 300, top: -50, left: -50 }, animatedOrb1]} />
-              <Animated.View style={[styles.orb, { backgroundColor: '#7B2CBF', width: 400, height: 400, bottom: 100, right: -100 }, animatedOrb2]} />
-              <Animated.View style={[styles.orb, { backgroundColor: '#3A0CA3', width: 350, height: 350, top: '30%', left: '10%' }, animatedOrb3]} />
-              <LinearGradient colors={['rgba(11, 19, 43, 0.4)', 'rgba(11, 19, 43, 0.8)']} style={StyleSheet.absoluteFill} />
+              {/* Background gradient decorative shapes */}
+              <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="rgba(16, 185, 129, 0.05)" />
+              <View position="absolute" bottom={-100} right={-50} width={300} height={300} borderRadius={150} backgroundColor="rgba(16, 185, 129, 0.08)" />
 
-              <View flex={1} paddingHorizontal={24} paddingVertical={40} justifyContent="space-between">
+              <View flex={1} paddingHorizontal={32} paddingVertical={60} justifyContent="space-between">
                 
-                {/* TOP HEADER (GLASSMORPHISM) */}
+                {/* TOP HEADER CARD */}
                 <YStack alignItems="center" zIndex={10}>
-                  <View style={styles.glassCard} padding={20} borderRadius={24} width="100%" alignItems="center">
-                    <XStack alignItems="center" gap={8} marginBottom={10}>
-                      <View width={10} height={10} borderRadius={5} backgroundColor="#00FFCC" style={styles.neonGlow} />
-                      <Text color="#E2E8F0" fontSize={16} fontWeight="700" letterSpacing={2}>SMART SUPERMARKET</Text>
+                  <View style={styles.card} padding={30} borderRadius={32} width="100%" alignItems="center">
+                    <XStack alignItems="center" gap={10} marginBottom={16}>
+                      <View width={12} height={12} borderRadius={6} backgroundColor="#10B981" />
+                      <Text color="#64748B" fontSize={16} fontWeight="800" letterSpacing={2}>SMART SUPERMARKET</Text>
                     </XStack>
-                    <Text color="#FFFFFF" fontSize={72} fontWeight="900" style={styles.timeText}>{timeString}</Text>
-                    <Text color="#94A3B8" fontSize={18} fontWeight="600" marginTop={-5}>{dateString}</Text>
+                    <Text color="#0F172A" fontSize={80} fontWeight="900" style={styles.timeText}>{timeString}</Text>
+                    <Text color="#475569" fontSize={20} fontWeight="700" marginTop={-5}>{dateString}</Text>
                   </View>
                 </YStack>
 
                 {/* CENTER MASCOT */}
-                <YStack alignItems="center" justifyContent="center" zIndex={20}>
+                <YStack alignItems="center" justifyContent="center" zIndex={20} flex={1}>
                   <TouchableWithoutFeedback onPress={handleRobotTap}>
                     <Animated.View style={[styles.robotContainer, animatedRobotStyle]}>
-                      <View style={[styles.glassCircle, { width: 260, height: 260, borderRadius: 130 }]} justifyContent="center" alignItems="center">
-                        <Image source={{ uri: "https://media.giphy.com/media/3og0IUzdgwVczU67eg/giphy.gif" }} style={{ width: 180, height: 180 }} resizeMode="contain" />
+                      <View style={[styles.avatarCircle, { width: 280, height: 280, borderRadius: 140 }]} justifyContent="center" alignItems="center">
+                        <Image source={require('../../../assets/images/logocute.png')} style={{ width: 210, height: 210 }} resizeMode="contain" />
                       </View>
                     </Animated.View>
                   </TouchableWithoutFeedback>
 
-                  <View style={styles.hintGlassBadge} marginTop={30}>
-                    <Sparkles size={16} color="#00FFCC" />
-                    <Text color="#FFFFFF" fontSize={14} fontWeight="bold" letterSpacing={1.5} marginLeft={8}>CHẠM VÀO MÀN HÌNH ĐỂ BẮT ĐẦU</Text>
+                  <View style={styles.hintBadge} marginTop={40}>
+                    <Sparkles size={18} color="#10B981" />
+                    <Text color="#0F5132" fontSize={16} fontWeight="900" letterSpacing={1.5} marginLeft={10}>CHẠM VÀO MÀN HÌNH ĐỂ BẮT ĐẦU</Text>
                   </View>
                 </YStack>
 
-                {/* FOOTER (PROMOTIONS BUTTON) */}
-                <View width="100%" alignItems="center" zIndex={30}>
+                {/* FOOTER PROMOTIONS BUTTON */}
+                <View width="100%" alignItems="center" zIndex={30} paddingBottom={20}>
                   <TouchableWithoutFeedback onPress={() => {
                     speak('Đang mở trang khuyến mãi hôm nay. Mời bạn xem các ưu đãi hấp dẫn!');
                     router.push('/guest-campaign');
                   }}>
-                    <View style={[styles.glassCard, styles.promoButton]}>
-                      <Gift size={24} color="#00FFCC" />
-                      <Text color="#FFFFFF" fontWeight="800" fontSize={18} letterSpacing={1} marginLeft={12}>
+                    <View style={styles.promoButton}>
+                      <View style={styles.promoIconWrapper}>
+                        <Gift size={28} color="#FFFFFF" />
+                      </View>
+                      <Text color="#FFFFFF" fontWeight="900" fontSize={20} letterSpacing={1} marginLeft={16}>
                         KHUYẾN MÃI HÔM NAY
                       </Text>
                     </View>
@@ -246,7 +216,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B132B'
+    backgroundColor: '#F8FAFC'
   },
   startupContainer: {
     flex: 1,
@@ -256,73 +226,78 @@ const styles = StyleSheet.create({
   startupLogoWrapper: {
     width: 160,
     height: 160,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 80,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#00FFCC',
-  },
-  orb: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.5,
-    // Note: react-native on Android/iOS might not support filter: blur out of the box in simple views,
-    // so opacity and gradient is usually the fallback. Let's keep it clean.
-  },
-  glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  glassCircle: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(0, 255, 204, 0.4)',
-    shadowColor: '#00FFCC',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 30,
-    elevation: 15,
-  },
-  neonGlow: {
-    shadowColor: '#00FFCC',
-    shadowOffset: { width: 0, height: 0 },
+    shadowColor: 'rgba(0,0,0,0.1)',
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
-    shadowRadius: 8,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: 'rgba(16, 185, 129, 0.15)',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 1,
+    shadowRadius: 30,
+    elevation: 8,
+  },
+  avatarCircle: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: 'rgba(16, 185, 129, 0.2)',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 1,
+    shadowRadius: 40,
+    elevation: 12,
+    borderWidth: 4,
+    borderColor: '#F1F5F9',
   },
   timeText: {
-    textShadowColor: 'rgba(0, 255, 204, 0.3)',
+    textShadowColor: 'rgba(0, 0, 0, 0.05)',
     textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 15,
+    textShadowRadius: 10,
   },
   robotContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  hintGlassBadge: {
+  hintBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#F0FDF4', // Very light green
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    borderRadius: 40,
+    borderWidth: 1.5,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    shadowColor: 'rgba(16, 185, 129, 0.1)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 3,
   },
   promoButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '90%',
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(0, 255, 204, 0.15)',
-    borderColor: 'rgba(0, 255, 204, 0.5)',
+    width: '100%',
+    height: 85,
+    borderRadius: 42.5,
+    backgroundColor: '#10B981', // Fresh Green
+    shadowColor: 'rgba(16, 185, 129, 0.4)',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  promoIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   }
 });
