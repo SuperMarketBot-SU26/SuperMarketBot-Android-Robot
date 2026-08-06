@@ -1,8 +1,10 @@
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowRight, Sparkles, Gift } from 'lucide-react-native';
-import { TouchableWithoutFeedback } from 'react-native';
+import { TouchableWithoutFeedback, Dimensions } from 'react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet } from 'react-native';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import Animated, {
   Easing,
   FadeIn,
@@ -32,6 +34,15 @@ export default function WelcomeScreen() {
   const startupLogoScale = useSharedValue(1);
   const mainContentOpacity = useSharedValue(shouldSkip ? 1 : 0);
   const pulseOpacity = useSharedValue(0.5);
+  
+  const radarScale = useSharedValue(1);
+  const radarOpacity = useSharedValue(0.8);
+  const radarScale2 = useSharedValue(1);
+  const radarOpacity2 = useSharedValue(0.8);
+  
+  const particleY1 = useSharedValue(0);
+  const particleY2 = useSharedValue(0);
+  const particleY3 = useSharedValue(0);
 
   // Time state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -72,6 +83,21 @@ export default function WelcomeScreen() {
       -1,
       true
     );
+
+    // Radar pulse animation
+    radarScale.value = withRepeat(withTiming(1.6, { duration: 2500, easing: Easing.out(Easing.ease) }), -1, false);
+    radarOpacity.value = withRepeat(withTiming(0, { duration: 2500, easing: Easing.out(Easing.ease) }), -1, false);
+    
+    // Delayed second radar
+    setTimeout(() => {
+      radarScale2.value = withRepeat(withTiming(1.6, { duration: 2500, easing: Easing.out(Easing.ease) }), -1, false);
+      radarOpacity2.value = withRepeat(withTiming(0, { duration: 2500, easing: Easing.out(Easing.ease) }), -1, false);
+    }, 1250);
+
+    // Particle animations floating up
+    particleY1.value = withRepeat(withTiming(-300, { duration: 8000, easing: Easing.linear }), -1, false);
+    particleY2.value = withRepeat(withTiming(-400, { duration: 12000, easing: Easing.linear }), -1, false);
+    particleY3.value = withRepeat(withTiming(-250, { duration: 9000, easing: Easing.linear }), -1, false);
 
     if (isStarting) {
       // 1. CHẠY KỊCH BẢN KHỞI ĐỘNG HỆ THỐNG GIẢ LẬP (3 Giây)
@@ -177,53 +203,56 @@ export default function WelcomeScreen() {
             speak('Tuyệt vời! Chúng ta bắt đầu thôi.');
             router.push('/role-selection');
           }}>
-            <Animated.View style={[{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }, animatedMainContent]}>
+            <Animated.View style={[{ width: '100%', height: '100%', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SCREEN_HEIGHT > 800 ? 60 : 30 }, animatedMainContent]}>
 
-              {/* 1. FRESH FUTURISTIC LIGHT GRID PATTERN */}
-              <View position="absolute" top={0} left={0} right={0} bottom={0} opacity={0.06} zIndex={0}>
-                {[...Array(12)].map((_, i) => (
-                  <View key={`h-${i}`} position="absolute" top={i * 45} left={0} right={0} height={1} backgroundColor="#00A550" />
-                ))}
-                {[...Array(22)].map((_, i) => (
-                  <View key={`v-${i}`} position="absolute" left={i * 55} top={0} bottom={0} width={1} backgroundColor="#00A550" />
-                ))}
+              {/* PARTICLES & BG OVERLAYS */}
+              <View position="absolute" top={0} left={0} right={0} bottom={0} opacity={0.04} zIndex={0}>
+                {[...Array(12)].map((_, i) => <View key={`h-${i}`} position="absolute" top={i * 45} left={0} right={0} height={1} backgroundColor="#00A550" />)}
+                {[...Array(22)].map((_, i) => <View key={`v-${i}`} position="absolute" left={i * 55} top={0} bottom={0} width={1} backgroundColor="#00A550" />)}
               </View>
 
+              {/* Glowing particles (Floating Orbs) */}
+              <Animated.View style={[{ position: 'absolute', bottom: -50, left: '20%', width: 100, height: 100, borderRadius: 50, backgroundColor: '#00A550', opacity: 0.2, filter: 'blur(15px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY1.value }] }))]} />
+              <Animated.View style={[{ position: 'absolute', bottom: -100, right: '15%', width: 150, height: 150, borderRadius: 75, backgroundColor: '#D1F2DF', opacity: 0.3, filter: 'blur(20px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY2.value }] }))]} />
+              <Animated.View style={[{ position: 'absolute', bottom: -20, left: '60%', width: 80, height: 80, borderRadius: 40, backgroundColor: '#00A550', opacity: 0.15, filter: 'blur(15px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY3.value }] }))]} />
+              
               {/* Soft Ambient glowing orbs */}
-              <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#D1F2DF" opacity={0.6} />
-              <View position="absolute" bottom={-180} right={-120} width={450} height={450} borderRadius={225} backgroundColor="#D1F2DF" opacity={0.6} />
+              <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#D1F2DF" opacity={0.6} zIndex={0} pointerEvents="none" />
+              <View position="absolute" bottom={-180} right={-120} width={450} height={450} borderRadius={225} backgroundColor="#D1F2DF" opacity={0.5} zIndex={0} pointerEvents="none" />
 
-              {/* 2. TOP BRANDING */}
-              <XStack position="absolute" top={40} left={24} alignItems="center" gap={8} zIndex={10}>
-                <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
-                <Text color="#0F5132" fontSize={18} fontWeight="900" fontFamily="$heading" letterSpacing={1} style={styles.brandTitle}>
-                  SmartMarketBot
-                </Text>
-              </XStack>
+              {/* 2. TOP HEADER */}
+              <YStack width="100%" paddingHorizontal={24} zIndex={10} marginTop={20}>
+                {/* Brand Name */}
+                <XStack alignItems="center" gap={8} alignSelf="flex-start">
+                  <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
+                  <Text color="#0F5132" fontSize={18} fontWeight="900" fontFamily="$heading" letterSpacing={1} style={styles.brandTitle}>
+                    SmartMarketBot
+                  </Text>
+                </XStack>
 
-              {/* BIG TIME DISPLAY (Lockscreen style) */}
-              <YStack position="absolute" top={85} width="100%" alignItems="center" zIndex={10}>
-                <Text color="#00A550" fontSize={64} fontWeight="900" fontFamily="$heading" letterSpacing={2} style={styles.timeGlow}>
-                  {timeString}
-                </Text>
-                <Text color="#0F5132" fontSize={16} fontWeight="600" opacity={0.8} marginTop={-5}>
-                  {dateString}
-                </Text>
+                {/* BIG TIME DISPLAY */}
+                <YStack alignItems="center" marginTop={20}>
+                  <Text color="#00A550" fontSize={72} fontWeight="900" fontFamily="$heading" letterSpacing={2} style={styles.timeGlow}>
+                    {timeString}
+                  </Text>
+                  <Text color="#0F5132" fontSize={16} fontWeight="600" opacity={0.8} marginTop={-5}>
+                    {dateString}
+                  </Text>
+                </YStack>
               </YStack>
 
-              {/* 3. CENTER PIECE: ANIMATED FLOATING ROBOT CONTAINER */}
-              <YStack alignItems="center" gap="$5" zIndex={5} marginTop={130}>
+              {/* 3. CENTER PIECE: ROBOT AS A HUGE INTERACTIVE BUTTON */}
+              <YStack alignItems="center" justifyContent="center" zIndex={5} flex={1}>
                 <Animated.View style={[styles.robotWrapper, animatedRobotStyle]}>
-                  {/* Tech glowing corners */}
-                  <View position="absolute" top={-8} left={-8} width={24} height={24} borderTopWidth={3.5} borderLeftWidth={3.5} borderColor="#00A550" borderRadius={4} />
-                  <View position="absolute" top={-8} right={-8} width={24} height={24} borderTopWidth={3.5} borderRightWidth={3.5} borderColor="#00A550" borderRadius={4} />
-                  <View position="absolute" bottom={-8} left={-8} width={24} height={24} borderBottomWidth={3.5} borderLeftWidth={3.5} borderColor="#00A550" borderRadius={4} />
-                  <View position="absolute" bottom={-8} right={-8} width={24} height={24} borderBottomWidth={3.5} borderRightWidth={3.5} borderColor="#00A550" borderRadius={4} />
+                  
+                  {/* Radar Pulse Rings */}
+                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 3, borderColor: '#00A550' }, useAnimatedStyle(() => ({ transform: [{ scale: radarScale.value }], opacity: radarOpacity.value }))]} />
+                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 2, borderColor: '#00A550' }, useAnimatedStyle(() => ({ transform: [{ scale: radarScale2.value }], opacity: radarOpacity2.value }))]} />
 
-                  {/* Glowing tech aura ring */}
+                  {/* Glowing tech aura ring (Static) */}
                   <Animated.View style={[styles.glowRing, animatedGlowStyle]} />
 
-                  {/* Inner Circular Frame with beautiful live robot GIF */}
+                  {/* Inner Circular Frame */}
                   <View
                     width={240}
                     height={240}
@@ -244,28 +273,23 @@ export default function WelcomeScreen() {
                   </View>
                 </Animated.View>
 
-                {/* AI Slogan beneath the robot */}
-                <YStack alignItems="center" gap={4} marginTop="$2">
+                {/* Slogan & Hint placed nicely under robot */}
+                <YStack alignItems="center" gap={12} marginTop={30}>
                   <XStack alignItems="center" gap={6} backgroundColor="rgba(0,165,80,0.08)" paddingHorizontal={12} paddingVertical={4} borderRadius={15}>
                     <Sparkles size={14} color="#00A550" />
                     <Text color="#00793b" fontSize={11} fontWeight="800" letterSpacing={1.5}>TRỢ LÝ SIÊU THỊ THÔNG MINH</Text>
                   </XStack>
+                  
+                  <Animated.View style={animatedPulse}>
+                    <Text color="#00A550" fontSize={15} fontWeight="800" letterSpacing={2}>
+                      [ CHẠM ĐỂ BẮT ĐẦU ]
+                    </Text>
+                  </Animated.View>
                 </YStack>
               </YStack>
 
-              {/* 4. FOOTER CALL-TO-ACTION (TOUCH ANYWHERE + PROMOTION) */}
-              <View position="absolute" bottom={45} left={0} right={0} zIndex={10} alignItems="center" gap="$6">
-                
-                {/* Animated Touch Text */}
-                <Animated.View style={animatedPulse}>
-                  <XStack alignItems="center" gap="$2" backgroundColor="rgba(0,165,80,0.05)" paddingHorizontal={20} paddingVertical={8} borderRadius={20} borderWidth={1} borderColor="rgba(0,165,80,0.2)">
-                    <Text color="#00A550" fontSize={14} fontWeight="800" letterSpacing={2}>
-                      CHẠM ĐỂ BẮT ĐẦU
-                    </Text>
-                  </XStack>
-                </Animated.View>
-
-                {/* Khuyến mãi hôm nay Button */}
+              {/* 4. FOOTER */}
+              <View width="100%" alignItems="center" paddingBottom={20} zIndex={10}>
                 <Button
                   size="$5"
                   backgroundColor="#00A550"
