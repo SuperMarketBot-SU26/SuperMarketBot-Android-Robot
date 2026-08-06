@@ -154,6 +154,28 @@ export default function WelcomeScreen() {
     opacity: pulseOpacity.value,
   }));
 
+  const animatedRadar1 = useAnimatedStyle(() => ({
+    transform: [{ scale: radarScale.value }],
+    opacity: radarOpacity.value,
+  }));
+
+  const animatedRadar2 = useAnimatedStyle(() => ({
+    transform: [{ scale: radarScale2.value }],
+    opacity: radarOpacity2.value,
+  }));
+
+  const animatedParticle1 = useAnimatedStyle(() => ({
+    transform: [{ translateY: particleY1.value }],
+  }));
+
+  const animatedParticle2 = useAnimatedStyle(() => ({
+    transform: [{ translateY: particleY2.value }],
+  }));
+
+  const animatedParticle3 = useAnimatedStyle(() => ({
+    transform: [{ translateY: particleY3.value }],
+  }));
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F3FAF6' }}>
       <View flex={1} backgroundColor="#F3FAF6" justifyContent="center" alignItems="center" position="relative" style={styles.container}>
@@ -212,9 +234,9 @@ export default function WelcomeScreen() {
               </View>
 
               {/* Glowing particles (Floating Orbs) */}
-              <Animated.View style={[{ position: 'absolute', bottom: -50, left: '20%', width: 100, height: 100, borderRadius: 50, backgroundColor: '#00A550', opacity: 0.2, filter: 'blur(15px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY1.value }] }))]} />
-              <Animated.View style={[{ position: 'absolute', bottom: -100, right: '15%', width: 150, height: 150, borderRadius: 75, backgroundColor: '#D1F2DF', opacity: 0.3, filter: 'blur(20px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY2.value }] }))]} />
-              <Animated.View style={[{ position: 'absolute', bottom: -20, left: '60%', width: 80, height: 80, borderRadius: 40, backgroundColor: '#00A550', opacity: 0.15, filter: 'blur(15px)' }, useAnimatedStyle(() => ({ transform: [{ translateY: particleY3.value }] }))]} />
+              <Animated.View style={[{ position: 'absolute', bottom: -50, left: '20%', width: 100, height: 100, borderRadius: 50, backgroundColor: '#00A550', opacity: 0.2, filter: 'blur(15px)' }, animatedParticle1]} />
+              <Animated.View style={[{ position: 'absolute', bottom: -100, right: '15%', width: 150, height: 150, borderRadius: 75, backgroundColor: '#D1F2DF', opacity: 0.3, filter: 'blur(20px)' }, animatedParticle2]} />
+              <Animated.View style={[{ position: 'absolute', bottom: -20, left: '60%', width: 80, height: 80, borderRadius: 40, backgroundColor: '#00A550', opacity: 0.15, filter: 'blur(15px)' }, animatedParticle3]} />
               
               {/* Soft Ambient glowing orbs */}
               <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#D1F2DF" opacity={0.6} zIndex={0} pointerEvents="none" />
@@ -246,8 +268,8 @@ export default function WelcomeScreen() {
                 <Animated.View style={[styles.robotWrapper, animatedRobotStyle]}>
                   
                   {/* Radar Pulse Rings */}
-                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 3, borderColor: '#00A550' }, useAnimatedStyle(() => ({ transform: [{ scale: radarScale.value }], opacity: radarOpacity.value }))]} />
-                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 2, borderColor: '#00A550' }, useAnimatedStyle(() => ({ transform: [{ scale: radarScale2.value }], opacity: radarOpacity2.value }))]} />
+                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 3, borderColor: '#00A550' }, animatedRadar1]} />
+                  <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 2, borderColor: '#00A550' }, animatedRadar2]} />
 
                   {/* Glowing tech aura ring (Static) */}
                   <Animated.View style={[styles.glowRing, animatedGlowStyle]} />
