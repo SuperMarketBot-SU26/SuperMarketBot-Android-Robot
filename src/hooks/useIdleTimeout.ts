@@ -11,11 +11,11 @@ export function useIdleTimeout(timeoutMs: number = 60000) {
       clearTimeout(timerRef.current);
     }
 
-    // Nếu đang ở màn hình Tự hành thì không cần đếm giờ
-    if (pathname !== '/autonomous') {
+    // Nếu đang ở màn hình Welcome (index) thì không cần đếm giờ
+    if (pathname !== '/') {
       timerRef.current = setTimeout(() => {
-        // Hết giờ -> Chuyển về màn hình Tự hành
-        router.replace('/autonomous');
+        // Hết giờ -> Chuyển về màn hình Welcome
+        router.replace('/');
       }, timeoutMs);
     }
   };
