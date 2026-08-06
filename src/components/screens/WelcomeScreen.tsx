@@ -190,44 +190,29 @@ export default function WelcomeScreen() {
               </View>
 
               {/* Soft Ambient glowing orbs */}
-              <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#E2F7EC" opacity={0.8} />
-              <View position="absolute" bottom={-180} right={-120} width={450} height={450} borderRadius={225} backgroundColor="#E2F7EC" opacity={0.8} />
+              <View position="absolute" top={-150} left={-100} width={400} height={400} borderRadius={200} backgroundColor="#D1F2DF" opacity={0.6} />
+              <View position="absolute" bottom={-180} right={-120} width={450} height={450} borderRadius={225} backgroundColor="#D1F2DF" opacity={0.6} />
 
-              {/* 2. TOP BRANDING & DATE TIME */}
-              <XStack
-                position="absolute"
-                top={40}
-                left={0}
-                right={0}
-                paddingHorizontal={24}
-                justifyContent="space-between"
-                alignItems="flex-start"
-                zIndex={10}
-              >
-                {/* Left: Brand Name */}
-                <XStack alignItems="center" gap={8} marginTop="$2">
-                  <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
-                  <Text
-                    color="#0F5132"
-                    fontSize={22}
-                    fontWeight="900"
-                    fontFamily="$heading"
-                    letterSpacing={1}
-                    style={styles.brandTitle}
-                  >
-                    SmartMarketBot
-                  </Text>
-                </XStack>
-
-                {/* Right: Date Time */}
-                <YStack alignItems="flex-end" paddingHorizontal={10} paddingVertical={8} backgroundColor="rgba(255,255,255,0.7)" borderRadius={15} borderWidth={1} borderColor="rgba(0,165,80,0.2)">
-                  <Text color="#00A550" fontSize={26} fontWeight="900" fontFamily="$heading">{timeString}</Text>
-                  <Text color="#0F5132" fontSize={13} fontWeight="600">{dateString}</Text>
-                </YStack>
+              {/* 2. TOP BRANDING */}
+              <XStack position="absolute" top={40} left={24} alignItems="center" gap={8} zIndex={10}>
+                <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
+                <Text color="#0F5132" fontSize={18} fontWeight="900" fontFamily="$heading" letterSpacing={1} style={styles.brandTitle}>
+                  SmartMarketBot
+                </Text>
               </XStack>
 
+              {/* BIG TIME DISPLAY (Lockscreen style) */}
+              <YStack position="absolute" top={85} width="100%" alignItems="center" zIndex={10}>
+                <Text color="#00A550" fontSize={64} fontWeight="900" fontFamily="$heading" letterSpacing={2} style={styles.timeGlow}>
+                  {timeString}
+                </Text>
+                <Text color="#0F5132" fontSize={16} fontWeight="600" opacity={0.8} marginTop={-5}>
+                  {dateString}
+                </Text>
+              </YStack>
+
               {/* 3. CENTER PIECE: ANIMATED FLOATING ROBOT CONTAINER */}
-              <YStack alignItems="center" gap="$5" zIndex={5} marginTop="$6">
+              <YStack alignItems="center" gap="$5" zIndex={5} marginTop={130}>
                 <Animated.View style={[styles.robotWrapper, animatedRobotStyle]}>
                   {/* Tech glowing corners */}
                   <View position="absolute" top={-8} left={-8} width={24} height={24} borderTopWidth={3.5} borderLeftWidth={3.5} borderColor="#00A550" borderRadius={4} />
@@ -261,45 +246,44 @@ export default function WelcomeScreen() {
 
                 {/* AI Slogan beneath the robot */}
                 <YStack alignItems="center" gap={4} marginTop="$2">
-                  <XStack alignItems="center" gap={6}>
+                  <XStack alignItems="center" gap={6} backgroundColor="rgba(0,165,80,0.08)" paddingHorizontal={12} paddingVertical={4} borderRadius={15}>
                     <Sparkles size={14} color="#00A550" />
-                    <Text color="#005b2b" fontSize={11} fontWeight="800" letterSpacing={2}>TRỢ LÝ SIÊU THỊ THÔNG MINH</Text>
+                    <Text color="#00793b" fontSize={11} fontWeight="800" letterSpacing={1.5}>TRỢ LÝ SIÊU THỊ THÔNG MINH</Text>
                   </XStack>
                 </YStack>
               </YStack>
 
               {/* 4. FOOTER CALL-TO-ACTION (TOUCH ANYWHERE + PROMOTION) */}
-              <View position="absolute" bottom={40} left={24} right={24} zIndex={10} alignItems="center" gap="$5">
+              <View position="absolute" bottom={45} left={0} right={0} zIndex={10} alignItems="center" gap="$6">
                 
                 {/* Animated Touch Text */}
                 <Animated.View style={animatedPulse}>
-                  <Text color="#00A550" fontSize={16} fontWeight="700" letterSpacing={1} opacity={0.8}>
-                    [ Chạm vào màn hình để bắt đầu ]
-                  </Text>
+                  <XStack alignItems="center" gap="$2" backgroundColor="rgba(0,165,80,0.05)" paddingHorizontal={20} paddingVertical={8} borderRadius={20} borderWidth={1} borderColor="rgba(0,165,80,0.2)">
+                    <Text color="#00A550" fontSize={14} fontWeight="800" letterSpacing={2}>
+                      CHẠM ĐỂ BẮT ĐẦU
+                    </Text>
+                  </XStack>
                 </Animated.View>
 
                 {/* Khuyến mãi hôm nay Button */}
                 <Button
-                  size="$4"
-                  backgroundColor="#FFFFFF"
-                  color="#00A550"
+                  size="$5"
+                  backgroundColor="#00A550"
+                  color="white"
                   borderRadius={35}
-                  borderWidth={2}
-                  borderColor="#00A550"
                   width="85%"
-                  height={54}
-                  pressStyle={{ scale: 0.95, backgroundColor: '#E2F7EC' }}
-                  icon={<Gift size={20} color="#00A550" />}
+                  height={58}
+                  pressStyle={{ scale: 0.95, backgroundColor: '#008440' }}
+                  icon={<Gift size={22} color="white" />}
                   onPress={(e) => {
-                    // Ngăn sự kiện chạm màn hình lan truyền
                     e.stopPropagation();
                     speak('Đang mở trang khuyến mãi hôm nay. Mời bạn xem các ưu đãi hấp dẫn!');
                     router.push('/guest-campaign');
                   }}
-                  style={styles.promoButton}
+                  style={styles.ctaButton}
                 >
-                  <Text color="#0F5132" fontWeight="800" fontSize={15} letterSpacing={0.5}>
-                    🎁 Khuyến mãi hôm nay
+                  <Text color="white" fontWeight="900" fontSize={16} letterSpacing={0.5}>
+                    Khuyến mãi hôm nay
                   </Text>
                 </Button>
               </View>
@@ -381,11 +365,9 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  promoButton: {
-    shadowColor: '#00A550',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 5,
-  },
+  timeGlow: {
+    textShadowColor: 'rgba(0, 165, 80, 0.25)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 10,
+  }
 });
