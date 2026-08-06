@@ -3,7 +3,8 @@ import { ScrollView, Dimensions } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Spinner } from 'tamagui';
 import { ArrowLeft, Clock, Search, MapPin, Tag, ArrowRight, MessageCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp, withRepeat, withSequence, withTiming, useSharedValue, useAnimatedStyle, Easing } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
@@ -11,6 +12,25 @@ import { RobotControlService } from '../../services/RobotControlService';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48 - 16) / 2; // padding 24*2, gap 16
+
+const SkeletonCard = () => {
+  const opacity = useSharedValue(0.4);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.4, { duration: 600, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View style={[{ width: CARD_WIDTH, height: 260, borderRadius: 20, backgroundColor: '#e2e8f0', marginBottom: 16 }, animatedStyle]} />
+  );
+};
 
 export default function GuestCampaignScreen() {
   const insets = useSafeAreaInsets();
@@ -100,59 +120,57 @@ export default function GuestCampaignScreen() {
           <Card
             borderRadius={24}
             overflow="hidden"
-            backgroundColor="#ef4444"
             borderWidth={0}
-            style={{ elevation: 3 }}
-            marginBottom="$6"
+            style={{ shadowColor: '#ef4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 12, marginBottom: 24 }}
           >
-            <YStack flex={1}>
-              <View position="relative" height={160} width="100%">
-                <Image
-                  src="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=600"
-                  width="100%"
-                  height="100%"
-                  objectFit="cover"
-                />
-                <View position="absolute" top={0} left={0} right={0} bottom={0} backgroundColor="rgba(0,0,0,0.2)" />
-                <View
-                  position="absolute"
-                  bottom={16}
-                  left={16}
-                  backgroundColor="#facc15"
-                  paddingHorizontal="$3"
-                  paddingVertical="$1"
-                  borderRadius={12}
-                  style={{ elevation: 2 }}
-                >
-                  <Text fontSize={12} color="#854d0e" fontWeight="950">HOT DEAL GIỜ VÀNG</Text>
+            <LinearGradient
+              colors={['#f97316', '#ef4444', '#991b1b']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ flex: 1 }}
+            >
+              <YStack flex={1}>
+                <View position="relative" width="100%" paddingTop="$5" paddingHorizontal="$5">
+                  <View
+                    alignSelf="flex-start"
+                    backgroundColor="#facc15"
+                    paddingHorizontal="$3"
+                    paddingVertical="$1"
+                    borderRadius={12}
+                    style={{ elevation: 5, shadowColor: '#000', shadowOffset: {width: 0, height: 3}, shadowOpacity: 0.3, shadowRadius: 5 }}
+                  >
+                    <Text fontSize={12} color="#854d0e" fontWeight="950">HOT DEAL GIỜ VÀNG 🌟</Text>
+                  </View>
                 </View>
-              </View>
-              <YStack padding="$5" gap="$3">
-                <YStack gap="$1">
-                  <Text fontSize={20} fontWeight="900" color="white" lineHeight={24}>
-                    Giảm Giá Sốc Lên Đến 50%
-                  </Text>
-                  <Text fontSize={13} color="#fecaca" lineHeight={18}>
-                    Hàng ngàn sản phẩm tiêu dùng, thực phẩm tươi sống đang có giá ưu đãi đặc biệt hôm nay. Hãy chọn mua ngay!
-                  </Text>
+                <YStack padding="$5" gap="$3">
+                  <YStack gap="$2">
+                    <Text fontSize={26} fontWeight="900" color="white" lineHeight={32}>
+                      Giảm Giá Sốc Lên Đến 50%
+                    </Text>
+                    <Text fontSize={14} color="#fecaca" lineHeight={22}>
+                      Hàng ngàn sản phẩm tiêu dùng, thực phẩm tươi sống đang có giá ưu đãi đặc biệt hôm nay. Hãy chọn mua ngay!
+                    </Text>
+                  </YStack>
+                  <Button
+                    backgroundColor="white"
+                    borderRadius={30}
+                    paddingHorizontal="$5"
+                    height={46}
+                    marginTop="$2"
+                    alignSelf="flex-start"
+                    onPress={() => {
+                      speak('Đăng ký thành viên để nhận thêm nhiều ưu đãi độc quyền khác!');
+                      router.push('/role-selection' as any);
+                    }}
+                    pressStyle={{ scale: 0.95 }}
+                    style={{ elevation: 6, shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.25, shadowRadius: 8 }}
+                    iconAfter={<ArrowRight size={18} color="#ef4444" />}
+                  >
+                    <Text color="#ef4444" fontSize={15} fontWeight="900">Đăng ký Thành Viên</Text>
+                  </Button>
                 </YStack>
-                <Button
-                  backgroundColor="white"
-                  borderRadius={30}
-                  paddingHorizontal="$5"
-                  height={40}
-                  alignSelf="flex-start"
-                  onPress={() => {
-                    speak('Đăng ký thành viên để nhận thêm nhiều ưu đãi độc quyền khác!');
-                    router.push('/role-selection' as any);
-                  }}
-                  pressStyle={{ scale: 0.95 }}
-                  iconAfter={<ArrowRight size={16} color="#ef4444" />}
-                >
-                  <Text color="#ef4444" fontSize={13} fontWeight="bold">Đăng ký Thành Viên</Text>
-                </Button>
               </YStack>
-            </YStack>
+            </LinearGradient>
           </Card>
         </Animated.View>
 
@@ -224,9 +242,12 @@ export default function GuestCampaignScreen() {
         </YStack>
 
         {loading ? (
-          <YStack alignItems="center" justifyContent="center" padding="$10" gap="$4">
-            <Spinner size="large" color="#00A550" />
-            <Text color="$textSecondary" fontWeight="500">Đang tải danh sách khuyến mãi...</Text>
+          <YStack>
+            <XStack flexWrap="wrap" justifyContent="space-between" gap="$4">
+              {[...Array(4)].map((_, i) => (
+                <SkeletonCard key={`skel-${i}`} />
+              ))}
+            </XStack>
           </YStack>
         ) : deals.length === 0 ? (
           <Card padding="$6" borderRadius={16} backgroundColor="white" alignItems="center">
