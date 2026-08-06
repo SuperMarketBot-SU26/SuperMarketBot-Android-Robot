@@ -1,30 +1,103 @@
 /**
  * RobotControlContext.tsx
  *
- * Context đơn giản — không còn WS connection.
- * Chỉ cung cấp RobotControlService cho toàn app qua context.
+ * Quản lý trạng thái kết nối và cấu hình bánh xe toàn app.
+ * Tự động kết nối WebSocket khi app khởi động.
  */
 
-import React, { createContext, useContext } from 'react';
+import React, {
+  createContext, useContext, useEffect, useRef, useState, useCallback,
+} from 'react';
 import { RobotControlService } from '../services/RobotControlService';
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+export interface MotorLayoutConfig {
+  /** Chỉ số slot driver cho mỗi bánh xe: [FL, RL, FR, RR] */
+  mapMot: number[];
+  /** Cờ đảo chiều: [FL, RL, FR, RR] — 0=thuận, 1=đảo */
+  motInv: number[];
+  /** Loại bánh xe: 0=Mecanum (đa hướng), 1=Normal (4WD vi sai) */
+  wheelMode: 0 | 1;
+}
+
 interface RobotControlContextType {
-  dispatchAutonomous: typeof RobotControlService.dispatchAutonomous;
-  sendNavigateViaBackend: typeof RobotControlService.sendNavigateViaBackend;
+  isConnected: boolean;
+  motorLayout: MotorLayoutConfig;
+  setMotorLayout: (cfg: MotorLayoutConfig) => void;
+  setWheelMode: (mode: 0 | 1) => void;
+  saveMotorLayout: () => void;
+  testMotor: (slot: number, speedPct: number) => void;
 }
 
 const RobotControlContext = createContext<RobotControlContextType | null>(null);
 
+const DEFAULT_LAYOUT: MotorLayoutConfig = {
+  mapMot: [0, 1, 2, 3],
+  motInv: [0, 0, 0, 0],
+  wheelMode: 0, // 0=Mecanum
+};
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export function RobotControlProvider({ children }: { children: React.ReactNode }) {
+  const [isConnected, setConnected] = useState(false);
+  const [motorLayout, setMotorLayoutState] = useState<MotorLayoutConfig>(DEFAULT_LAYOUT);
+
+  const connRef = useRef<(c: boolean) => void | undefined>(undefined);
+
+  useEffect(() => {
+    let isMounted = true;
+    connRef.current = (c: boolean) => {
+      if (isMounted) setConnected(c);
+    };
+
+    const onConn = (c: boolean) => connRef.current?.(c);
+    RobotControlService.onConnection(onConn);
+
+    // Auto-connect on mount
+    RobotControlService.connect();
+
+    return () => {
+      isMounted = false;
+      RobotControlService.offConnection(onConn);
+      RobotControlService.disconnect();
+    };
+  }, []);
+
+  const setMotorLayout = useCallback((cfg: MotorLayoutConfig) => {
+    setMotorLayoutState(cfg);
+  }, []);
+
+  const setWheelMode = useCallback((mode: 0 | 1) => {
+    setMotorLayoutState(prev => ({ ...prev, wheelMode: mode }));
+    RobotControlService.sendWheelMode(mode);
+  }, []);
+
+  const saveMotorLayout = useCallback(() => {
+    RobotControlService.sendMotorLayout(motorLayout.mapMot, motorLayout.motInv);
+    RobotControlService.sendWheelMode(motorLayout.wheelMode);
+  }, [motorLayout]);
+
+  const testMotor = useCallback((slot: number, speedPct: number) => {
+    RobotControlService.sendMotorTest(slot, speedPct);
+  }, []);
+
   return (
     <RobotControlContext.Provider value={{
-      dispatchAutonomous: RobotControlService.dispatchAutonomous.bind(RobotControlService),
-      sendNavigateViaBackend: RobotControlService.sendNavigateViaBackend.bind(RobotControlService),
+      isConnected,
+      motorLayout,
+      setMotorLayout,
+      setWheelMode,
+      saveMotorLayout,
+      testMotor,
     }}>
       {children}
     </RobotControlContext.Provider>
   );
 }
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useRobotControl() {
   const ctx = useContext(RobotControlContext);
