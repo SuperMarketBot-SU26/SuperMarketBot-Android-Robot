@@ -111,7 +111,7 @@ export function ProductDetailSheet({ productId, isOpen, onOpenChange, onCartUpda
       onOpenChange(false); // Đóng sheet hiện tại
       // Navigate to Map3D screen with JSON stringified route
       router.push({
-        pathname: '/map-3d',
+        pathname: '/map-viewer',
         params: { routeData: JSON.stringify(optimalRoute) }
       });
     } else {

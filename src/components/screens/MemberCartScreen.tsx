@@ -11,7 +11,7 @@ import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService, CartDto } from '../../services/CartService';
 import { ProductDetailSheet } from '../ui/ProductDetailSheet';
 import { optimizeShoppingRoute } from '../../services/RouteService';
-import { MAP_HTML } from '../map/mapHtml';
+
 
 const { width } = Dimensions.get('window');
 
@@ -261,31 +261,12 @@ export default function MemberCartScreen() {
                 const routeToPass = previewRouteData;
                 setPreviewModalOpen(false);
                 router.push({
-                  pathname: '/map-3d',
+                  pathname: '/map-viewer',
                   params: { routeData: JSON.stringify(routeToPass) }
                 } as any);
               }}
             >
-              <WebView
-                ref={webViewRef}
-                originWhitelist={['*']}
-                source={{ html: MAP_HTML, baseUrl: 'http://localhost:5000' }}
-                style={{ flex: 1, backgroundColor: '#0B0F17' }}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                scrollEnabled={false}
-                onLoadEnd={() => {
-                  if (previewRouteData) {
-                    const jsCode = `
-                      if (window.setRouteData) {
-                        window.setRouteData(${JSON.stringify(previewRouteData)});
-                      }
-                      true;
-                    `;
-                    webViewRef.current?.injectJavaScript(jsCode);
-                  }
-                }}
-              />
+              <View style={{ flex: 1, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center' }}><MapPin color="#10B981" size={48} /><Text style={{ color: '#F8FAFC', marginTop: 12, fontWeight: 'bold' }}>Nhấn để xem Bản đồ 2D</Text></View>
 
               <View style={styles.expandOverlayBanner}>
                 <Maximize2 color="white" size={14} style={{ marginRight: 6 }} />
