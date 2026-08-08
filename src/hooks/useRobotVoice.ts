@@ -13,7 +13,33 @@ export function isRobotVoiceSpeaking() {
   return isSpeakingGlobal;
 }
 
-// Hook router thông minh: Chặn tất cả các thao tác chuyển trang nếu Robot đang nói
+// Dừng giọng nói toàn cục, được gọi khi có thao tác điều hướng
+export const stopGlobalVoice = () => {
+  isSpeakingGlobal = false;
+  try {
+    Speech.stop();
+  } catch (e) {
+    console.warn('Error stopping local TTS speech:', e);
+  }
+  try {
+    if (globalActiveSound) {
+      const sound = globalActiveSound;
+      globalActiveSound = null;
+      try {
+        sound.pause();
+      } catch (e) {}
+      setTimeout(() => {
+        try {
+          sound.remove();
+        } catch (e) {}
+      }, 500);
+    }
+  } catch (e) {
+    console.warn('Error stopping sound', e);
+  }
+};
+
+// Hook router thông minh: Chặn hoặc dừng giọng nói khi chuyển trang
 export function useVoiceRouter() {
   const router = useRouter();
 
@@ -21,22 +47,19 @@ export function useVoiceRouter() {
     ...router,
     push: (href: any, options?: any) => {
       if (isSpeakingGlobal) {
-        console.warn('Navigation blocked: Robot is speaking');
-        return;
+        stopGlobalVoice();
       }
       router.push(href, options);
     },
     replace: (href: any, options?: any) => {
       if (isSpeakingGlobal) {
-        console.warn('Navigation blocked: Robot is speaking');
-        return;
+        stopGlobalVoice();
       }
       router.replace(href, options);
     },
     back: () => {
       if (isSpeakingGlobal) {
-        console.warn('Navigation blocked: Robot is speaking');
-        return;
+        stopGlobalVoice();
       }
       router.back();
     },
@@ -47,31 +70,8 @@ export function useRobotVoice() {
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const stop = async () => {
-    isSpeakingGlobal = false;
     setIsSpeaking(false);
-    try {
-      Speech.stop();
-    } catch (e) {
-      console.warn('Error stopping local TTS speech:', e);
-    }
-    try {
-      // Dừng âm thanh đang phát một cách an toàn không gây crash C++ thread
-      if (globalActiveSound) {
-        const sound = globalActiveSound;
-        globalActiveSound = null;
-        try {
-          sound.pause();
-        } catch (e) {}
-        // Hoãn remove 500ms để Android AudioTrack giải phóng buffer mượt mà
-        setTimeout(() => {
-          try {
-            sound.remove();
-          } catch (e) {}
-        }, 500);
-      }
-    } catch (e) {
-      console.warn('Error stopping sound', e);
-    }
+    stopGlobalVoice();
   };
 
   const speak = async (text: string) => {

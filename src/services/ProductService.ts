@@ -6,6 +6,14 @@ export interface HealthTagDto {
   tagType: string;
 }
 
+export interface ProductTypeDto {
+  productTypeId: number;
+  subcategoryId: number;
+  typeName: string;
+  emoji?: string;
+  bgColor?: string;
+}
+
 export interface ProductDetailDto {
   productId: number;
   productName: string;
@@ -15,6 +23,7 @@ export interface ProductDetailDto {
   imageUrl?: string;
   description?: string;
   productTypeId: number;
+  categoryName?: string;
   isOnSale: boolean;
   isFavorite: boolean;
   healthTags: HealthTagDto[];
@@ -44,6 +53,19 @@ export class ProductService {
     } catch (error) {
       console.error('[ProductService.getProductDetail] error:', error);
       return null;
+    }
+  }
+
+  static async getProductTypes(): Promise<ProductTypeDto[]> {
+    try {
+      const response = await fetch(`${BASE_URL}/api/products/product-types`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (!response.ok) return [];
+      return await response.json();
+    } catch (error) {
+      console.error('[ProductService.getProductTypes] error:', error);
+      return [];
     }
   }
 }

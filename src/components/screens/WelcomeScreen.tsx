@@ -20,7 +20,7 @@ import { Button, Text, View, XStack, YStack } from 'tamagui';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 
 export default function WelcomeScreen() {
-  const { speak, isSpeaking } = useRobotVoice();
+  const { speak } = useRobotVoice();
   const router = useRouter();
   const params = useLocalSearchParams<{ skipStartup?: string }>();
   const shouldSkip = params.skipStartup === 'true';
@@ -44,9 +44,7 @@ export default function WelcomeScreen() {
   const particleY2 = useSharedValue(0);
   const particleY3 = useSharedValue(0);
 
-  // Voice Waveform & 3D Button
-  const voiceWaveScale = useSharedValue(1);
-  const voiceWaveOpacity = useSharedValue(0);
+  // 3D Button
   const buttonY = useSharedValue(0);
 
   // Time state
@@ -59,16 +57,6 @@ export default function WelcomeScreen() {
 
   const timeString = currentTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   const dateString = currentTime.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  useEffect(() => {
-    if (isSpeaking) {
-      voiceWaveScale.value = withRepeat(withTiming(1.3, { duration: 400 }), -1, true);
-      voiceWaveOpacity.value = withRepeat(withTiming(0.6, { duration: 400 }), -1, true);
-    } else {
-      voiceWaveScale.value = withTiming(1, { duration: 300 });
-      voiceWaveOpacity.value = withTiming(0, { duration: 300 });
-    }
-  }, [isSpeaking]);
 
   const handlePressIn = () => {
     buttonY.value = withTiming(6, { duration: 100 });
@@ -198,11 +186,6 @@ export default function WelcomeScreen() {
     transform: [{ translateY: particleY3.value }],
   }));
 
-  const animatedVoiceWave = useAnimatedStyle(() => ({
-    transform: [{ scale: voiceWaveScale.value }],
-    opacity: voiceWaveOpacity.value,
-  }));
-
   const animatedFrontButton = useAnimatedStyle(() => ({
     transform: [{ translateY: buttonY.value }]
   }));
@@ -301,9 +284,6 @@ export default function WelcomeScreen() {
                   {/* Radar Pulse Rings */}
                   <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 3, borderColor: '#00A550' }, animatedRadar1]} />
                   <Animated.View style={[{ position: 'absolute', width: 240, height: 240, borderRadius: 120, borderWidth: 2, borderColor: '#00A550' }, animatedRadar2]} />
-
-                  {/* Voice Waveform Ring */}
-                  <Animated.View style={[{ position: 'absolute', width: 250, height: 250, borderRadius: 125, backgroundColor: '#00A550' }, animatedVoiceWave]} />
 
                   {/* Glowing tech aura ring (Static) */}
                   <Animated.View style={[styles.glowRing, animatedGlowStyle]} />

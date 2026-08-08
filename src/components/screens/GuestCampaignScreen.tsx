@@ -11,7 +11,6 @@ import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { RobotControlService } from '../../services/RobotControlService';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48 - 16) / 2; // padding 24*2, gap 16
 
 const SkeletonCard = () => {
   const opacity = useSharedValue(0.4);
@@ -28,7 +27,7 @@ const SkeletonCard = () => {
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   return (
-    <Animated.View style={[{ width: CARD_WIDTH, height: 260, borderRadius: 20, backgroundColor: '#e2e8f0', marginBottom: 16 }, animatedStyle]} />
+    <Animated.View style={[{ width: '47%', height: 260, borderRadius: 20, backgroundColor: '#e2e8f0', marginBottom: 16 }, animatedStyle]} />
   );
 };
 
@@ -74,10 +73,10 @@ export default function GuestCampaignScreen() {
   }, []);
 
   return (
-    <View flex={1} backgroundColor="#f9fbf9" paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 30)}>
+    <View flex={1} backgroundColor="#f9fbf9" paddingTop={Math.max(insets.top, 0)} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 30)}>
 
       {/* HEADER BAR */}
-      <XStack height={60} alignItems="center" justifyContent="space-between" paddingHorizontal="$4" borderBottomWidth={1} borderBottomColor="#f0f0f0" backgroundColor="white">
+      <XStack height={60} alignItems="center" paddingHorizontal="$4" borderBottomWidth={1} borderBottomColor="#f0f0f0" backgroundColor="white">
         <XStack alignItems="center" gap="$3">
           <Button
             circular
@@ -89,18 +88,6 @@ export default function GuestCampaignScreen() {
           />
           <Text fontSize={20} fontWeight="900" color="#005b2b">SmartMarketBot</Text>
         </XStack>
-
-        <Button
-          borderRadius={20}
-          size="$3"
-          backgroundColor="#f0fdf4"
-          color="#00A550"
-          fontWeight="bold"
-          icon={<MapPin size={16} color="#00A550" />}
-          onPress={() => speak('Chức năng tìm đường đang được kích hoạt')}
-        >
-          Dẫn đường mua sắm
-        </Button>
       </XStack>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 60 }}>
@@ -115,64 +102,7 @@ export default function GuestCampaignScreen() {
           </YStack>
         </Animated.View>
 
-        {/* HERO BANNER SECTION */}
-        <Animated.View entering={FadeInDown.delay(200).duration(600)}>
-          <Card
-            borderRadius={24}
-            overflow="hidden"
-            borderWidth={0}
-            style={{ shadowColor: '#ef4444', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 12, marginBottom: 24 }}
-          >
-            <LinearGradient
-              colors={['#f97316', '#ef4444', '#991b1b']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{ flex: 1 }}
-            >
-              <YStack flex={1}>
-                <View position="relative" width="100%" paddingTop="$5" paddingHorizontal="$5">
-                  <View
-                    alignSelf="flex-start"
-                    backgroundColor="#facc15"
-                    paddingHorizontal="$3"
-                    paddingVertical="$1"
-                    borderRadius={12}
-                    style={{ elevation: 5, shadowColor: '#000', shadowOffset: {width: 0, height: 3}, shadowOpacity: 0.3, shadowRadius: 5 }}
-                  >
-                    <Text fontSize={12} color="#854d0e" fontWeight="950">HOT DEAL GIỜ VÀNG 🌟</Text>
-                  </View>
-                </View>
-                <YStack padding="$5" gap="$3">
-                  <YStack gap="$2">
-                    <Text fontSize={26} fontWeight="900" color="white" lineHeight={32}>
-                      Giảm Giá Sốc Lên Đến 50%
-                    </Text>
-                    <Text fontSize={14} color="#fecaca" lineHeight={22}>
-                      Hàng ngàn sản phẩm tiêu dùng, thực phẩm tươi sống đang có giá ưu đãi đặc biệt hôm nay. Hãy chọn mua ngay!
-                    </Text>
-                  </YStack>
-                  <Button
-                    backgroundColor="white"
-                    borderRadius={30}
-                    paddingHorizontal="$5"
-                    height={46}
-                    marginTop="$2"
-                    alignSelf="flex-start"
-                    onPress={() => {
-                      speak('Đăng ký thành viên để nhận thêm nhiều ưu đãi độc quyền khác!');
-                      router.push('/role-selection' as any);
-                    }}
-                    pressStyle={{ scale: 0.95 }}
-                    style={{ elevation: 6, shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.25, shadowRadius: 8 }}
-                    iconAfter={<ArrowRight size={18} color="#ef4444" />}
-                  >
-                    <Text color="#ef4444" fontSize={15} fontWeight="900">Đăng ký Thành Viên</Text>
-                  </Button>
-                </YStack>
-              </YStack>
-            </LinearGradient>
-          </Card>
-        </Animated.View>
+
 
         {/* GENERAL ADS (TÀI TRỢ) */}
         {generalAds.length > 0 && (
@@ -182,11 +112,20 @@ export default function GuestCampaignScreen() {
             </XStack>
             <XStack flexWrap="wrap" justifyContent="space-between" gap="$4">
               {generalAds.map((ad, index) => (
-                <Animated.View key={`ad-${ad.productId}-${index}`} style={{ width: CARD_WIDTH }} entering={FadeInUp.delay(300 + index * 50).duration(500)}>
-                  <Card borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2, height: '100%' }}>
+                <Animated.View key={`ad-${ad.productId}-${index}`} style={{ width: '47%' }} entering={FadeInUp.delay(300 + index * 50).duration(500)}>
+                  <Card 
+                    borderRadius={20} 
+                    backgroundColor="white" 
+                    overflow="hidden" 
+                    borderWidth={1} 
+                    borderColor="#e2e8f0" 
+                    style={{ elevation: 2 }}
+                    pressStyle={{ scale: 0.98 }}
+                    onPress={() => speak(`Sản phẩm ${ad.productName} đang được khuyến mãi với giá ${(ad.productPrice || 0).toLocaleString('vi-VN')} đồng.`)}
+                  >
                     <View position="relative" height={140} backgroundColor="#f5f5f5">
                       <Image
-                        src={ad.imageUrl || 'https://via.placeholder.com/400x400.png'}
+                        src={ad.imageUrl || require('../../../assets/images/logocute.png')}
                         width="100%"
                         height="100%"
                         objectFit="cover"
@@ -197,7 +136,7 @@ export default function GuestCampaignScreen() {
                     </View>
                     <YStack padding="$3.5" gap="$2" flex={1} justifyContent="space-between">
                       <YStack gap="$1">
-                        <Text fontSize={14} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={18}>
+                        <Text fontSize={14} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={18} minHeight={36}>
                           {ad.productName}
                         </Text>
                         <Text fontSize={11} color="#666">Tài trợ bởi: {ad.campaignName}</Text>
@@ -209,25 +148,6 @@ export default function GuestCampaignScreen() {
                             {(ad.productPrice || 0).toLocaleString('vi-VN')}đ
                           </Text>
                         </XStack>
-                        <Button
-                          backgroundColor="#fffbeb"
-                          borderWidth={1}
-                          borderColor="#fde68a"
-                          height={36}
-                          borderRadius={12}
-                          marginTop="$3"
-                          icon={<MapPin size={14} color="#d97706" />}
-                          onPress={async () => {
-                            speak(`Sản phẩm ${ad.productName} đang nằm ở kệ hàng gần đây`);
-                            await RobotControlService.dispatchAutonomous({
-                              flowType: 'guide',
-                              productId: ad.productId,
-                            });
-                          }}
-                          pressStyle={{ scale: 0.95, backgroundColor: '#fef3c7' }}
-                        >
-                          <Text color="#d97706" fontSize={12} fontWeight="bold">Tìm Vị Trí</Text>
-                        </Button>
                       </YStack>
                     </YStack>
                   </Card>
@@ -237,9 +157,10 @@ export default function GuestCampaignScreen() {
           </YStack>
         )}
 
-        <YStack gap="$1" marginBottom="$4">
-          <Text fontSize={20} fontWeight="900" color="#111">Danh sách Khuyến Mãi</Text>
-        </YStack>
+        <XStack alignItems="center" gap="$2" marginBottom="$4" marginTop="$2">
+          <Tag size={24} color="#ef4444" />
+          <Text fontSize={22} fontWeight="900" color="#111">Danh sách Khuyến Mãi</Text>
+        </XStack>
 
         {loading ? (
           <YStack>
@@ -257,11 +178,23 @@ export default function GuestCampaignScreen() {
           <YStack>
             <XStack flexWrap="wrap" justifyContent="space-between" gap="$4">
               {deals.map((product, index) => (
-                <Animated.View key={`deal-${product.productId}-${index}`} style={{ width: CARD_WIDTH }} entering={FadeInUp.delay(300 + index * 50).duration(500)}>
-                  <Card borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2, height: '100%' }}>
+                <Animated.View key={`deal-${product.productId}-${index}`} style={{ width: '47%' }} entering={FadeInUp.delay(300 + index * 50).duration(500)}>
+                  <Card 
+                    borderRadius={20} 
+                    backgroundColor="white" 
+                    overflow="hidden" 
+                    borderWidth={1} 
+                    borderColor="#e2e8f0" 
+                    style={{ elevation: 2 }}
+                    pressStyle={{ scale: 0.98 }}
+                    onPress={() => {
+                        const price = product.promotionPrice ? product.promotionPrice : product.unitPrice;
+                        speak(`Sản phẩm ${product.productName} đang được giảm giá còn ${price.toLocaleString('vi-VN')} đồng.`);
+                    }}
+                  >
                     <View position="relative" height={140} backgroundColor="#f5f5f5">
                       <Image
-                        src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'}
+                        src={product.imageUrl || require('../../../assets/images/logocute.png')}
                         width="100%"
                         height="100%"
                         objectFit="cover"
@@ -278,10 +211,10 @@ export default function GuestCampaignScreen() {
                     </View>
                     <YStack padding="$3.5" gap="$2" flex={1} justifyContent="space-between">
                       <YStack gap="$1">
-                        <Text fontSize={14} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={18}>
+                        <Text fontSize={14} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={18} minHeight={36}>
                           {product.productName}
                         </Text>
-                        <Text fontSize={11} color="#666">{product.productTypeId ? product.status : 'Đang bán'}</Text>
+                        <Text fontSize={11} color="#666">{product.promotionLabel || (product.productTypeId ? product.status : 'Đang bán')}</Text>
                       </YStack>
 
                       <YStack>
@@ -290,30 +223,11 @@ export default function GuestCampaignScreen() {
                             {product.promotionPrice ? product.promotionPrice.toLocaleString('vi-VN') : product.unitPrice.toLocaleString('vi-VN')}đ
                           </Text>
                         </XStack>
-                        {product.promotionPrice && (
+                        {!!product.promotionPrice && (
                           <Text fontSize={12} color="#999" style={{ textDecorationLine: 'line-through' }} marginTop="$0.5">
                             {product.unitPrice.toLocaleString('vi-VN')}đ
                           </Text>
                         )}
-                        <Button
-                          backgroundColor="#f0fdf4"
-                          borderWidth={1}
-                          borderColor="#bbf7d0"
-                          height={36}
-                          borderRadius={12}
-                          marginTop="$3"
-                          icon={<MapPin size={14} color="#00A550" />}
-                          onPress={async () => {
-                            speak(`Sản phẩm ${product.productName} đang nằm ở kệ hàng số ${product.location?.shelfName || 'Gần đây'}`);
-                            await RobotControlService.dispatchAutonomous({
-                              flowType: 'guide',
-                              productId: product.productId,
-                            });
-                          }}
-                          pressStyle={{ scale: 0.95, backgroundColor: '#dcfce7' }}
-                        >
-                          <Text color="#00A550" fontSize={12} fontWeight="bold">Tìm Vị Trí</Text>
-                        </Button>
                       </YStack>
                     </YStack>
                   </Card>
@@ -324,24 +238,6 @@ export default function GuestCampaignScreen() {
         )}
 
       </ScrollView>
-      {/* FLOATING CHAT BUTTON */}
-      <View
-        position="absolute"
-        bottom={30}
-        right={Math.max(insets.right, 30)}
-        zIndex={200}
-      >
-        <Button
-          circular
-          size="$4.5"
-          backgroundColor="#005b2b"
-          style={{ elevation: 6 }}
-          pressStyle={{ scale: 0.95, backgroundColor: '#0d3a1f' }}
-          icon={<MessageCircle size={22} color="white" />}
-          onPress={() => speak('Mở trợ lý ảo chat AI')}
-        />
-      </View>
-
     </View>
   );
 }

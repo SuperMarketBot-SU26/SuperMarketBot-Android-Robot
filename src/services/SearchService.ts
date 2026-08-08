@@ -9,6 +9,7 @@ export interface ProductLocation {
 export interface MobileProductSearchResultDto {
   productId: number;
   productName: string;
+  description?: string;
   unitPrice: number;
   status: string;
   imageUrl: string | null;
@@ -16,6 +17,7 @@ export interface MobileProductSearchResultDto {
   location: ProductLocation | null;
   promotionPrice?: number;
   discountPercent?: number;
+  promotionLabel?: string;
 }
 
 export interface SearchResultItemDto {
@@ -44,6 +46,20 @@ export interface SearchResponseDto {
   aiExplanation?: string;
 }
 
+export interface IngredientRecommendationDto {
+  productId: number;
+  productName: string;
+  reason: string;
+  imageUrl: string;
+  unitPrice: number;
+  quantity: number;
+  quantityText: string;
+}
+
+export interface RecommendIngredientsResponseDto {
+  ingredients: IngredientRecommendationDto[];
+}
+
 
 export const SearchService = {
   async searchProducts(keyword: string): Promise<MobileProductSearchResultDto[]> {
@@ -67,6 +83,43 @@ export const SearchService = {
     } catch (error) {
       console.error('[SearchService] Error searching products:', error);
       throw error;
+    }
+  },
+
+  classifyIntent(query: string): 'recipe' | 'product' {
+    if (!query) return 'product';
+    const lowerQuery = query.toLowerCase();
+    const recipeKeywords = [
+      'nấu', 'món', 'cách làm', 'công thức', 'hướng dẫn', 
+      'canh', 'kho', 'chiên', 'xào', 'luộc', 'gỏi', 'lẩu', 'chuẩn bị', 'nguyên liệu'
+    ];
+    if (recipeKeywords.some(kw => lowerQuery.includes(kw))) {
+      return 'recipe';
+    }
+    return 'product';
+  },
+
+  async recommendIngredients(dishName: string): Promise<RecommendIngredientsResponseDto> {
+    try {
+      const url = `${BASE_URL}/api/search/recommend-ingredients`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({ dishName }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('[SearchService] Error recommending ingredients:', error);
+      return { ingredients: [] }; // Fallback to empty list as per specs
     }
   },
 
@@ -144,6 +197,8 @@ export const SearchService = {
       if (memberId) url.searchParams.append('memberId', memberId.toString());
       if (minDiscountPercent) url.searchParams.append('minDiscountPercent', minDiscountPercent.toString());
       
+      console.log('[SearchService] getDeals calling URL:', url.toString());
+
       const response = await fetch(url.toString(), {
         method: 'GET',
         headers: {
@@ -162,6 +217,8 @@ export const SearchService = {
         ...item,
         unitPrice: item.unitPrice || item.originalPrice || 0,
         promotionPrice: item.promotionPrice || item.dealPrice,
+        discountPercent: item.discountPercent,
+        promotionLabel: item.promotionLabel,
       }));
     } catch (error) {
       console.error('[SearchService] Error fetching deals:', error);

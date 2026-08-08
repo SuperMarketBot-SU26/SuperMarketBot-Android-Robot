@@ -42,30 +42,28 @@ export function SystemNotificationToast({ notification, onDismiss }: SystemNotif
   const getStatusIcon = () => {
     switch (type) {
       case 'error':
-        return <AlertCircle size={12} color="#F87171" />;
+        return <AlertCircle size={18} color="#ef4444" />;
       case 'warning':
-        return <AlertCircle size={12} color="#FBBF24" />;
+        return <AlertCircle size={18} color="#f59e0b" />;
       case 'info':
-        return <Info size={12} color="#60A5FA" />;
+        return <Info size={18} color="#3b82f6" />;
       default:
-        return <CheckCircle2 size={12} color="#4ADE80" />;
+        return <CheckCircle2 size={18} color="#22c55e" />;
     }
   };
 
-  const getAccentColor = () => {
+  const getIconBgColor = () => {
     switch (type) {
       case 'error':
-        return '#EF4444';
+        return '#fee2e2';
       case 'warning':
-        return '#F59E0B';
+        return '#fef3c7';
       case 'info':
-        return '#3B82F6';
+        return '#dbeafe';
       default:
-        return '#22C55E';
+        return '#dcfce7'; // light green for success
     }
   };
-
-  const accentColor = getAccentColor();
 
   return (
     <Animated.View
@@ -82,75 +80,60 @@ export function SystemNotificationToast({ notification, onDismiss }: SystemNotif
       pointerEvents="box-none"
     >
       <View
-        backgroundColor="#0F291E"
+        backgroundColor="#f8fafc"
         borderRadius={16}
-        paddingHorizontal="$3"
-        paddingVertical="$2.5"
-        borderWidth={1.5}
-        borderColor={accentColor}
-        style={{ elevation: 10 }}
+        paddingHorizontal="$3.5"
+        paddingVertical="$3"
+        borderWidth={1}
+        borderColor="#e2e8f0"
+        style={{ elevation: 15 }}
         shadowColor="#000"
-        shadowOffset={{ width: 0, height: 6 }}
-        shadowOpacity={0.35}
-        shadowRadius={10}
-        maxWidth={280}
+        shadowOffset={{ width: 0, height: 8 }}
+        shadowOpacity={0.12}
+        shadowRadius={15}
+        maxWidth={320}
+        minWidth={250}
       >
-        <XStack alignItems="center" gap="$2.5">
-          {/* Robot Avatar Badge */}
+        <XStack alignItems="center" gap="$3">
+          {/* Icon Badge */}
           <View
-            width={34}
-            height={34}
-            borderRadius={17}
-            backgroundColor="#1A3E2F"
-            borderWidth={1}
-            borderColor={accentColor}
+            width={38}
+            height={38}
+            borderRadius={10}
+            backgroundColor={getIconBgColor()}
             justifyContent="center"
             alignItems="center"
-            position="relative"
           >
-            <Bot size={18} color={accentColor} />
-            <View
-              position="absolute"
-              bottom={-2}
-              right={-2}
-              backgroundColor="#0F291E"
-              borderRadius={6}
-              padding={1}
-            >
-              {getStatusIcon()}
-            </View>
+            {getStatusIcon()}
           </View>
 
           {/* Text Content */}
           <YStack flex={1} gap="$0.5">
-            <XStack alignItems="center" gap="$1">
-              <View width={5} height={5} borderRadius={2.5} backgroundColor={accentColor} />
-              <Text
-                fontSize={9}
-                fontWeight="900"
-                color={accentColor}
-                letterSpacing={0.6}
-                textTransform="uppercase"
-              >
-                {notification.title || 'THÔNG BÁO HỆ THỐNG'}
-              </Text>
-            </XStack>
-            <Text fontSize={12} fontWeight="600" color="#FFFFFF" numberOfLines={2}>
+            <Text
+              fontSize={11}
+              fontWeight="bold"
+              color="#64748b"
+              letterSpacing={0.5}
+              textTransform="uppercase"
+            >
+              {notification.title || (type === 'success' ? 'THÀNH CÔNG' : 'THÔNG BÁO')}
+            </Text>
+            <Text fontSize={14} fontWeight="600" color="#334155" numberOfLines={2}>
               {notification.message}
             </Text>
           </YStack>
 
           {/* Close button */}
-          <Pressable onPress={onDismiss} hitSlop={8}>
+          <Pressable onPress={onDismiss} hitSlop={12}>
             <View
-              width={22}
-              height={22}
-              borderRadius={11}
-              backgroundColor="#16382A"
+              width={24}
+              height={24}
+              borderRadius={12}
+              backgroundColor="#f1f5f9"
               justifyContent="center"
               alignItems="center"
             >
-              <X size={12} color="#8BA396" />
+              <X size={14} color="#94a3b8" />
             </View>
           </Pressable>
         </XStack>

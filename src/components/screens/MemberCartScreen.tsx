@@ -9,7 +9,6 @@ import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRouter } from 'expo-router';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService, CartDto } from '../../services/CartService';
-import { ProductDetailSheet } from '../ui/ProductDetailSheet';
 import { optimizeShoppingRoute } from '../../services/RouteService';
 
 
@@ -25,8 +24,6 @@ export default function MemberCartScreen() {
   const [cart, setCart] = useState<CartDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewRouteData, setPreviewRouteData] = useState<any>(null);
 
@@ -127,7 +124,7 @@ export default function MemberCartScreen() {
           <YStack gap="$4">
             {cart.items.map((item, index) => (
               <Animated.View key={`cart-item-${item.productId}-${index}`} entering={FadeInUp.delay(index * 50).duration(400)}>
-                <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3" onPress={() => { setSelectedProductId(item.productId); setSheetOpen(true); }} pressStyle={{ scale: 0.98 }}>
+                <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3" onPress={() => router.push(`/product/${item.productId}?isRecipe=false` as any)} pressStyle={{ scale: 0.98 }}>
                   <XStack gap="$3" alignItems="center">
                     <Image 
                       src={item.imageUrl || "https://via.placeholder.com/150"} 
@@ -277,16 +274,7 @@ export default function MemberCartScreen() {
         </View>
       </Modal>
 
-      <ProductDetailSheet
-        productId={selectedProductId}
-        isOpen={sheetOpen}
-        onOpenChange={setSheetOpen}
-        onCartUpdated={() => {
-          if (token) {
-            CartService.getCart(token).then(res => setCart(res));
-          }
-        }}
-      />
+
     </View>
   );
 }

@@ -11,7 +11,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { CartService } from '../../services/CartService';
 import { MemberService, SponsoredRecommendationDto, MemberDealDto } from '../../services/MemberService';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
-import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+
 
 export default function MemberOffersScreen() {
   const insets = useSafeAreaInsets();
@@ -30,9 +30,7 @@ export default function MemberOffersScreen() {
   const [loadingAds, setLoadingAds] = useState(true);
   const [cart, setCart] = useState<any>(null);
 
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-  const [selectedIsRecipe, setSelectedIsRecipe] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+
 
   // Helper để lấy tên và màu hạng thành viên
   const getTierDetails = (level: string | null | undefined) => {
@@ -125,7 +123,7 @@ export default function MemberOffersScreen() {
           setLoadingAds(false);
         }
       }
-      
+
       // Auto sync cart
       const fetchCart = () => {
         if (token) {
@@ -247,54 +245,54 @@ export default function MemberOffersScreen() {
               <Text fontSize={14} color="#666" fontStyle="italic">Đang tải ưu đãi...</Text>
             ) : deals.length > 0 ? (
               deals.map((deal, idx) => (
-                <Pressable key={idx} onPress={() => { setSelectedProductId(deal.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                <Pressable key={idx} onPress={() => router.push(`/product/${deal.productId}?isRecipe=false`)}>
                   <Card width={220} borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2 }}>
                     <View position="relative" height={130} backgroundColor="#f5f5f5">
-                    <Image 
-                      src={deal.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80'} 
-                      width="100%" 
-                      height="100%" 
-                      objectFit="cover" 
-                    />
-                    {deal.discountedPrice && deal.originalPrice > deal.discountedPrice && (
-                      <View position="absolute" top={10} left={10} backgroundColor="#ef4444" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
-                        <Text fontSize={10} color="white" fontWeight="900">-{Math.round((1 - deal.discountedPrice / deal.originalPrice) * 100)}%</Text>
-                      </View>
-                    )}
-                    <View position="absolute" top={10} right={10} backgroundColor="#ffffffb3" padding="$1.5" borderRadius={20}>
-                      <Tag size={12} color={tier.color} />
-                    </View>
-                  </View>
-                  <YStack padding="$3.5" gap="$1.5">
-                    <Text fontSize={14} fontWeight="900" color="#333" numberOfLines={1}>{deal.productName}</Text>
-                    <XStack backgroundColor={tier.bg} paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={6} alignSelf="flex-start">
-                      <Text fontSize={9} color={tier.color} fontWeight="bold">{tier.name.replace('Hạng', 'Thành viên')}</Text>
-                    </XStack>
-                    <Text fontSize={11} color="#666" numberOfLines={2} height={32} lineHeight={16}>
-                      Phù hợp với lịch sử mua sắm của bạn.
-                    </Text>
-                    <XStack justifyContent="space-between" alignItems="center" marginTop="$2">
-                      <YStack>
-                        <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
-                          {deal.originalPrice.toLocaleString('vi-VN')}đ
-                        </Text>
-                        <Text fontSize={15} fontWeight="bold" color="#00A550">
-                          {deal.discountedPrice ? deal.discountedPrice.toLocaleString('vi-VN') : deal.originalPrice.toLocaleString('vi-VN')}đ
-                        </Text>
-                      </YStack>
-                      <Button
-                        circular
-                        size="$2.5"
-                        backgroundColor="#00A550"
-                        icon={<ShoppingCart size={14} color="white" />}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(deal.productName, deal.productId);
-                        }}
-                        pressStyle={{ backgroundColor: '#008740' }}
+                      <Image
+                        src={deal.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80'}
+                        width="100%"
+                        height="100%"
+                        objectFit="cover"
                       />
-                    </XStack>
-                  </YStack>
+                      {!!deal.discountedPrice && deal.originalPrice > deal.discountedPrice && (
+                        <View position="absolute" top={10} left={10} backgroundColor="#ef4444" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
+                          <Text fontSize={10} color="white" fontWeight="900">-{Math.round((1 - deal.discountedPrice / deal.originalPrice) * 100)}%</Text>
+                        </View>
+                      )}
+                      <View position="absolute" top={10} right={10} backgroundColor="#ffffffb3" padding="$1.5" borderRadius={20}>
+                        <Tag size={12} color={tier.color} />
+                      </View>
+                    </View>
+                    <YStack padding="$3.5" gap="$1.5">
+                      <Text fontSize={14} fontWeight="900" color="#333" numberOfLines={1}>{deal.productName}</Text>
+                      <XStack backgroundColor={tier.bg} paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={6} alignSelf="flex-start">
+                        <Text fontSize={9} color={tier.color} fontWeight="bold">{tier.name.replace('Hạng', 'Thành viên')}</Text>
+                      </XStack>
+                      <Text fontSize={11} color="#666" numberOfLines={2} height={32} lineHeight={16}>
+                        {deal.description || "Phù hợp với lịch sử mua sắm của bạn."}
+                      </Text>
+                      <XStack justifyContent="space-between" alignItems="center" marginTop="$2">
+                        <YStack>
+                          <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
+                            {deal.originalPrice.toLocaleString('vi-VN')}đ
+                          </Text>
+                          <Text fontSize={15} fontWeight="bold" color="#00A550">
+                            {deal.discountedPrice ? deal.discountedPrice.toLocaleString('vi-VN') : deal.originalPrice.toLocaleString('vi-VN')}đ
+                          </Text>
+                        </YStack>
+                        <Button
+                          circular
+                          size="$2.5"
+                          backgroundColor="#00A550"
+                          icon={<ShoppingCart size={14} color="white" />}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleAddToCart(deal.productName, deal.productId);
+                          }}
+                          pressStyle={{ backgroundColor: '#008740' }}
+                        />
+                      </XStack>
+                    </YStack>
                   </Card>
                 </Pressable>
               ))
@@ -314,14 +312,14 @@ export default function MemberOffersScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16 }}>
               {personalizedMeals.map((meal, idx) => (
-                <Pressable key={idx} onPress={() => { setSelectedProductId(meal.recipeId); setSelectedIsRecipe(true); setSheetOpen(true); }}>
+                <Pressable key={idx} onPress={() => router.push({ pathname: `/product/${meal.recipeId}`, params: { isRecipe: 'true' } })}>
                   <Card width={220} borderRadius={20} backgroundColor="white" overflow="hidden" borderWidth={1} borderColor="#fed7aa" style={{ elevation: 2 }}>
                     <View position="relative" height={130} backgroundColor="#fff7ed">
-                      <Image 
-                        src={meal.imageUrl || 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&q=80'} 
-                        width="100%" 
-                        height="100%" 
-                        objectFit="cover" 
+                      <Image
+                        src={meal.imageUrl || 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&q=80'}
+                        width="100%"
+                        height="100%"
+                        objectFit="cover"
                       />
                       <View position="absolute" top={10} right={10} backgroundColor="#ffffffd0" padding="$1.5" borderRadius={20}>
                         <Utensils size={12} color="#f97316" />
@@ -343,9 +341,7 @@ export default function MemberOffersScreen() {
                         height={32}
                         onPress={(e) => {
                           e.stopPropagation();
-                          setSelectedProductId(meal.recipeId);
-                          setSelectedIsRecipe(true);
-                          setSheetOpen(true);
+                          router.push(`/product/${meal.recipeId}?isRecipe=true`);
                         }}
                         pressStyle={{ backgroundColor: '#ffedd5' }}
                       >
@@ -359,93 +355,50 @@ export default function MemberOffersScreen() {
           </YStack>
         )}
 
-        {/* PERSONALIZED PRODUCTS */}
-        {personalizedProducts.length > 0 && (
-          <YStack gap="$3" marginBottom="$6">
-            <XStack alignItems="center" gap="$2">
-              <Sparkles size={20} color="#00A550" />
-              <Text fontSize={18} fontWeight="bold" color="#00A550">Sản phẩm dành riêng cho bạn</Text>
-            </XStack>
 
-            <YStack gap="$3">
-              {personalizedProducts.map((p, idx) => (
-                <Pressable key={idx} onPress={() => { setSelectedProductId(p.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
-                  <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
-                    <XStack padding="$3" gap="$3" alignItems="center">
-                      <Image src={p.imageUrl || 'https://via.placeholder.com/200x200.png'} width={70} height={70} borderRadius={12} objectFit="cover" />
-                      <YStack flex={1} gap="$1">
-                        <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{p.productName}</Text>
-                        <Text fontSize={11} color="#666" numberOfLines={1}>Phù hợp lịch sử mua sắm của bạn</Text>
-                        <Text fontSize={14} fontWeight="bold" color="#00A550" marginTop="$1">{p.unitPrice.toLocaleString('vi-VN')}đ</Text>
-                      </YStack>
-                      <Button
-                        backgroundColor="#00A550"
-                        size="$2.5"
-                        borderRadius={15}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(p.productName, p.productId);
-                        }}
-                        pressStyle={{ backgroundColor: '#008740' }}
-                      >
-                        <Text color="white" fontSize={11} fontWeight="bold">Thêm giỏ</Text>
-                      </Button>
-                    </XStack>
-                  </Card>
-                </Pressable>
-              ))}
-            </YStack>
-          </YStack>
-        )}
 
         {/* GENERAL ADS / RECOMMENDATIONS */}
         <YStack gap="$3">
-          <XStack justifyContent="space-between" alignItems="center">
-            <XStack alignItems="center" gap="$2">
-              <Zap size={20} color="#b45309" />
-              <Text fontSize={18} fontWeight="bold" color="#b45309">Gợi ý cho bạn (Tài trợ)</Text>
-            </XStack>
-          </XStack>
 
           <YStack gap="$4">
             {loadingAds ? (
               <Text fontSize={14} color="#666" fontStyle="italic">Đang tải gợi ý...</Text>
             ) : generalAds.length > 0 ? (
               generalAds.map((ad, idx) => (
-                <Pressable key={idx} onPress={() => { setSelectedProductId(ad.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                <Pressable key={idx} onPress={() => router.push(`/product/${ad.productId}?isRecipe=false`)}>
                   <Card flex={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 1 }}>
                     <XStack padding="$3" gap="$3" alignItems="center">
-                    <Image src={ad.imageUrl || 'https://via.placeholder.com/200x200.png'} width={80} height={80} borderRadius={12} objectFit="cover" />
-                    <YStack flex={1} gap="$1">
-                      <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{ad.productName}</Text>
-                      <Text fontSize={11} color="#666" numberOfLines={1}>Tài trợ bởi: {ad.brandName}</Text>
-                      <XStack alignItems="center" gap="$2" marginTop="$1">
-                        <Text fontSize={14} fontWeight="bold" color="#b45309">{(ad.promotionPrice || ad.unitPrice).toLocaleString('vi-VN')}đ</Text>
-                        {ad.promotionPrice && (
-                           <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
-                             {ad.unitPrice.toLocaleString('vi-VN')}đ
-                           </Text>
-                        )}
-                      </XStack>
-                    </YStack>
-                    <Button
-                      backgroundColor="#78350f"
-                      size="$2.5"
-                      borderRadius={15}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleAddToCart(ad.productName, ad.productId);
-                      }}
-                      pressStyle={{ backgroundColor: '#5c280b' }}
-                    >
-                      <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
-                    </Button>
-                  </XStack>
+                      <Image src={ad.imageUrl || 'https://via.placeholder.com/200x200.png'} width={80} height={80} borderRadius={12} objectFit="cover" />
+                      <YStack flex={1} gap="$1">
+                        <Text fontSize={13} fontWeight="bold" color="#333" numberOfLines={1}>{ad.productName}</Text>
+                        <Text fontSize={11} color="#666" numberOfLines={1}>Tài trợ bởi: {ad.brandName}</Text>
+                        <XStack alignItems="center" gap="$2" marginTop="$1">
+                          <Text fontSize={14} fontWeight="bold" color="#b45309">{(ad.promotionPrice || ad.unitPrice).toLocaleString('vi-VN')}đ</Text>
+                          {!!ad.promotionPrice && (
+                            <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
+                              {ad.unitPrice.toLocaleString('vi-VN')}đ
+                            </Text>
+                          )}
+                        </XStack>
+                      </YStack>
+                      <Button
+                        backgroundColor="#78350f"
+                        size="$2.5"
+                        borderRadius={15}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleAddToCart(ad.productName, ad.productId);
+                        }}
+                        pressStyle={{ backgroundColor: '#5c280b' }}
+                      >
+                        <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
+                      </Button>
+                    </XStack>
                   </Card>
                 </Pressable>
               ))
             ) : (
-              <Text fontSize={13} color="#888" fontStyle="italic">Hiện chưa có sản phẩm tài trợ mới nào.</Text>
+              null
             )}
           </YStack>
         </YStack>
@@ -489,12 +442,7 @@ export default function MemberOffersScreen() {
         </View>
       )}
 
-      <ProductDetailSheet 
-        productId={selectedProductId}
-        isOpen={sheetOpen}
-        onOpenChange={setSheetOpen}
-        isRecipe={selectedIsRecipe}
-      />
+
     </View>
   );
 }

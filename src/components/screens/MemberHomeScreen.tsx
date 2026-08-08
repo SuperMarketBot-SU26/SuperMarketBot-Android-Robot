@@ -13,7 +13,7 @@ import { CartService, CartDto } from '../../services/CartService';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { ShoppingCart } from 'lucide-react-native';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
-import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+
 import { useGeofencing } from '../../context/GeofencingContext';
 import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 
@@ -28,9 +28,7 @@ export default function MemberHomeScreen() {
   const [cart, setCart] = useState<CartDto | null>(null);
   const [systemDeals, setSystemDeals] = useState<MobileProductSearchResultDto[]>([]);
 
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-  const [selectedIsRecipe, setSelectedIsRecipe] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+
 
   useFocusEffect(
     useCallback(() => {
@@ -322,7 +320,7 @@ export default function MemberHomeScreen() {
         {/* SMART SUGGESTIONS SECTION */}
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
           <Text fontSize={18} fontWeight="bold" color="$textPrimary">Gợi ý thông minh cho bạn</Text>
-          <Pressable onPress={() => router.push('/member-offers' as any)}>
+          <Pressable onPress={() => router.push('/personalized-products' as any)}>
             <Text fontSize={14} fontWeight="bold" color="#00A550">Xem tất cả</Text>
           </Pressable>
         </XStack>
@@ -353,7 +351,7 @@ export default function MemberHomeScreen() {
         <YStack gap="$4">
           {/* Personalized Products */}
           {personalizedProducts.slice(0, 2).map((p, index) => (
-            <Pressable key={`personal-${index}`} onPress={() => { setSelectedProductId(p.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+            <Pressable key={`personal-${index}`} onPress={() => router.push(`/product/${p.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
                   <Image src={p.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
@@ -377,9 +375,7 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        setSelectedProductId(p.productId);
-                        setSelectedIsRecipe(false);
-                        setSheetOpen(true);
+                        router.push(`/product/${p.productId}?isRecipe=false`);
                       }}
                     >
                       {p.unitPrice.toLocaleString('vi-VN')}đ
@@ -392,7 +388,7 @@ export default function MemberHomeScreen() {
 
           {/* Personalized Meals */}
           {personalizedMeals.slice(0, 2).map((meal, index) => (
-            <Pressable key={`meal-${index}`} onPress={() => { setSelectedProductId(meal.recipeId); setSelectedIsRecipe(true); setSheetOpen(true); }}>
+            <Pressable key={`meal-${index}`} onPress={() => router.push(`/product/${meal.recipeId}?isRecipe=true`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
                   <Image src={meal.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
@@ -420,9 +416,7 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        setSelectedProductId(meal.recipeId);
-                        setSelectedIsRecipe(true);
-                        setSheetOpen(true);
+                        router.push(`/product/${meal.recipeId}?isRecipe=true`);
                       }}
                     >
                       Xem công thức
@@ -435,7 +429,7 @@ export default function MemberHomeScreen() {
 
           {/* Member Deals */}
           {deals.slice(0, 2).map((deal, index) => (
-            <Pressable key={`deal-${index}`} onPress={() => { setSelectedProductId(deal.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+            <Pressable key={`deal-${index}`} onPress={() => router.push(`/product/${deal.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
                   <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
@@ -460,9 +454,7 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        setSelectedProductId(deal.productId);
-                        setSelectedIsRecipe(false);
-                        setSheetOpen(true);
+                        router.push(`/product/${deal.productId}?isRecipe=false`);
                       }}
                     >
                       Chỉ {deal.discountedPrice.toLocaleString()}đ
@@ -475,7 +467,7 @@ export default function MemberHomeScreen() {
 
           {/* Sponsored Recommendations */}
           {sponsoredRecs.slice(0, 2).map((rec, index) => (
-            <Pressable key={`rec-${index}`} onPress={() => { setSelectedProductId(rec.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+            <Pressable key={`rec-${index}`} onPress={() => router.push(`/product/${rec.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
                   <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
@@ -499,9 +491,7 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        setSelectedProductId(rec.productId);
-                        setSelectedIsRecipe(false);
-                        setSheetOpen(true);
+                        router.push(`/product/${rec.productId}?isRecipe=false`);
                       }}
                     >
                       {rec.promotionPrice ? `Chỉ ${rec.promotionPrice.toLocaleString()}đ` : `Giá ${rec.unitPrice.toLocaleString()}đ`}
@@ -519,7 +509,7 @@ export default function MemberHomeScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <XStack gap="$4">
                   {systemDeals.map((product) => (
-                    <Pressable key={product.productId} onPress={() => { setSelectedProductId(product.productId); setSelectedIsRecipe(false); setSheetOpen(true); }}>
+                    <Pressable key={product.productId} onPress={() => router.push(`/product/${product.productId}?isRecipe=false`)}>
                       <Card width={180} borderRadius={16} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={10} shadowOpacity={0.05} style={{ elevation: 2 }}>
                         <View position="relative" height={120} backgroundColor="#f5f5f5">
                           <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
@@ -587,12 +577,7 @@ export default function MemberHomeScreen() {
 
       </ScrollView>
 
-      <ProductDetailSheet
-        productId={selectedProductId}
-        isOpen={sheetOpen}
-        onOpenChange={setSheetOpen}
-        isRecipe={selectedIsRecipe}
-      />
+
     </View>
   );
 }

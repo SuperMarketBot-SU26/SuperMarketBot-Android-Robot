@@ -150,11 +150,7 @@ export default function VoiceSearchScreen() {
       isMounted.current = false;
       stop();
       try {
-        Voice.onSpeechStart = () => {};
-        Voice.onSpeechEnd = () => {};
-        Voice.onSpeechResults = () => {};
-        Voice.onSpeechPartialResults = () => {};
-        Voice.onSpeechError = () => {};
+        Voice.destroy().then(Voice.removeAllListeners);
       } catch (err) { }
     };
   }, []);
@@ -189,8 +185,8 @@ export default function VoiceSearchScreen() {
     setTranscript('Đang lắng nghe...');
     setAiResponse('');
 
-    // Phát âm thanh robot chào qua FPT.AI
-    speak('Quý khách muốn tìm sản phẩm nào? Tôi đang lắng nghe.');
+    // Dừng ngay tiếng nói của robot (nếu có) để tránh Micro thu lại tiếng hệ thống
+    stop();
 
     // 1. Kích hoạt hiệu ứng Ripple (Sóng tròn lan tỏa) của Mic
     pulseScale1.value = withRepeat(

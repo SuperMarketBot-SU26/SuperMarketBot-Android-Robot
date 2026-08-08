@@ -3,6 +3,7 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 export interface MemberDealDto {
   productId: number;
   productName: string;
+  description?: string;
   originalPrice: number;
   discountedPrice: number;
   discountPct: number;
@@ -25,6 +26,7 @@ export interface SponsoredRecommendationDto {
   brandName: string;
   productId: number;
   productName: string;
+  description?: string;
   unitPrice: number;
   promotionPrice?: number;
   imageUrl?: string;

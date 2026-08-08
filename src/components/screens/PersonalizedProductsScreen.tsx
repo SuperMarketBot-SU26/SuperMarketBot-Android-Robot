@@ -9,7 +9,7 @@ import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { CartService } from '../../services/CartService';
 import { MemberService } from '../../services/MemberService';
-import { ProductDetailSheet } from '../ui/ProductDetailSheet';
+
 
 export default function PersonalizedProductsScreen() {
   const insets = useSafeAreaInsets();
@@ -21,8 +21,7 @@ export default function PersonalizedProductsScreen() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<any>(null);
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+
 
   // Helper cho hạng thành viên
   const getTierDetails = (level: string | null | undefined) => {
@@ -199,10 +198,7 @@ export default function PersonalizedProductsScreen() {
                 overflow="hidden"
                 style={{ elevation: 2 }}
                 pressStyle={{ scale: 0.98 }}
-                onPress={() => {
-                  setSelectedProductId(p.productId);
-                  setSheetOpen(true);
-                }}
+                onPress={() => router.push(`/product/${p.productId}`)}
               >
                 <XStack padding="$3.5" gap="$3" alignItems="center">
                   {/* Product Image */}
@@ -216,7 +212,7 @@ export default function PersonalizedProductsScreen() {
                     borderColor="#f1f5f9"
                   >
                     <Image
-                      src={p.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80'}
+                      src={(typeof p.imageUrl === 'string' && p.imageUrl.startsWith('http')) ? p.imageUrl : require('../../../assets/images/logocute.png')}
                       width="100%"
                       height="100%"
                       objectFit="cover"
@@ -236,15 +232,15 @@ export default function PersonalizedProductsScreen() {
                       {p.productName}
                     </Text>
 
-                    <Text fontSize={11} color="#64748b" numberOfLines={1}>
-                      Phù hợp lịch sử mua sắm của bạn
+                    <Text fontSize={11} color="#64748b" numberOfLines={2}>
+                      {p.description || "Phù hợp lịch sử mua sắm của bạn"}
                     </Text>
 
                     <XStack alignItems="center" gap="$2" marginTop="$0.5">
                       <Text fontSize={15} fontWeight="bold" color="#00A550">
                         {(p.promotionPrice || p.unitPrice).toLocaleString('vi-VN')}đ
                       </Text>
-                      {p.promotionPrice && (
+                      {!!p.promotionPrice && (
                         <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
                           {p.unitPrice.toLocaleString('vi-VN')}đ
                         </Text>
@@ -324,12 +320,7 @@ export default function PersonalizedProductsScreen() {
         </View>
       )}
 
-      <ProductDetailSheet
-        productId={selectedProductId}
-        isOpen={sheetOpen}
-        onOpenChange={setSheetOpen}
-        isRecipe={false}
-      />
+
     </View>
   );
 }
