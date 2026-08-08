@@ -4,25 +4,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>SmartMarketBot - Master Blueprint 3D Map</title>
-
-  <!-- Google Fonts -->
+  <title>SmartMarketBot - 2D Store Map</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
     rel="stylesheet">
-
-  <!-- Three.js & Plugins -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
 
   <style>
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      user-select: none;
       font-family: 'Plus Jakarta Sans', sans-serif;
     }
 
@@ -30,938 +22,671 @@
       width: 100vw;
       height: 100vh;
       overflow: hidden;
-      background-color: #0B0F17;
-      color: #F8FAFC;
-    }
-
-    #webgl-container {
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 1;
-    }
-
-    .ui-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 10;
-      pointer-events: none;
+      background: #F1F5F9;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      padding: 16px;
+      align-items: center;
+      justify-content: center;
     }
 
-    .ui-card {
-      pointer-events: auto;
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 20px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-    }
-
-    /* Header Bar */
+    /* Header */
     .header {
-      padding: 12px 18px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 52px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #E2E8F0;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      max-width: 580px;
+      padding: 0 20px;
+      z-index: 20;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
 
     .header-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
 
-    .brand-logo {
-      width: 42px;
-      height: 42px;
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      border-radius: 14px;
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #6366F1, #8B5CF6);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
-      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+      font-size: 18px;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
     }
 
-    .header-text h1 {
-      font-size: 15px;
+    .header-title {
+      font-size: 14px;
       font-weight: 800;
+      color: #1E293B;
       letter-spacing: -0.3px;
-      color: #F8FAFC;
     }
 
-    .header-text p {
-      font-size: 11px;
+    .header-sub {
+      font-size: 10px;
       color: #94A3B8;
       font-weight: 500;
     }
 
-    .status-badge {
+    .status-pill {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 6px 12px;
+      padding: 5px 12px;
       border-radius: 20px;
-      transition: all 0.3s ease;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      transition: all 0.3s;
     }
 
-    .status-badge.online {
-      background: rgba(16, 185, 129, 0.15);
+    .status-pill.online {
+      background: rgba(16, 185, 129, 0.1);
       border: 1px solid rgba(16, 185, 129, 0.3);
-      color: #34D399;
+      color: #059669;
     }
 
-    .status-badge.offline {
-      background: rgba(245, 158, 11, 0.15);
+    .status-pill.offline {
+      background: rgba(245, 158, 11, 0.1);
       border: 1px solid rgba(245, 158, 11, 0.3);
-      color: #FBBF24;
+      color: #D97706;
     }
 
     .status-dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: currentColor;
-      box-shadow: 0 0 8px currentColor;
+      animation: pulse-dot 2s infinite;
     }
 
-    /* Control Panel */
-    .control-panel {
-      width: 100%;
-      max-width: 460px;
-      padding: 18px;
-      align-self: flex-end;
+    @keyframes pulse-dot {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
     }
 
-    .panel-section-title {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: #38BDF8;
-      margin-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .product-select-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-
-    .product-chip {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      background: rgba(30, 41, 59, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 600;
-      color: #CBD5E1;
-      transition: all 0.2s ease;
-    }
-
-    .product-chip.active {
-      background: rgba(14, 165, 233, 0.2);
-      border-color: #38BDF8;
-      color: #F0F9FF;
-    }
-
-    .product-chip input {
-      accent-color: #0EA5E9;
-    }
-
-    .button-group {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .btn {
-      flex: 1;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Canvas container */
+    #map-wrapper {
+      position: absolute;
+      top: 52px;
+      left: 0;
+      right: 0;
+      bottom: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      background: #F1F5F9;
     }
 
-    .btn-api {
-      background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
-      color: #FFFFFF;
-      box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+    #map-canvas {
+      display: block;
+      cursor: default;
     }
 
-    .btn-api:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
-    }
-
-    .btn-run {
-      background: linear-gradient(135deg, #059669 0%, #10B981 100%);
-      color: #FFFFFF;
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
-    }
-
-    .btn-run:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
-    }
-
-    .route-info-box {
-      background: rgba(15, 23, 42, 0.6);
-      border-radius: 12px;
-      padding: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .route-metrics {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      margin-bottom: 10px;
-    }
-
-    .metric-item p {
-      font-size: 9px;
-      color: #94A3B8;
-      font-weight: 700;
-    }
-
-    .metric-item h4 {
-      font-size: 13px;
-      font-weight: 800;
-      color: #38BDF8;
-    }
-
-    .waypoint-list {
-      max-height: 120px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .waypoint-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      background: rgba(30, 41, 59, 0.5);
-      border-radius: 8px;
-      font-size: 11px;
-    }
-
-    .waypoint-badge {
-      width: 20px;
-      height: 20px;
-      border-radius: 6px;
-      background: #0284C7;
-      color: white;
-      font-weight: 800;
-      font-size: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .waypoint-badge.start {
-      background: #10B981;
-    }
-
-    .waypoint-badge.checkout {
-      background: #8B5CF6;
-    }
-
-    .waypoint-details {
-      flex: 1;
-    }
-
-    .waypoint-name {
-      font-weight: 700;
-      color: #F1F5F9;
-    }
-
-    .waypoint-slot {
-      font-size: 9px;
-      color: #94A3B8;
-    }
-
-    .legend-overlay {
+    /* Legend */
+    .legend {
       position: absolute;
       bottom: 16px;
       left: 16px;
-      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 12px 16px;
       display: flex;
-      gap: 12px;
-      pointer-events: auto;
+      flex-direction: column;
+      gap: 7px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      z-index: 20;
+    }
+
+    .legend-title {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748B;
+      margin-bottom: 2px;
     }
 
     .legend-item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       font-size: 10px;
       font-weight: 600;
-      color: #CBD5E1;
+      color: #334155;
     }
 
-    .legend-box {
-      width: 10px;
-      height: 10px;
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
       border-radius: 3px;
+      flex-shrink: 0;
     }
 
-    .touch-tip {
+    /* Robot info chip */
+    .robot-chip {
       position: absolute;
-      top: 16px;
+      bottom: 16px;
       right: 16px;
-      padding: 6px 12px;
-      font-size: 10px;
-      color: #94A3B8;
-      background: rgba(15, 23, 42, 0.6);
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      pointer-events: none;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      z-index: 20;
+      min-width: 160px;
+    }
+
+    .robot-chip-title {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748B;
+      margin-bottom: 6px;
+    }
+
+    .robot-pos {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1E293B;
+    }
+
+    .robot-pos span {
+      color: #6366F1;
     }
   </style>
 </head>
 
 <body>
 
-  <div id="webgl-container"></div>
-
-  <div class="ui-overlay">
-
-    <!-- Header -->
-    <div class="ui-card header">
-      <div class="header-left">
-        <div class="brand-logo">🤖</div>
-        <div class="header-text">
-          <h1>SmartMarketBot 3D Map</h1>
-          <p>Đồ thị Node chuẩn 100% theo bản vẽ tay • Né kệ hàng tuyệt đối</p>
-        </div>
-      </div>
-      <div class="status-badge online" id="api-status">
-        <div class="status-dot"></div>
-        <span id="api-status-text">BE Connected</span>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="brand-icon">🗺️</div>
+      <div>
+        <div class="header-title">SmartMarketBot — Sơ đồ 2D</div>
+        <div class="header-sub">Bản đồ cửa hàng top-down • Thời gian thực</div>
       </div>
     </div>
-
-    <div class="touch-tip">
-      👆 1 ngón xoay • ✌️ 2 ngón zoom
+    <div class="status-pill online" id="api-status">
+      <div class="status-dot"></div>
+      <span id="api-status-text">Đang kết nối...</span>
     </div>
+  </div>
 
-    <!-- Legend -->
-    <div class="ui-card legend-overlay">
-      <div class="legend-item">
-        <div class="legend-box" style="background: #059669;"></div>KV1 Kệ Lá Trái
-      </div>
-      <div class="legend-item">
-        <div class="legend-box" style="background: #2563EB;"></div>KV2 Kệ Dương Phải
-      </div>
-      <div class="legend-item">
-        <div class="legend-box" style="background: #D97706;"></div>KV3 Kệ Vàng Trái
-      </div>
-      <div class="legend-item">
-        <div class="legend-box" style="background: #8B5CF6;"></div>Checkout Trái
-      </div>
+  <!-- Map Canvas -->
+  <div id="map-wrapper">
+    <canvas id="map-canvas"></canvas>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-title">Chú thích</div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#FEF3C7;border:1.5px solid #F59E0B"></div> KV3 — Kệ Vàng (Trái trên)
     </div>
-
-    <!-- Control Panel -->
-    <div class="ui-card control-panel">
-      <div class="panel-section-title">
-        <span>Chọn Sản Phẩm Cần Lập Lộ Trình</span>
-        <span style="font-size: 9px; color: #94A3B8; font-weight: 500;">POST /optimize-shopping-route</span>
-      </div>
-
-      <div class="product-select-grid">
-        <label class="product-chip active">
-          <input type="checkbox" value="7" checked onchange="toggleProduct(this)">
-          <span>🍲 Phở Vifon (Kệ Vàng Trái)</span>
-        </label>
-        <label class="product-chip active">
-          <input type="checkbox" value="50" checked onchange="toggleProduct(this)">
-          <span>🥖 Meizan (Kệ Vàng Giữa)</span>
-        </label>
-        <label class="product-chip active">
-          <input type="checkbox" value="19" checked onchange="toggleProduct(this)">
-          <span>🥛 TH Milk (Kệ Lá Dưới)</span>
-        </label>
-        <label class="product-chip active">
-          <input type="checkbox" value="4" checked onchange="toggleProduct(this)">
-          <span>🍜 Hảo Hảo (Kệ Lá Trên)</span>
-        </label>
-        <label class="product-chip active">
-          <input type="checkbox" value="20" checked onchange="toggleProduct(this)">
-          <span>🥤 Pepsi Can (Kệ Dương)</span>
-        </label>
-      </div>
-
-      <div class="button-group">
-        <button class="btn btn-api" onclick="callOptimizeRouteAPI()">
-          ⚡ Gọi API BE Lập Route
-        </button>
-        <button class="btn btn-run" onclick="animateRobotAlongPath()">
-          ▶ Run Robot 3D
-        </button>
-      </div>
-
-      <div class="route-info-box">
-        <div class="route-metrics">
-          <div class="metric-item">
-            <p>QUÃNG ĐƯỜNG</p>
-            <h4 id="metric-distance">0.00 m</h4>
-          </div>
-          <div class="metric-item">
-            <p>TỔNG BƯỚC VẼ TAY</p>
-            <h4 id="metric-stops">0 bước</h4>
-          </div>
-          <div class="metric-item">
-            <p>ĐIỂM ĐẾN CUỐI</p>
-            <h4 style="color: #A78BFA;">Checkout (0.4,0.3)</h4>
-          </div>
-        </div>
-
-        <div class="waypoint-list" id="waypoint-list-container">
-          <div style="text-align: center; color: #64748B; padding: 10px; font-size: 10px;">
-            Bấm "Gọi API BE Lập Route" để lấy đường dẫn thực tế từ C# Backend
-          </div>
-        </div>
-      </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#DBEAFE;border:1.5px solid #3B82F6"></div> KV2 — Kệ Xanh (Phải trên)
     </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#FFEDD5;border:1.5px solid #F97316"></div> KV1 — Kệ Cam (Giữa)
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#EDE9FE;border:1.5px solid #8B5CF6"></div> KV4 — Kệ Tím (Trái dưới)
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#D1FAE5;border:1.5px solid #10B981;border-radius:50%"></div> Cửa
+      ra/vào
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#6366F1;border:1.5px solid #4F46E5;border-radius:50%"></div> Robot
+    </div>
+  </div>
 
+  <!-- Robot position chip -->
+  <div class="robot-chip">
+    <div class="robot-chip-title">Vị trí Robot</div>
+    <div class="robot-pos">X: <span id="robot-x">—</span> &nbsp; Y: <span id="robot-y">—</span></div>
   </div>
 
   <script>
-    // ───────────── 1. THREE.JS SCENE SETUP ─────────────
-    const container = document.getElementById('webgl-container');
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0B0F17);
-    scene.fog = new THREE.FogExp2(0x0B0F17, 0.12);
+    // ─────────────────────────────────────────────────────────────────
+    // STORE CONFIGURATION (all in "store meters")
+    // Map: 9m x 9m. (0,0) = top-left of store. X right, Y down.
+    // ─────────────────────────────────────────────────────────────────
+    const STORE_W = 9.0;
+    const STORE_H = 9.0;
+    const WALL_T = 0.14; // wall thickness in meters
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 50);
-    camera.position.set(1.5, 4.8, 4.5);
+    // Shelves: separate H+V near corners (corner empty), KV1 center, KV4 vertical
+    const SHELVES = [
+      // KV3 Amber — TOP-LEFT area (corner is EMPTY, shelves offset ~0.5m from walls)
+      { id: 'kv3-h', label: 'KV3', x: 1.2, y: 0.5, w: 2, h: 0.65, fill: '#FEF3C7', stroke: '#F59E0B', lc: '#92400E' },
+      { id: 'kv3-v', label: 'KV3', x: 0.5, y: 1.4, w: 0.65, h: 1.7, fill: '#FEF3C7', stroke: '#F59E0B', lc: '#92400E' },
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
-    container.appendChild(renderer.domElement);
+      // KV2 Blue — TOP-RIGHT area (corner is EMPTY, shelves offset ~0.5m from walls)
+      { id: 'kv2-h', label: 'KV2', x: 5.7, y: 0.5, w: 2, h: 0.65, fill: '#DBEAFE', stroke: '#3B82F6', lc: '#1E3A8A' },
+      { id: 'kv2-v', label: 'KV2', x: 7.85, y: 1.4, w: 0.65, h: 1.7, fill: '#DBEAFE', stroke: '#3B82F6', lc: '#1E3A8A' },
 
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.target.set(1.5, 0.3, 1.5);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2.05;
-    controls.minDistance = 0.8;
-    controls.maxDistance = 12.0;
-    controls.update();
+      // KV1 Orange — DEAD CENTER
+      { id: 'kv1-c', label: 'KV1', x: 3.5, y: 4.15, w: 2.0, h: 0.7, fill: '#FFEDD5', stroke: '#F97316', lc: '#9A3412' },
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
+      // KV4 Purple — BOTTOM-LEFT (vertical, ~1.2m gap)
+      { id: 'kv4-a', label: 'KV4', x: 0.5, y: 6.8, w: 0.7, h: 1.6, fill: '#EDE9FE', stroke: '#8B5CF6', lc: '#4C1D95' },
+      { id: 'kv4-b', label: 'KV4', x: 2.4, y: 6.8, w: 0.7, h: 1.6, fill: '#EDE9FE', stroke: '#8B5CF6', lc: '#4C1D95' },
+    ];
 
-    const mainLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    mainLight.position.set(4, 7, 2);
-    mainLight.castShadow = true;
-    mainLight.shadow.mapSize.width = 2048;
-    mainLight.shadow.mapSize.height = 2048;
-    mainLight.shadow.bias = -0.0005;
-    scene.add(mainLight);
+    // Door: bottom-right of south wall
+    const DOOR = { x: 6.5, w: 1.5, wall: 'south' };
 
-    function addCeilingLight(x, z, color = 0x38BDF8) {
-      const pLight = new THREE.PointLight(color, 1.2, 3.5);
-      pLight.position.set(x, 1.8, z);
-      scene.add(pLight);
-    }
-    addCeilingLight(0.8, 2.2, 0x34D399); // Green Shelves Light (Top-Left)
-    addCeilingLight(2.2, 2.2, 0x60A5FA); // Blue Shelves Light (Top-Right)
-    addCeilingLight(2.1, 1.0, 0xFBBF24); // Yellow Shelves Light (Bottom-Right)
+    // Robot initial position (starts at door)
+    let robot = { x: DOOR.x + DOOR.w / 2, y: STORE_H - 0.4 };
 
-    function createTileTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 512;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#1E293B';
-      ctx.fillRect(0, 0, 512, 512);
-      ctx.strokeStyle = '#0F172A';
-      ctx.lineWidth = 6;
-      ctx.strokeRect(0, 0, 512, 512);
-      ctx.strokeRect(256, 0, 256, 512);
-      ctx.strokeRect(0, 256, 512, 256);
+    // ─────────────────────────────────────────────────────────────────
+    // CANVAS + SCALE
+    // ─────────────────────────────────────────────────────────────────
+    const canvas = document.getElementById('map-canvas');
+    const ctx = canvas.getContext('2d');
+    let ppm = 70;  // pixels per meter
+    const PAD = 36; // canvas padding in px
 
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.wrapS = THREE.RepeatWrapping;
-      texture.wrapT = THREE.RepeatWrapping;
-      texture.repeat.set(6, 6);
-      return texture;
+    function resizeCanvas() {
+      const wrap = document.getElementById('map-wrapper');
+      const avW = wrap.clientWidth - PAD * 2;
+      const avH = wrap.clientHeight - PAD * 2;
+      ppm = Math.min(avW / STORE_W, avH / STORE_H, 88);
+      canvas.width = Math.round(STORE_W * ppm + PAD * 2);
+      canvas.height = Math.round(STORE_H * ppm + PAD * 2);
     }
 
-    // ───────────── 2. 3D SUPERMARKET MODEL (MATCHING MASTER BLUEPRINT 1:1) ─────────────
-    const mapWidth = 3.0;
-    const mapHeight = 3.0;
-    const wallHeight = 0.7;
-    const wallThickness = 0.08;
+    function px(mx) { return PAD + mx * ppm; }
+    function py(my) { return PAD + my * ppm; }
+    function pm(m) { return m * ppm; }
 
-    // Floor
-    const floorGeo = new THREE.PlaneGeometry(mapWidth, mapHeight);
-    const floorMat = new THREE.MeshStandardMaterial({
-      map: createTileTexture(),
-      roughness: 0.25,
-      metalness: 0.15
-    });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(mapWidth / 2, 0, mapHeight / 2);
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.2 });
-
-    function createWall(name, x, y, z, w, h, d) {
-      const geo = new THREE.BoxGeometry(w, h, d);
-      const mesh = new THREE.Mesh(geo, wallMat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = name;
-      scene.add(mesh);
+    // ─────────────────────────────────────────────────────────────────
+    // DRAW HELPERS
+    // ─────────────────────────────────────────────────────────────────
+    function rrect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
     }
 
-    // Outer Boundary Walls
-    createWall("Wall_Left", 0, wallHeight / 2, mapHeight / 2, wallThickness, wallHeight, mapHeight);
-    createWall("Wall_Right", mapWidth, wallHeight / 2, mapHeight / 2, wallThickness, wallHeight, mapHeight);
-    createWall("Wall_Top", mapWidth / 2, wallHeight / 2, mapHeight, mapWidth, wallHeight, wallThickness);
+    // ─────────────────────────────────────────────────────────────────
+    // DRAW SECTIONS
+    // ─────────────────────────────────────────────────────────────────
+    function drawFloor() {
+      // Drop shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.10)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(px(0), py(0), pm(STORE_W), pm(STORE_H));
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
 
-    // 1 DOOR ON THE RIGHT SIDE OF BOTTOM WALL (Door gap: X=1.6 to X=2.2, Width=0.6m)
-    createWall("Wall_Bottom_FarLeft", 0.8, wallHeight / 2, 0, 1.6, wallHeight, wallThickness);
-    createWall("Wall_Bottom_SolidRight", 2.6, wallHeight / 2, 0, 0.8, wallHeight, wallThickness);
+    function drawGrid() {
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 0.6;
+      ctx.setLineDash([3, 4]);
+      for (let x = 0; x <= STORE_W; x++) {
+        ctx.beginPath();
+        ctx.moveTo(px(x), py(0));
+        ctx.lineTo(px(x), py(STORE_H));
+        ctx.stroke();
+      }
+      for (let y = 0; y <= STORE_H; y++) {
+        ctx.beginPath();
+        ctx.moveTo(px(0), py(y));
+        ctx.lineTo(px(STORE_W), py(y));
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
 
-    // Green Entrance Mat at Door (X=1.9, Z=0.1)
-    const doorMatGeo = new THREE.PlaneGeometry(0.6, 0.2);
-    const doorMatMesh = new THREE.Mesh(doorMatGeo, new THREE.MeshBasicMaterial({ color: 0x10B981, side: THREE.DoubleSide }));
-    doorMatMesh.rotation.x = -Math.PI / 2;
-    doorMatMesh.position.set(1.9, 0.01, 0.1);
-    scene.add(doorMatMesh);
+    function drawAxisLabels() {
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = `${Math.max(8, pm(0.13))}px Plus Jakarta Sans, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      for (let x = 0; x <= STORE_W; x++) {
+        ctx.fillText(x + 'm', px(x), py(0) - 3);
+      }
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let y = 0; y <= STORE_H; y++) {
+        ctx.fillText(y + 'm', px(0) - 4, py(y));
+      }
+    }
 
-    // ───────────── MULTI-TIER SHELVES (MATCHING MASTER BLUEPRINT 1:1) ─────────────
-    function createRealisticShelf(x, z, w, d, isVertical, colorHex) {
-      const shelfGroup = new THREE.Group();
-      shelfGroup.position.set(x, 0, z);
+    function drawWalls() {
+      ctx.fillStyle = '#334155';
+      const tpx = pm(WALL_T);
 
-      const frameMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.7, roughness: 0.3 });
-      const boardMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.2, roughness: 0.4 });
-      const itemMat1 = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.5 });
-      const itemMat2 = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
+      // North wall
+      ctx.fillRect(px(0), py(0), pm(STORE_W), tpx);
+      // West wall
+      ctx.fillRect(px(0), py(0), tpx, pm(STORE_H));
+      // East wall
+      ctx.fillRect(px(STORE_W) - tpx, py(0), tpx, pm(STORE_H));
 
-      const levels = 3;
-      const height = 0.8;
-      const legRadius = 0.015;
-      const halfW = w / 2;
-      const halfD = d / 2;
+      // South wall — left of door
+      ctx.fillRect(px(0), py(STORE_H) - tpx, px(DOOR.x) - px(0), tpx);
+      // South wall — right of door
+      const doorEnd = DOOR.x + DOOR.w;
+      ctx.fillRect(px(doorEnd), py(STORE_H) - tpx, px(STORE_W) - px(doorEnd), tpx);
+    }
 
-      // 4 Metal Legs
-      const legGeo = new THREE.CylinderGeometry(legRadius, legRadius, height, 8);
-      [[-halfW, halfD], [halfW, halfD], [-halfW, -halfD], [halfW, -halfD]].forEach(([lx, lz]) => {
-        const leg = new THREE.Mesh(legGeo, frameMat);
-        leg.position.set(lx, height / 2, lz);
-        leg.castShadow = true;
-        shelfGroup.add(leg);
-      });
+    function drawDoor() {
+      const dx = px(DOOR.x);
+      const dy = py(STORE_H) - pm(WALL_T);
+      const dw = pm(DOOR.w);
+      const dh = pm(WALL_T);
+      const cx = dx + dw / 2;
 
-      // Shelf Trays & Products
-      for (let i = 1; i <= levels; i++) {
-        const trayY = (height / levels) * i - 0.05;
-        const tray = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), boardMat);
-        tray.position.set(0, trayY, 0);
-        tray.castShadow = true;
-        tray.receiveShadow = true;
-        shelfGroup.add(tray);
+      // Green mat fill
+      ctx.fillStyle = '#D1FAE5';
+      ctx.fillRect(dx, dy, dw, dh);
 
-        const numItems = 4;
-        for (let j = 0; j < numItems; j++) {
-          const itemGeo = new THREE.BoxGeometry(w * 0.35, 0.12, isVertical ? (d / numItems) * 0.7 : (w / numItems) * 0.7);
-          const item = new THREE.Mesh(itemGeo, j % 2 === 0 ? itemMat1 : itemMat2);
-          const offset = (j - (numItems - 1) / 2) * (isVertical ? (d / numItems) : (w / numItems));
+      // Door frame pillars
+      ctx.strokeStyle = '#10B981';
+      ctx.lineWidth = 2.5;
 
-          if (isVertical) {
-            item.position.set(j % 2 === 0 ? -w * 0.2 : w * 0.2, trayY + 0.07, offset);
+      const pillarH = pm(0.35);
+      ctx.beginPath();
+      ctx.moveTo(dx, dy);
+      ctx.lineTo(dx, dy + dh + pillarH);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(dx + dw, dy);
+      ctx.lineTo(dx + dw, dy + dh + pillarH);
+      ctx.stroke();
+
+      // Entry arrow (pointing into store = upward)
+      const arrowTip = dy - pm(0.5);
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, dy - pm(0.08));
+      ctx.lineTo(cx, arrowTip);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - pm(0.18), arrowTip + pm(0.18));
+      ctx.lineTo(cx, arrowTip);
+      ctx.lineTo(cx + pm(0.18), arrowTip + pm(0.18));
+      ctx.stroke();
+
+      // Label
+      ctx.fillStyle = '#059669';
+      ctx.font = `bold ${Math.max(9, pm(0.2))}px Plus Jakarta Sans, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('CỬA', cx, dy + dh / 2);
+    }
+
+    function drawShelves() {
+      SHELVES.forEach(s => {
+        const sx = px(s.x);
+        const sy = py(s.y);
+        const sw = pm(s.w);
+        const sh = pm(s.h);
+        const r = 4;
+
+        // Shadow
+        ctx.shadowColor = 'rgba(0,0,0,0.10)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        ctx.fillStyle = s.fill;
+        rrect(sx, sy, sw, sh, r);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        // Border
+        ctx.strokeStyle = s.stroke;
+        ctx.lineWidth = 1.8;
+        rrect(sx, sy, sw, sh, r);
+        ctx.stroke();
+
+        // Internal divider lines
+        const isHoriz = s.w >= s.h;
+        const segments = Math.max(2, Math.round(Math.max(s.w, s.h) / 0.55));
+        ctx.strokeStyle = s.stroke + '66';
+        ctx.lineWidth = 0.8;
+        for (let i = 1; i < segments; i++) {
+          ctx.beginPath();
+          if (isHoriz) {
+            const lx = sx + (sw / segments) * i;
+            ctx.moveTo(lx, sy + 3);
+            ctx.lineTo(lx, sy + sh - 3);
           } else {
-            item.position.set(offset, trayY + 0.07, j % 2 === 0 ? -d * 0.2 : d * 0.2);
+            const ly = sy + (sh / segments) * i;
+            ctx.moveTo(sx + 3, ly);
+            ctx.lineTo(sx + sw - 3, ly);
           }
-          item.castShadow = true;
-          shelfGroup.add(item);
-        }
-      }
-
-      scene.add(shelfGroup);
-      return shelfGroup;
-    }
-    // KV1: 2 Vertical Green Shelves (Top-Left X=0.5, 1.1, Z=2.2)
-    createRealisticShelf(0.5, 2.2, 0.25, 1.0, true, 0x059669);
-    createRealisticShelf(1.1, 2.2, 0.25, 1.0, true, 0x059669);
-
-    // KV2: 2 Vertical Blue Shelves (Top-Right X=1.9, 2.5, Z=2.2)
-    createRealisticShelf(1.9, 2.2, 0.25, 1.0, true, 0x2563EB);
-    createRealisticShelf(2.5, 2.2, 0.25, 1.0, true, 0x2563EB);
-
-    // KV3: 2 Horizontal Yellow Shelves (Bottom-Right X=2.1, Z=1.3 & 0.7)
-    createRealisticShelf(2.1, 1.3, 1.0, 0.25, false, 0xD97706);
-    createRealisticShelf(2.1, 0.7, 1.0, 0.25, false, 0xD97706);
-
-    // PURPLE CHECKOUT COUNTER (Placed at Bottom Left of Door: X=1.3, Z=0.20)
-    const checkoutGroup = new THREE.Group();
-    checkoutGroup.position.set(1.3, 0, 0.20);
-    const counterDesk = new THREE.Mesh(
-      new THREE.BoxGeometry(0.4, 0.4, 0.3),
-      new THREE.MeshStandardMaterial({ color: 0x7C3AED, roughness: 0.3 })
-    );
-    counterDesk.position.set(0, 0.2, 0);
-    counterDesk.castShadow = true;
-    checkoutGroup.add(counterDesk);
-
-    const screenMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.1, 0.02),
-      new THREE.MeshBasicMaterial({ color: 0xA78BFA })
-    );
-    screenMesh.position.set(0, 0.45, 0);
-    checkoutGroup.add(screenMesh);
-    scene.add(checkoutGroup);
-
-    // ───────────── ROBOT AGV (START POSITION: DOOR X=1.9, Z=0.2) ─────────────
-    const robotGroup = new THREE.Group();
-    robotGroup.position.set(1.9, 0, 0.2);
-
-    const baseMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14, 0.15, 0.1, 32),
-      new THREE.MeshStandardMaterial({ color: 0xEF4444, metalness: 0.6, roughness: 0.2 })
-    );
-    baseMesh.position.y = 0.08;
-    baseMesh.castShadow = true;
-    robotGroup.add(baseMesh);
-
-    const lidarMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.05, 0.04, 16),
-      new THREE.MeshStandardMaterial({ color: 0x0F172A, metalness: 0.9, roughness: 0.1 })
-    );
-    lidarMesh.position.y = 0.15;
-    robotGroup.add(lidarMesh);
-
-    const ringMesh = new THREE.Mesh(
-      new THREE.RingGeometry(0.15, 0.17, 32),
-      new THREE.MeshBasicMaterial({ color: 0xEF4444, side: THREE.DoubleSide })
-    );
-    ringMesh.rotation.x = -Math.PI / 2;
-    ringMesh.position.y = 0.01;
-    robotGroup.add(ringMesh);
-
-    scene.add(robotGroup);
-
-    // ───────────── 3. LIVE BACKEND CONNECTIVITY ─────────────
-    const BE_BASE_URL = "http://localhost:5000";
-    let selectedProductIds = [7, 50, 19, 4, 20];
-    let currentWaypoints = [];
-    let routeLineGroup = new THREE.Group();
-    scene.add(routeLineGroup);
-    let markerGroup = new THREE.Group();
-    scene.add(markerGroup);
-
-    async function checkBEStatus() {
-      const badge = document.getElementById('api-status');
-      const badgeText = document.getElementById('api-status-text');
-      try {
-        const res = await fetch(`${BE_BASE_URL}/api/Robots`, { method: 'GET' });
-        if (res.ok) {
-          badge.className = "status-badge online";
-          badgeText.innerText = "BE Connected";
-        } else {
-          badge.className = "status-badge offline";
-          badgeText.innerText = "BE Offline (Fallback)";
-        }
-      } catch (e) {
-        badge.className = "status-badge offline";
-        badgeText.innerText = "BE Offline (Mock Mode)";
-      }
-    }
-    checkBEStatus();
-
-    function toggleProduct(checkbox) {
-      const val = parseInt(checkbox.value);
-      if (checkbox.checked) {
-        if (!selectedProductIds.includes(val)) selectedProductIds.push(val);
-      } else {
-        selectedProductIds = selectedProductIds.filter(id => id !== val);
-      }
-      checkbox.parentElement.classList.toggle('active', checkbox.checked);
-    }
-
-    // Call Real BE API (POST /api/Navigation/optimize-shopping-route)
-    async function callOptimizeRouteAPI() {
-      if (selectedProductIds.length === 0) {
-        alert("Vui lòng chọn ít nhất 1 sản phẩm!");
-        return;
-      }
-
-      const payload = {
-        robotId: 1,
-        startX: 1.9, // Door Start
-        startY: 0.2,
-        productIds: selectedProductIds
-      };
-
-      try {
-        const res = await fetch(`${BE_BASE_URL}/api/Navigation/optimize-shopping-route`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          const routeData = await res.json();
-          visualize3DRoute(routeData);
-        } else {
-          useFallbackMockRoute();
-        }
-      } catch (err) {
-        useFallbackMockRoute();
-      }
-    }
-
-    function useFallbackMockRoute() {
-      const mockRoute = {
-        totalDistanceMeters: 7.20,
-        waypointCount: 13,
-        waypoints: [
-          { order: 0, nodeId: 1, x: 1.9, y: 0.2, productName: "Robot Start (Cửa)", shelfLocation: "Lối xuất phát" },
-          { order: 1, nodeId: 3, x: 1.5, y: 0.2, productName: "Giao lộ Dưới", shelfLocation: "Lối đi chung" },
-          { order: 2, nodeId: 4, x: 1.5, y: 1.0, productName: "Giao lộ Giữa", shelfLocation: "Lối đi chung" },
-          { order: 3, nodeId: 12, x: 1.8, y: 1.0, productName: "Trong Kệ Vàng (Trái)", shelfLocation: "Kệ Vàng" },
-          { order: 4, nodeId: 13, x: 2.4, y: 1.0, productName: "Trong Kệ Vàng (Phải)", shelfLocation: "Kệ Vàng" },
-          { order: 5, nodeId: 12, x: 1.8, y: 1.0, productName: "Trong Kệ Vàng (Trái)", shelfLocation: "Lối đi chung" },
-          { order: 6, nodeId: 4, x: 1.5, y: 1.0, productName: "Giao lộ Giữa", shelfLocation: "Lối đi chung" },
-          { order: 7, nodeId: 5, x: 1.5, y: 1.5, productName: "Giao lộ Trung tâm", shelfLocation: "Lối đi chung" },
-          { order: 8, nodeId: 6, x: 0.8, y: 1.5, productName: "Lối vào Kệ Xanh", shelfLocation: "Lối đi chung" },
-          { order: 9, nodeId: 8, x: 0.8, y: 1.8, productName: "Trong Kệ Xanh Lá (Dưới)", shelfLocation: "Kệ Xanh" },
-          { order: 10, nodeId: 6, x: 0.8, y: 1.5, productName: "Lối vào Kệ Xanh", shelfLocation: "Lối đi chung" },
-          { order: 11, nodeId: 3, x: 1.5, y: 0.2, productName: "Giao lộ Dưới", shelfLocation: "Lối đi chung" },
-          { order: 12, nodeId: 2, x: 1.3, y: 0.2, productName: "Quầy Thu Ngân (Checkout)", shelfLocation: "Thanh toán" }
-        ]
-      };
-      visualize3DRoute(mockRoute);
-    }
-
-    function clearRouteVisuals() {
-      while (routeLineGroup.children.length > 0) {
-        const obj = routeLineGroup.children[0];
-        routeLineGroup.remove(obj);
-        if (obj.geometry) obj.geometry.dispose();
-      }
-      while (markerGroup.children.length > 0) {
-        const obj = markerGroup.children[0];
-        markerGroup.remove(obj);
-        if (obj.geometry) obj.geometry.dispose();
-      }
-    }
-
-    function expandToOrthogonal(waypoints) {
-      if (!waypoints || waypoints.length < 2) return waypoints || [];
-      const expanded = [waypoints[0]];
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        const p1 = waypoints[i];
-        const p2 = waypoints[i + 1];
-        const dx = Math.abs(p1.x - p2.x);
-        const dy = Math.abs(p1.y - p2.y);
-
-        if (dx > 1e-4 && dy > 1e-4) {
-          // Ép bẻ góc 90 độ nếu phát hiện đoạn đường đi chéo
-          expanded.push({
-            order: -1,
-            nodeId: 0,
-            x: p1.x,
-            y: p2.y,
-            productName: "Giao lộ (Bẻ góc 90°)",
-            shelfLocation: "Hành lang"
-          });
-        }
-        expanded.push(p2);
-      }
-      return expanded;
-    }
-
-    // ───────────── PURE ORTHOGONAL 90-DEGREE STRAIGHT PATH PIPES ─────────────
-    function visualize3DRoute(routeData) {
-      clearRouteVisuals();
-      if (!routeData || !routeData.waypoints || routeData.waypoints.length === 0) return;
-
-      const expandedWaypoints = expandToOrthogonal(routeData.waypoints);
-      currentWaypoints = expandedWaypoints;
-
-      // Update UI Metrics
-      document.getElementById('metric-distance').innerText = (routeData.totalDistanceMeters || 0.0).toFixed(2) + ' m';
-      document.getElementById('metric-stops').innerText = routeData.waypoints.length + ' bước';
-
-      // Render UI List & 3D Markers
-      const listContainer = document.getElementById('waypoint-list-container');
-      listContainer.innerHTML = '';
-
-      routeData.waypoints.forEach((wp, idx) => {
-        const isStart = wp.order === 0;
-        const isCheckout = wp.nodeId === 52 || (wp.productName && wp.productName.toLowerCase().includes('checkout'));
-        const isProduct = wp.productId != null;
-
-        // Draw Markers for Key Nodes (Start, Product, Checkout)
-        if (isStart || isCheckout || isProduct) {
-          let markerColor = 0xF59E0B; // Yellow for products
-          if (isStart) markerColor = 0x10B981; // Green for start
-          if (isCheckout) markerColor = 0x8B5CF6; // Purple for checkout
-
-          const markerGeo = new THREE.SphereGeometry(isStart ? 0.07 : 0.09, 16, 16);
-          const markerMat = new THREE.MeshStandardMaterial({
-            color: markerColor,
-            emissive: markerColor,
-            emissiveIntensity: 0.7
-          });
-          const markerMesh = new THREE.Mesh(markerGeo, markerMat);
-          markerMesh.position.set(wp.x, 0.2, wp.y);
-          markerGroup.add(markerMesh);
+          ctx.stroke();
         }
 
-        // HTML List Item
-        const itemHtml = `
-          <div class="waypoint-item">
-            <div class="waypoint-badge ${isStart ? 'start' : (isCheckout ? 'checkout' : '')}">${wp.order}</div>
-            <div class="waypoint-details">
-              <div class="waypoint-name">${wp.productName || 'Lối đi'}</div>
-              <div class="waypoint-slot">${wp.shelfLocation || ('Vị trí (' + wp.x.toFixed(2) + ', ' + wp.y.toFixed(2) + ')')}</div>
-            </div>
-          </div>
-        `;
-        listContainer.insertAdjacentHTML('beforeend', itemHtml);
+        // Label
+        const fs = Math.max(9, Math.min(pm(0.25), 13));
+        ctx.fillStyle = s.lc;
+        ctx.font = `bold ${fs}px Plus Jakarta Sans, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.label, sx + sw / 2, sy + sh / 2);
       });
-
-      // Draw PURE ORTHOGONAL STRAIGHT TUBE SEGMENTS (100% 90-degree right angles, ZERO slanted lines!)
-      const pipeMat = new THREE.MeshBasicMaterial({ color: 0x38BDF8, transparent: true, opacity: 0.95 });
-
-      for (let i = 0; i < expandedWaypoints.length - 1; i++) {
-        const p1 = expandedWaypoints[i];
-        const p2 = expandedWaypoints[i + 1];
-
-        const startVec = new THREE.Vector3(p1.x, 0.06, p1.y);
-        const endVec = new THREE.Vector3(p2.x, 0.06, p2.y);
-
-        const curve = new THREE.LineCurve3(startVec, endVec);
-        const tubeGeo = new THREE.TubeGeometry(curve, 8, 0.02, 8, false);
-        const tubeMesh = new THREE.Mesh(tubeGeo, pipeMat);
-        routeLineGroup.add(tubeMesh);
-
-        // Corner Joint Spheres for clean 90-degree turn connections
-        const jointGeo = new THREE.SphereGeometry(0.022, 12, 12);
-        const jointMesh = new THREE.Mesh(jointGeo, pipeMat);
-        jointMesh.position.set(p2.x, 0.06, p2.y);
-        routeLineGroup.add(jointMesh);
-      }
     }
 
-    // ───────────── 4. ANIMATE ROBOT MOVEMENT STRICTLY ON GRID ─────────────
-    function animateRobotAlongPath() {
-      if (!currentWaypoints || currentWaypoints.length < 2) return;
+    function drawScaleBar() {
+      const barLen = pm(1.0);
+      const bx = canvas.width - PAD - barLen;
+      const by = canvas.height - 12;
 
-      let idx = 0;
-      function moveToNext() {
-        if (idx >= currentWaypoints.length - 1) return;
-        const endPt = currentWaypoints[idx + 1];
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + barLen, by);
+      ctx.moveTo(bx, by - 5);
+      ctx.lineTo(bx, by + 0);
+      ctx.moveTo(bx + barLen, by - 5);
+      ctx.lineTo(bx + barLen, by + 0);
+      ctx.stroke();
 
-        new TWEEN.Tween(robotGroup.position)
-          .to({ x: endPt.x, z: endPt.y }, 800)
-          .easing(TWEEN.Easing.Linear.None)
-          .onComplete(() => {
-            idx++;
-            moveToNext();
-          })
-          .start();
-      }
-      moveToNext();
+      ctx.fillStyle = '#64748B';
+      ctx.font = '8px Plus Jakarta Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('1 m', bx + barLen / 2, by - 5);
     }
 
-    // ───────────── 5. RENDER LOOP ─────────────
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    function drawRobot() {
+      const rx = px(robot.x);
+      const ry = py(robot.y);
+      const R = pm(0.30);
 
-    function animate(time) {
-      requestAnimationFrame(animate);
-      TWEEN.update();
-      controls.update();
-      renderer.render(scene, camera);
+      // Glow
+      const grad = ctx.createRadialGradient(rx, ry, R * 0.3, rx, ry, R * 2.2);
+      grad.addColorStop(0, 'rgba(99,102,241,0.22)');
+      grad.addColorStop(1, 'rgba(99,102,241,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(rx, ry, R * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // White ring
+      ctx.shadowColor = 'rgba(99,102,241,0.5)';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(rx, ry, R + 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
+      // Indigo fill
+      ctx.fillStyle = '#6366F1';
+      ctx.beginPath();
+      ctx.arc(rx, ry, R, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Emoji
+      const es = Math.max(12, R * 1.15);
+      ctx.font = `${es}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🤖', rx, ry + 1);
+
+      // Update chip
+      document.getElementById('robot-x').textContent = robot.x.toFixed(2) + ' m';
+      document.getElementById('robot-y').textContent = robot.y.toFixed(2) + ' m';
     }
-    animate();
 
-    // Bridge interface for React Native WebView
-    window.setRouteData = function(data) {
-      if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch(e) {}
+    function drawMap() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawFloor();
+      drawGrid();
+      drawAxisLabels();
+      drawShelves();
+      drawWalls();
+      drawDoor();
+      drawScaleBar();
+      drawRobot();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // ROBOT ANIMATION
+    // ─────────────────────────────────────────────────────────────────
+    let waypoints = [];
+    let wpIdx = 0;
+    let animating = false;
+    const SPEED = 0.8; // m/s
+    let lastTS = null;
+
+    function loop(ts) {
+      requestAnimationFrame(loop);
+      const dt = lastTS ? (ts - lastTS) / 1000 : 0;
+      lastTS = ts;
+
+      if (animating && wpIdx < waypoints.length) {
+        const tgt = waypoints[wpIdx];
+        const dx = tgt.x - robot.x;
+        const dy = tgt.y - robot.y;
+        const dist = Math.hypot(dx, dy);
+        const step = SPEED * dt;
+
+        if (dist <= step || dist < 0.005) {
+          robot.x = tgt.x;
+          robot.y = tgt.y;
+          wpIdx++;
+          if (wpIdx >= waypoints.length) animating = false;
+        } else {
+          robot.x += (dx / dist) * step;
+          robot.y += (dy / dist) * step;
+        }
       }
-      if (data) {
-        visualize3DRoute(data);
-        setTimeout(() => animateRobotAlongPath(), 600);
+
+      drawMap();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BACKEND CONNECTIVITY
+    // ─────────────────────────────────────────────────────────────────
+    const BE_URL = 'http://localhost:5000';
+
+    async function checkBE() {
+      const pill = document.getElementById('api-status');
+      const txt = document.getElementById('api-status-text');
+      try {
+        const r = await fetch(`${BE_URL}/api/Robots`);
+        if (r.ok) {
+          pill.className = 'status-pill online';
+          txt.textContent = 'BE Online';
+        } else { throw new Error(); }
+      } catch {
+        pill.className = 'status-pill offline';
+        txt.textContent = 'BE Offline';
+      }
+    }
+    checkBE();
+
+    // ─────────────────────────────────────────────────────────────────
+    // PUBLIC BRIDGE API
+    // ─────────────────────────────────────────────────────────────────
+    /** Teleport robot to absolute position (meters) */
+    window.setRobotPosition = function (data) {
+      if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { } }
+      if (data && data.x != null && data.y != null) {
+        robot.x = Number(data.x);
+        robot.y = Number(data.y);
       }
     };
 
-    window.addEventListener('message', function(event) {
-      try {
-        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (message.type === 'SET_ROUTE' && message.routeData) {
-          window.setRouteData(message.routeData);
-        }
-      } catch(e) {}
-    });
+    /**
+     * Accepts { waypoints: [{x, y}, ...] } and animates robot.
+     * Compatible with the old 3D index.html bridge.
+     */
+    window.setRouteData = function (data) {
+      if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { } }
+      if (!data || !data.waypoints || !data.waypoints.length) return;
+      waypoints = data.waypoints.map(w => ({ x: Number(w.x), y: Number(w.y) }));
+      wpIdx = 0;
+      animating = true;
+    };
 
-    document.addEventListener('message', function(event) {
+    function onMsg(event) {
       try {
-        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (message.type === 'SET_ROUTE' && message.routeData) {
-          window.setRouteData(message.routeData);
-        }
-      } catch(e) {}
-    });
+        const m = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (m.type === 'SET_ROUTE' && m.routeData) window.setRouteData(m.routeData);
+        if (m.type === 'SET_POSITION' && m.position) window.setRobotPosition(m.position);
+      } catch (e) { }
+    }
+    window.addEventListener('message', onMsg);
+    document.addEventListener('message', onMsg);
 
-    // Auto Call API on Start
-    callOptimizeRouteAPI();
+    // ─────────────────────────────────────────────────────────────────
+    // INIT
+    // ─────────────────────────────────────────────────────────────────
+    window.addEventListener('resize', () => { resizeCanvas(); });
+    resizeCanvas();
+    requestAnimationFrame(loop);
   </script>
+
 </body>
 
 </html>
