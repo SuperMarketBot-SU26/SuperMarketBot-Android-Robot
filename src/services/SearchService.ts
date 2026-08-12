@@ -147,7 +147,26 @@ export const SearchService = {
     const rawText = await response.text();
     if (!response.ok) {
       console.error(`[SearchService.searchPersonalized] Error body (${response.status}):`, rawText);
-      throw new Error(`Tìm kiếm cá nhân hóa thất bại (${response.status})`);
+      
+      let errorMessage = `Tìm kiếm cá nhân hóa thất bại (${response.status})`;
+      try {
+        const errorJson = JSON.parse(rawText);
+        if (errorJson.message) {
+          errorMessage = errorJson.message;
+        } else if (errorJson.detail) {
+          errorMessage = errorJson.detail;
+        } else if (errorJson.title) {
+          errorMessage = errorJson.title;
+        } else if (typeof errorJson === 'string') {
+          errorMessage = errorJson;
+        }
+      } catch (e) {
+        if (rawText) {
+          errorMessage = rawText;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
 
     try {

@@ -89,7 +89,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
 
     const connection = new SignalR.HubConnectionBuilder()
       .withUrl(HUB_URL, {
-        skipNegotiation: false,
+        skipNegotiation: true,
         transport: SignalR.HttpTransportType.WebSockets,
         headers: {
           'ngrok-skip-browser-warning': 'true'
