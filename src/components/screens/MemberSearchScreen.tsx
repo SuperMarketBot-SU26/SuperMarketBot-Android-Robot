@@ -289,9 +289,11 @@ export default function MemberSearchScreen() {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      if (!silent) speak(`Xin lỗi, có lỗi kết nối khi tìm kiếm ${query}.`);
+      const errorMsg = error.message && error.message.length < 200 ? error.message : `Xin lỗi, có lỗi kết nối khi tìm kiếm ${query}.`;
+      setAiExplanation(errorMsg);
+      if (!silent) speak(errorMsg);
     } finally {
       setIsLoading(false);
     }
