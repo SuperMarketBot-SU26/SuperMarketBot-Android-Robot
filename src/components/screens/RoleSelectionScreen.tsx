@@ -5,6 +5,7 @@ import { Header } from '../layout/Header';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Crown } from 'lucide-react-native';
 import { Image } from 'expo-image';
@@ -12,6 +13,7 @@ import { Image } from 'expo-image';
 export default function RoleSelectionScreen() {
   const { speak } = useRobotVoice();
   const router = useRouter();
+  const { clearSession } = useRobotAuth();
   const insets = useSafeAreaInsets();
 
   // Giá trị animation nổi/bồng bềnh cho thẻ
@@ -161,6 +163,7 @@ export default function RoleSelectionScreen() {
                     width="100%"
                     pressStyle={{ scale: 0.97, backgroundColor: '#F8FAFC' }}
                     onPress={() => {
+                      clearSession();
                       speak('Chào mừng khách hàng đến với Smart Market Bot');
                       setTimeout(() => {
                         router.push('/guest-home' as any);
@@ -288,7 +291,7 @@ export default function RoleSelectionScreen() {
                     width="100%"
                     pressStyle={{ scale: 0.96, opacity: 0.9 }}
                     iconAfter={<ArrowRight size={18} color="#00A550" strokeWidth={3} />}
-                    onPress={() => router.push('/face-scan')}
+                    onPress={() => router.push('/login' as any)}
                     zIndex={2}
                     shadowColor="rgba(0,0,0,0.1)"
                     shadowOffset={{ width: 0, height: 4 }}

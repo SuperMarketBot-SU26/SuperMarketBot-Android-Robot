@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextInput, ScrollView, Pressable, Image as RNImage } from 'react-native';
+import { TextInput, ScrollView, Pressable, Image as RNImage, Alert } from 'react-native';
 import { View, Text, XStack, YStack, Button, Input, Image, Card } from 'tamagui';
 import { Search, Mic, X, MapPin, Navigation, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -161,7 +161,7 @@ const RGBCard = ({ cat, style, onPress }: any) => {
 import { SearchService, MobileProductSearchResultDto, IngredientRecommendationDto } from '../../services/SearchService';
 import { ProductService, ProductTypeDto } from '../../services/ProductService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
-import { RobotControlService } from '../../services/RobotControlService';
+import { robotSimulation } from '../../services/RobotSimulationService';
 import { RecipeRecommendationUI } from '../ui/RecipeRecommendationUI';
 import { CartService } from '../../services/CartService';
 import { useNotification } from '../../context/NotificationContext';
@@ -213,7 +213,9 @@ export default function MemberSearchScreen() {
   const mapApiToUI = (items: any[]) => {
     return items.map(p => {
       const formattedPrice = p.unitPrice.toLocaleString('vi-VN') + 'đ';
-      const shelf = p.categoryName || 'Kệ chưa xác định';
+      const loc = p.location || {};
+      const location = [loc.zoneName || loc.zone, loc.aisleName || loc.aisleCode, loc.shelfName, loc.slotCode]
+        .filter(Boolean).join(' | ') || p.categoryName || 'Vị trí đang cập nhật';
       return {
         id: p.productId,
         name: p.productName,
@@ -222,9 +224,9 @@ export default function MemberSearchScreen() {
         badge: p.status === 'Available' || p.status === 'instock' ? 'Có sẵn' : 'Tạm hết',
         badgeColor: p.status === 'Available' || p.status === 'instock' ? '#22c55e' : '#ef4444',
         image: p.imageUrl || 'https://via.placeholder.com/400',
-        location: shelf,
+        location,
         distance: 'Tính toán...', // Lidar sẽ update sau
-        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${shelf}.`,
+        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${location}.`,
         semanticObjectId: null,
         relevanceScore: p.relevanceScore || 0,
         healthTags: p.healthTags || []
@@ -272,10 +274,7 @@ export default function MemberSearchScreen() {
               token: token
             });
           } else {
-            searchResponse = await SearchService.searchAll({
-              q: cleanQ,
-              useAi: false,
-            });
+            searchResponse = { results: await SearchService.searchProducts(cleanQ), aiExplanation: null, aiRanked: false };
           }
 
           const formatted = mapApiToUI(searchResponse.results || []);
@@ -345,6 +344,31 @@ export default function MemberSearchScreen() {
 
   const handleProductVoiceSpeak = (voiceText: string) => {
     speak(voiceText);
+  };
+
+  const handleGuideRobot = async (product: any) => {
+    Alert.alert(
+      'Xác nhận điều hướng',
+      `Gửi robot RB001 tới vị trí của “${product.name}”?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận / gửi RB001',
+          onPress: async () => {
+            speak(`Đang lập lộ trình tới ${product.name}. Xin quý khách đứng sang một bên để robot di chuyển.`);
+            try {
+              const data = await robotSimulation.dispatchProduct(product.id, product.name);
+              const count = data?.targetNodeCount || data?.waypoints?.length || 0;
+              showNotification({ title: '🤖 ROBOT ĐANG DẪN ĐƯỜNG', message: `${product.name} • ${count} điểm dừng`, type: 'success' });
+              speak(`Robot đang tới vị trí ${product.name}. Quý khách có thể đi theo robot.`);
+            } catch (error: any) {
+              Alert.alert('Không thể điều hướng', error?.message || 'Robot chưa nhận được nhiệm vụ.');
+              speak('Xin lỗi, hiện chưa thể điều hướng tới sản phẩm này.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -557,6 +581,20 @@ export default function MemberSearchScreen() {
                                   icon={<Volume2 size={16} color="#2563eb" />}
                                   pressStyle={{ scale: 0.9, backgroundColor: '#dbeafe' }}
                                   onPress={() => handleProductVoiceSpeak(product.voiceText)}
+                                />
+
+                                <Button
+                                  circular
+                                  size="$3.5"
+                                  backgroundColor="#fff7ed"
+                                  borderWidth={1}
+                                  borderColor="#fed7aa"
+                                  icon={<Navigation size={16} color="#ea580c" />}
+                                  pressStyle={{ scale: 0.9, backgroundColor: '#ffedd5' }}
+                                  onPress={(event: any) => {
+                                    event?.stopPropagation?.();
+                                    handleGuideRobot(product);
+                                  }}
                                 />
 
                                 {/* Add to Cart */}

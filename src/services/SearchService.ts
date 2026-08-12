@@ -64,7 +64,8 @@ export interface RecommendIngredientsResponseDto {
 export const SearchService = {
   async searchProducts(keyword: string): Promise<MobileProductSearchResultDto[]> {
     try {
-      const url = new URL(`${BASE_URL}/api/mobile/products/search`);
+      // Public kiosk search endpoint (works for both guests and members).
+      const url = new URL(`${BASE_URL}/api/v1/products/search`);
       url.searchParams.append('keyword', keyword);
       
       const response = await fetch(url.toString(), {

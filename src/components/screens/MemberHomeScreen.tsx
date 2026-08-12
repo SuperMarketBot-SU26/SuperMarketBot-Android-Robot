@@ -127,6 +127,9 @@ export default function MemberHomeScreen() {
         </YStack>
         {/* QUICK ACTIONS SECTION (Lưới 2x2) */}
         <YStack gap="$4" marginBottom="$8">
+          <Button backgroundColor="#0f172a" borderRadius={14} onPress={() => router.push('/robot-kiosk' as any)}>
+            <Text color="white" fontWeight="800">🤖 Mở màn hình robot / mô phỏng tự hành</Text>
+          </Button>
           <XStack gap="$4">
 
             {/* Card 1: Tìm kiếm */}

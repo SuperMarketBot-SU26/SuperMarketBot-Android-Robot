@@ -49,3 +49,26 @@ export async function loginFace(imageBase64: string): Promise<FaceLoginResult> {
   console.log(`[AuthService.loginFace] Phản hồi thành công:`, JSON.stringify(data, null, 2));
   return data;
 }
+
+export interface LoginResult {
+  accessToken: string;
+  refreshToken?: string;
+  userId?: number | string;
+  email: string;
+  fullName?: string | null;
+  roles?: string[];
+  member?: FaceLoginResult['member'];
+}
+
+export async function loginEmail(email: string, password: string): Promise<LoginResult> {
+  const response = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+    body: JSON.stringify({ email, password }),
+  });
+  const raw = await response.text();
+  let data: any = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { /* ignore */ }
+  if (!response.ok) throw new Error(data.detail || data.title || data.message || 'Email hoặc mật khẩu không đúng');
+  return data;
+}

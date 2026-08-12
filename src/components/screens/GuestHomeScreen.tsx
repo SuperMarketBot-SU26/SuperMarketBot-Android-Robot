@@ -11,6 +11,7 @@ import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { useGeofencing } from '../../context/GeofencingContext';
 import ZoneAdOverlay from '../ui/ZoneAdOverlay';
+import { useRobotAuth } from '../../context/RobotAuthContext';
 
 export default function GuestHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -18,6 +19,7 @@ export default function GuestHomeScreen() {
   const router = useRouter();
   const { speak, stop, isSpeaking } = useRobotVoice();
   const { currentZone, isInZone, isHubConnected } = useGeofencing();
+  const { clearSession } = useRobotAuth();
 
   // Trạng thái điều hướng bằng giọng nói cho Camera Quét sản phẩm
   const [shouldNavigateToImageSearch, setShouldNavigateToImageSearch] = useState(false);
@@ -50,6 +52,7 @@ export default function GuestHomeScreen() {
   }, []);
 
   const handleLogout = () => {
+    clearSession();
     setMenuOpen(false);
     router.replace('/role-selection' as any);
   };
@@ -205,6 +208,9 @@ export default function GuestHomeScreen() {
 
         {/* QUICK ACTIONS SECTION (Dọc) */}
         <YStack gap="$4" marginBottom="$8">
+          <Button backgroundColor="#0f172a" borderRadius={14} onPress={() => router.push('/robot-kiosk' as any)}>
+            <Text color="white" fontWeight="800">🤖 Mở màn hình robot / mô phỏng tự hành</Text>
+          </Button>
 
           {/* Giọng nói */}
           <Animated.View entering={FadeInUp.delay(200).duration(500).springify()} style={{ flex: 1 }}>
@@ -236,7 +242,7 @@ export default function GuestHomeScreen() {
           <Animated.View entering={FadeInUp.delay(300).duration(500).springify()} style={{ flex: 1 }}>
             <Pressable
               onPress={() => {
-                router.push('/member-search' as any);
+                router.push('/product-search' as any);
               }}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.9 : 1,
@@ -262,7 +268,7 @@ export default function GuestHomeScreen() {
           <Animated.View entering={FadeInUp.delay(400).duration(500).springify()} style={{ flex: 1 }}>
             <Pressable
               onPress={() => {
-                router.push('/member-search' as any);
+                router.push('/product-search' as any);
               }}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.9 : 1,

@@ -279,12 +279,14 @@ class RobotControlServiceClass {
     aisleId?: number;
     zoneId?: number;
     nodeIds?: number[];
-  }): Promise<boolean> {
+    simulation?: boolean;
+    fullZoneMap?: boolean;
+  }): Promise<{ ok: boolean; status: number; data: any }> {
     if (!API_BASE) {
       console.warn('[RobotControl.dispatchAutonomous] EXPO_PUBLIC_API_URL chưa set');
-      return false;
+      return { ok: false, status: 0, data: null };
     }
-    const url = `${API_BASE}/api/v1/navigation/dispatch-autonomous`;
+    const url = `${API_BASE}/api/v1/navigation/dispatch-autonomous?simulation=${payload.simulation !== false}`;
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -299,14 +301,18 @@ class RobotControlServiceClass {
           aisleId: payload.aisleId,
           zoneId: payload.zoneId,
           nodeIds: payload.nodeIds,
+          fullZoneMap: payload.fullZoneMap,
         }),
       });
+      const raw = await res.text();
+      let data: any = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
       const ok = res.ok;
       console.log(`[RobotControl.dispatchAutonomous] ${ok ? 'OK' : 'FAIL'} ${res.status}`);
-      return ok;
+      return { ok, status: res.status, data };
     } catch (e) {
       console.warn('[RobotControl.dispatchAutonomous] Lỗi:', e);
-      return false;
+      return { ok: false, status: 0, data: null };
     }
   }
 }
