@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, XStack, YStack, Card } from 'tamagui';
 import { ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
@@ -17,37 +17,28 @@ export default function RobotAdDisplay({
   robotId = 1,
   currentZoneId,
   semanticObjectId,
-  robotCode = 'ROBOT01'
 }: RobotAdDisplayProps) {
   const [playlist, setPlaylist] = useState<AdPlaylistItemDto[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchPlaylist();
-  }, [semanticObjectId, currentZoneId]);
-
-  const fetchPlaylist = async () => {
+  const fetchPlaylist = useCallback(async () => {
     try {
       setLoading(true);
       const data = await AdService.getRobotPlaylist(robotId, semanticObjectId);
       setPlaylist(data.playlist || []);
 
-      // Giả lập ghi nhận impression cho toàn bộ ads tải về khi đang đứng ở slot/zone này
-      // Trong thực tế, có thể trigger khi robot đến slot cụ thể
-      if (data.playlist && data.playlist.length > 0) {
-        await AdService.recordImpression(robotCode, {
-          slotId: 10, // Slot giả định
-          xCoord: 10,
-          yCoord: 20,
-          memberId: undefined // Dành cho guest
-        });
-      }
     } catch (e) {
       console.warn('Failed to fetch robot playlist:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [robotId, semanticObjectId]);
+
+  useEffect(() => {
+    // Playlist is external server state; refresh whenever the robot's location context changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPlaylist();
+  }, [fetchPlaylist, currentZoneId]);
 
   const handleAdClick = async (ad: AdPlaylistItemDto) => {
     try {

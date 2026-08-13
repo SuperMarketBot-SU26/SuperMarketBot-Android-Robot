@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextInput, ScrollView, Pressable, Image as RNImage, Alert } from 'react-native';
+import { TextInput, ScrollView, Pressable, Image as RNImage } from 'react-native';
 import { View, Text, XStack, YStack, Button, Input, Image, Card } from 'tamagui';
-import { Search, Mic, X, MapPin, Navigation, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick } from 'lucide-react-native';
+import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -161,7 +161,6 @@ const RGBCard = ({ cat, style, onPress }: any) => {
 import { SearchService, MobileProductSearchResultDto, IngredientRecommendationDto } from '../../services/SearchService';
 import { ProductService, ProductTypeDto } from '../../services/ProductService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
-import { robotSimulation } from '../../services/RobotSimulationService';
 import { RecipeRecommendationUI } from '../ui/RecipeRecommendationUI';
 import { CartService } from '../../services/CartService';
 import { useNotification } from '../../context/NotificationContext';
@@ -176,7 +175,7 @@ export default function MemberSearchScreen() {
   const { speak, stop } = useRobotVoice();
   const { token } = useRobotAuth();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
@@ -189,25 +188,6 @@ export default function MemberSearchScreen() {
 
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [aiRanked, setAiRanked] = useState(false);
-
-  // Xử lý khi có query truyền từ trang Voice Search hoặc click gợi ý
-  useEffect(() => {
-    ProductService.getProductTypes().then(setProductTypes);
-
-    if (initialQuery) {
-      setSearchQuery(initialQuery);
-      executeSearch(initialQuery);
-    } else {
-      speak('Tôi đã sẵn sàng tìm kiếm. Hãy nhập tên sản phẩm bạn cần nhé!');
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 150);
-    }
-
-    return () => {
-      stop();
-    };
-  }, [initialQuery]);
 
   // Map dữ liệu API về format UI
   const mapApiToUI = (items: any[]) => {
@@ -299,6 +279,22 @@ export default function MemberSearchScreen() {
     }
   };
 
+  useEffect(() => {
+    ProductService.getProductTypes().then(setProductTypes);
+    if (initialQuery) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void executeSearch(initialQuery);
+    } else {
+      speak('Tôi đã sẵn sàng tìm kiếm. Hãy nhập tên sản phẩm bạn cần nhé!');
+      setTimeout(() => inputRef.current?.focus(), 150);
+    }
+    return () => {
+      void stop();
+    };
+    // Route query is the lifecycle boundary for this kiosk search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
+
   const handleTextChange = (text: string) => {
     setSearchQuery(text);
     if (searchTimeout.current) {
@@ -346,31 +342,6 @@ export default function MemberSearchScreen() {
 
   const handleProductVoiceSpeak = (voiceText: string) => {
     speak(voiceText);
-  };
-
-  const handleGuideRobot = async (product: any) => {
-    Alert.alert(
-      'Xác nhận điều hướng',
-      `Gửi robot RB001 tới vị trí của “${product.name}”?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận / gửi RB001',
-          onPress: async () => {
-            speak(`Đang lập lộ trình tới ${product.name}. Xin quý khách đứng sang một bên để robot di chuyển.`);
-            try {
-              const data = await robotSimulation.dispatchProduct(product.id, product.name);
-              const count = data?.targetNodeCount || data?.waypoints?.length || 0;
-              showNotification({ title: '🤖 ROBOT ĐANG DẪN ĐƯỜNG', message: `${product.name} • ${count} điểm dừng`, type: 'success' });
-              speak(`Robot đang tới vị trí ${product.name}. Quý khách có thể đi theo robot.`);
-            } catch (error: any) {
-              Alert.alert('Không thể điều hướng', error?.message || 'Robot chưa nhận được nhiệm vụ.');
-              speak('Xin lỗi, hiện chưa thể điều hướng tới sản phẩm này.');
-            }
-          },
-        },
-      ],
-    );
   };
 
   return (
@@ -585,20 +556,6 @@ export default function MemberSearchScreen() {
                                   onPress={() => handleProductVoiceSpeak(product.voiceText)}
                                 />
 
-                                <Button
-                                  circular
-                                  size="$3.5"
-                                  backgroundColor="#fff7ed"
-                                  borderWidth={1}
-                                  borderColor="#fed7aa"
-                                  icon={<Navigation size={16} color="#ea580c" />}
-                                  pressStyle={{ scale: 0.9, backgroundColor: '#ffedd5' }}
-                                  onPress={(event: any) => {
-                                    event?.stopPropagation?.();
-                                    handleGuideRobot(product);
-                                  }}
-                                />
-
                                 {/* Add to Cart */}
                                 <Button
                                   circular
@@ -632,7 +589,7 @@ export default function MemberSearchScreen() {
                   <YStack alignItems="center" gap="$4" paddingVertical="$10">
                     <HelpCircle size={48} color="#ccc" />
                     <Text fontSize={14} color="#666" textAlign="center">
-                      Rất tiếc, Robot chưa tìm thấy sản phẩm "{searchQuery}" trên kệ hàng của chi nhánh này.
+                      Rất tiếc, Robot chưa tìm thấy sản phẩm “{searchQuery}” trên kệ hàng của chi nhánh này.
                     </Text>
                     <Button size="$3" backgroundColor="#22c55e" color="white" onPress={handleClear}>
                       Thử tìm kiếm từ khóa khác

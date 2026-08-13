@@ -1,13 +1,13 @@
 # SmartMarketBot Android Robot
 
-Tài liệu này tóm tắt phần Backend và giao diện HTML điều khiển robot đã hoàn thiện trong phiên làm việc ngày 12–13/08/2026. File HTML hiện được đặt tại [`robot_simulator.html`](./robot_simulator.html) trong project Android Robot.
+Ứng dụng production nhận mission `patrol`/`ad` trực tiếp từ Backend qua RobotHub. Patrol tự bật camera sau tại waypoint `photo`, chống chụp trùng và gửi ảnh tới `/api/v1/shelf-patrol/analyze-node`; quảng cáo hiển thị playlist tại waypoint `ad`.
 
-> **Lưu ý:** tên file còn chữ `simulator` để giữ tương thích, nhưng giao diện hiện chạy ở **REAL ROBOT MODE**. Các nút điều hướng và dừng gửi lệnh thật từ Backend qua MQTT xuống ROS2, không còn tham số `simulation=true`.
+> [`robot_simulator.html`](./robot_simulator.html) chỉ là công cụ debug tích hợp. Admin Web và ứng dụng Android Robot trong `src/` mới là luồng vận hành production.
 
 ## 1. Kiến trúc đang sử dụng
 
 ```text
-Android Robot / robot_simulator.html
+Admin Web → Android Robot app
         │ REST + SignalR
         ▼
 ASP.NET Core Backend (.NET 10)

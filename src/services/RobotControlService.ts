@@ -274,19 +274,23 @@ class RobotControlServiceClass {
    */
   async dispatchAutonomous(payload: {
     robotCode?: string;
+    missionId?: string;
     flowType: string;
     productId?: number;
+    productIds?: number[];
     aisleId?: number;
     zoneId?: number;
     nodeIds?: number[];
     simulation?: boolean;
     fullZoneMap?: boolean;
+    floorId?: number;
+    startNodeId?: number;
   }): Promise<{ ok: boolean; status: number; data: any }> {
     if (!API_BASE) {
       console.warn('[RobotControl.dispatchAutonomous] EXPO_PUBLIC_API_URL chưa set');
       return { ok: false, status: 0, data: null };
     }
-    const url = `${API_BASE}/api/v1/navigation/dispatch-autonomous?simulation=${payload.simulation !== false}`;
+    const url = `${API_BASE}/api/v1/navigation/dispatch-autonomous`;
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -296,12 +300,16 @@ class RobotControlServiceClass {
         },
         body: JSON.stringify({
           robotCode: payload.robotCode || ROBOT_CODE_DEFAULT,
+          missionId: payload.missionId,
           flowType: payload.flowType,
           productId: payload.productId,
+          productIds: payload.productIds,
           aisleId: payload.aisleId,
           zoneId: payload.zoneId,
           nodeIds: payload.nodeIds,
           fullZoneMap: payload.fullZoneMap,
+          floorId: payload.floorId,
+          startNodeId: payload.startNodeId,
         }),
       });
       const raw = await res.text();

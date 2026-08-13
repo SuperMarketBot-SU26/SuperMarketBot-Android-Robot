@@ -1,31 +1,33 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { ScrollView, Dimensions, Modal, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Spinner } from 'tamagui';
-import { ArrowLeft, Trash2, ShoppingCart, Info, MapPin, Plus, Minus, Maximize2, X } from 'lucide-react-native';
+import { ArrowLeft, Trash2, ShoppingCart, Info, MapPin, Plus, Minus } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import WebView from 'react-native-webview';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRouter } from 'expo-router';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService, CartDto } from '../../services/CartService';
-import { optimizeShoppingRoute } from '../../services/RouteService';
-
-
-const { width } = Dimensions.get('window');
+import { useRobotGuide } from '../../context/RobotGuideContext';
 
 export default function MemberCartScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { speak } = useRobotVoice();
   const { token, member } = useRobotAuth();
-  const webViewRef = useRef<any>(null);
+  const {
+    dispatchCart,
+    isBusy: isRobotBusy,
+    isHubConnected,
+    status: guideStatus,
+    destination: guideDestination,
+    destinations: guideDestinations,
+    error: guideError,
+  } = useRobotGuide();
 
   const [cart, setCart] = useState<CartDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(token));
   const [navigating, setNavigating] = useState(false);
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [previewRouteData, setPreviewRouteData] = useState<any>(null);
 
   const handleUpdateQuantity = async (productId: number, quantity: number) => {
     if (!token) return;
@@ -56,11 +58,11 @@ export default function MemberCartScreen() {
         .finally(() => {
           if (mounted) setLoading(false);
         });
-    } else {
-      setLoading(false);
     }
 
     return () => { mounted = false; };
+    // Voice helper identity is not a cart reload boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const budget = member?.shoppingBudget ?? 1000000;
@@ -102,6 +104,31 @@ export default function MemberCartScreen() {
             </Text>
           </XStack>
         </Animated.View>
+      )}
+
+      {(isRobotBusy || ['ARRIVED', 'COMPLETED', 'FAILED', 'TIMEOUT'].includes(guideStatus)) && (
+        <YStack
+          marginHorizontal="$4"
+          marginTop="$3"
+          padding="$3"
+          borderRadius={16}
+          borderWidth={1}
+          backgroundColor={guideError ? '#fff1f2' : guideStatus === 'ARRIVED' ? '#f0fdf4' : '#eff6ff'}
+          borderColor={guideError ? '#fecdd3' : guideStatus === 'ARRIVED' ? '#86efac' : '#bfdbfe'}
+        >
+          <Text fontSize={16} fontWeight="900" color="#0f172a">
+            {guideError ? '⚠️ Nhiệm vụ dẫn đường gặp lỗi' : guideStatus === 'COMPLETED' ? '✅ Đã đi hết danh sách kệ' : '🤖 Hãy đi theo tôi'}
+          </Text>
+          <Text marginTop="$1" fontSize={13} color="#475569">
+            {guideError || [guideDestination?.zoneName, guideDestination?.aisleName, guideDestination?.shelfName]
+              .filter(Boolean).join(' • ') || `Trạng thái: ${guideStatus}`}
+          </Text>
+          {guideDestinations.length > 0 && (
+            <Text marginTop="$1" fontSize={12} color="#64748b">
+              {guideDestinations.length} điểm kệ trong lộ trình
+            </Text>
+          )}
+        </YStack>
       )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
@@ -207,137 +234,45 @@ export default function MemberCartScreen() {
               size="$4"
               backgroundColor="#00A550"
               borderRadius={30}
-              disabled={navigating}
+              disabled={navigating || isRobotBusy || !isHubConnected}
+              opacity={navigating || isRobotBusy || !isHubConnected ? 0.5 : 1}
               iconAfter={navigating ? <Spinner color="white" /> : <MapPin size={18} color="white" />}
               onPress={async () => {
                 if (!cart || cart.items.length === 0) return;
-                setNavigating(true);
-                speak('Đang tính toán lộ trình tối ưu qua các điểm trong giỏ hàng.');
-                const productIds = cart.items.map(item => item.productId);
-                const optimalRoute = await optimizeShoppingRoute(productIds, 1.5, 2.8);
-                setNavigating(false);
-                
-                console.log('\n=== KẾT QUẢ API DẪN ĐƯỜNG ===');
-                console.log(JSON.stringify(optimalRoute, null, 2));
-                console.log('===============================\n');
-
-                if (optimalRoute && optimalRoute.waypoints && optimalRoute.waypoints.length > 0) {
-                  setPreviewRouteData(optimalRoute);
-                  setPreviewModalOpen(true);
-                } else {
-                  speak('Không tìm thấy lộ trình hoặc toạ độ sản phẩm trên bản đồ.');
-                }
+                Alert.alert(
+                  'Robot dẫn theo giỏ hàng',
+                  `RB001 sẽ lập một lộ trình qua các kệ chứa ${cart.items.length} loại sản phẩm. Bắt đầu ngay?`,
+                  [
+                    { text: 'Chưa', style: 'cancel' },
+                    {
+                      text: 'Bắt đầu',
+                      onPress: async () => {
+                        setNavigating(true);
+                        speak('Đang kiểm tra tồn kho và tính lộ trình tối ưu qua các kệ trong giỏ hàng.');
+                        try {
+                          const mission = await dispatchCart(cart.items.map(item => ({
+                            productId: item.productId,
+                            productName: item.productName,
+                          })));
+                          speak(`Hãy đi theo tôi. Lộ trình có ${mission?.targetNodeCount || 0} điểm kệ.`);
+                        } catch (error: any) {
+                          Alert.alert('Không thể bắt đầu', error?.message || 'Robot chưa nhận được nhiệm vụ.');
+                          speak('Xin lỗi, chưa thể tạo lộ trình cho giỏ hàng này.');
+                        } finally {
+                          setNavigating(false);
+                        }
+                      },
+                    },
+                  ],
+                );
               }}
             >
-              <Text color="white" fontWeight="bold">Dẫn đường</Text>
+              <Text color="white" fontWeight="bold">Robot dẫn theo giỏ hàng</Text>
             </Button>
           </XStack>
         </View>
       )}
 
-      {/* CENTERED MAP PREVIEW MODAL */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={previewModalOpen}
-        onRequestClose={() => setPreviewModalOpen(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <Text style={styles.previewTitle}>Bản Đồ Lộ Trình Xem Trước</Text>
-              <TouchableOpacity onPress={() => setPreviewModalOpen(false)} style={styles.closeBtn}>
-                <X color="#64748b" size={20} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity 
-              activeOpacity={0.9} 
-              style={styles.mapContainer}
-              onPress={() => {
-                const routeToPass = previewRouteData;
-                setPreviewModalOpen(false);
-                router.push({
-                  pathname: '/map-viewer',
-                  params: { routeData: JSON.stringify(routeToPass) }
-                } as any);
-              }}
-            >
-              <View style={{ flex: 1, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center' }}><MapPin color="#10B981" size={48} /><Text style={{ color: '#F8FAFC', marginTop: 12, fontWeight: 'bold' }}>Nhấn để xem Bản đồ 2D</Text></View>
-
-              <View style={styles.expandOverlayBanner}>
-                <Maximize2 color="white" size={14} style={{ marginRight: 6 }} />
-                <Text style={styles.expandOverlayText}>Chạm vào bản đồ để xem toàn màn hình</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-  previewCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12
-  },
-  previewTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A'
-  },
-  closeBtn: {
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: '#F1F5F9'
-  },
-  mapContainer: {
-    width: '100%',
-    height: 320,
-    borderRadius: 18,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0'
-  },
-  expandOverlayBanner: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  expandOverlayText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '700'
-  }
-});

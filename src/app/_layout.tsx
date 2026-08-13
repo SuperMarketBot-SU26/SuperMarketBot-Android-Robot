@@ -9,6 +9,8 @@ import { RobotControlProvider } from '../context/RobotControlContext';
 import { RouteProvider } from '../context/RouteContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { GeofencingProvider } from '../context/GeofencingContext';
+import { RobotGuideProvider } from '../context/RobotGuideContext';
+import { RobotMissionRuntimeProvider } from '../context/RobotMissionRuntimeContext';
 
 function RootLayoutContent() {
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
@@ -31,13 +33,17 @@ export default function RootLayout() {
         <NotificationProvider>
           <RobotAuthProvider>
             <GeofencingProvider>
-              <MapViewerProvider>
-                <RouteProvider>
-                  <RobotControlProvider>
-                    <RootLayoutContent />
-                  </RobotControlProvider>
-                </RouteProvider>
-              </MapViewerProvider>
+              <RobotMissionRuntimeProvider>
+                <RobotGuideProvider>
+                  <MapViewerProvider>
+                    <RouteProvider>
+                      <RobotControlProvider>
+                        <RootLayoutContent />
+                      </RobotControlProvider>
+                    </RouteProvider>
+                  </MapViewerProvider>
+                </RobotGuideProvider>
+              </RobotMissionRuntimeProvider>
             </GeofencingProvider>
           </RobotAuthProvider>
         </NotificationProvider>

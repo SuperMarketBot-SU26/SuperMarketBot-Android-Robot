@@ -318,7 +318,7 @@ export default function MemberHomeScreen() {
         </YStack>
 
         {/* ROBOT ADS SECTION */}
-        <RobotAdDisplay robotId={1} robotCode="ROBOT01" />
+        <RobotAdDisplay robotId={1} robotCode="RB001" />
 
         {/* SMART SUGGESTIONS SECTION */}
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">

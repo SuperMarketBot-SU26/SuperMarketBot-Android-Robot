@@ -52,13 +52,6 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
     };
   });
 
-  useEffect(() => {
-    fetchDetail();
-    return () => {
-      stop();
-    };
-  }, [productId, isRecipe]);
-
   const fetchDetail = async () => {
     setLoading(true);
     if (isRecipe) {
@@ -112,6 +105,16 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
       setAddingToCart(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchDetail();
+    return () => {
+      void stop();
+    };
+    // Product route params are the fetch lifecycle boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId, isRecipe]);
 
   if (loading) {
     return (
