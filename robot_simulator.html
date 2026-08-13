@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartMarketBot - Robot Control Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@10.0.0/dist/browser/signalr.min.js"></script>
+    <style>
+        .console-log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .stop-item {
+            transition: all 0.2s ease;
+        }
+        .stop-active {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+        .stop-completed {
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-xl font-bold">🤖 Robot Navigation & Ad Control</h1>
+        <div class="text-sm bg-indigo-800 px-3 py-1 rounded-full">v1.0.0</div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden p-4 gap-4">
+        
+        <!-- Left Panel: Settings & Navigation Console -->
+        <div class="w-1/3 flex flex-col gap-4">
+            
+            <!-- Settings Card -->
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <h2 class="text-lg font-semibold mb-3 border-b pb-2">⚙️ Cấu hình (Settings)</h2>
+                
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">API Base URL</label>
+                    <input type="text" id="baseUrl" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" value="http://localhost:5000">
+                </div>
+
+                <div class="mb-3 rounded border border-red-300 bg-red-50 p-3">
+                    <strong class="block text-sm text-red-800">⚠️ REAL ROBOT MODE</strong>
+                    <p class="text-xs text-red-700 mt-1">Mọi lệnh điều hướng và dừng đều được BE publish trực tiếp qua MQTT tới ROS2.</p>
+                </div>
+                
+                <div class="mb-3 grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Robot code</label>
+                        <input type="text" id="robotCode" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" value="RB001">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Robot DB ID</label>
+                        <input type="number" id="robotId" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" value="1" min="1">
+                    </div>
+                </div>
+
+                <div class="mb-3 grid grid-cols-4 gap-2">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Flow</label>
+                        <select id="flowType" class="w-full border border-gray-300 rounded px-2 py-2 text-sm">
+                            <option value="ad">ad</option>
+                            <option value="patrol">patrol</option>
+                            <option value="guide">guide</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Zone ID</label>
+                        <input type="number" id="zoneId" placeholder="tuỳ chọn" class="w-full border border-gray-300 rounded px-2 py-2 text-sm" min="1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Product ID</label>
+                        <input type="number" id="productId" placeholder="guide" class="w-full border border-gray-300 rounded px-2 py-2 text-sm" min="1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Node ID</label>
+                        <input type="number" id="nodeId" placeholder="node đơn" class="w-full border border-gray-300 rounded px-2 py-2 text-sm" min="1">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 gap-2">
+                    <button id="btnDispatch" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded transition-colors">
+                        🚀 Dispatch autonomous (BE + DB)
+                    </button>
+                    <button id="btnRunNode" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors">
+                        📍 Chạy node đơn
+                    </button>
+                    <button id="btnRunZone" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded transition-colors">
+                        🗺️ Chạy toàn bộ map trong Zone
+                    </button>
+                    <button id="btnRunMap" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded transition-colors">
+                        🌐 Chạy toàn bộ Map (4 Zone)
+                    </button>
+                    <button id="btnRunDemo" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-semibold py-2 px-4 rounded transition-colors">
+                        🎓 Demo hội đồng (1 Node / Zone)
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btnPauseRobot" class="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 px-3 rounded transition-colors">
+                            ⏸ Tạm dừng
+                        </button>
+                        <button id="btnResumeRobot" class="bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 px-3 rounded transition-colors">
+                            ▶ Tiếp tục
+                        </button>
+                        <button id="btnStopRobot" class="bg-red-700 hover:bg-red-800 text-white font-semibold py-2 px-3 rounded transition-colors">
+                            ⏹ Dừng nhiệm vụ
+                        </button>
+                        <button id="btnEmergencyStop" class="bg-red-950 hover:bg-black ring-2 ring-red-500 text-white font-bold py-2 px-3 rounded transition-colors">
+                            🚨 E-STOP
+                        </button>
+                    </div>
+                    <button id="btnFetchRoute" class="w-full bg-slate-600 hover:bg-slate-700 text-white font-medium py-2 px-4 rounded transition-colors">
+                        📍 Lấy route quảng cáo đã gán
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation Console -->
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden">
+                <div class="flex justify-between items-center mb-3 border-b pb-2">
+                    <h2 class="text-lg font-semibold">🗺️ Lộ trình (Navigation)</h2>
+                    <span id="realtimeStatus" class="bg-slate-200 text-slate-700 text-xs font-medium py-1 px-3 rounded">SignalR: đang kết nối...</span>
+                </div>
+                <div id="robotKioskStatus" class="mb-3 grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-800 text-white rounded p-2 col-span-2 flex justify-between items-center">
+                        <span>📍 Vị trí hiện tại</span><strong id="kioskLocation">Đang chờ nhiệm vụ</strong>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-100 rounded p-2"><span class="text-gray-500">Node</span><br><strong id="kioskNode">-</strong></div>
+                    <div class="bg-blue-50 border border-blue-100 rounded p-2"><span class="text-gray-500">Tiến độ</span><br><strong id="kioskProgress">0 / 0</strong></div>
+                    <div class="bg-green-50 border border-green-100 rounded p-2"><span class="text-gray-500">Tọa độ</span><br><strong id="kioskCoordinates">x -, y -</strong></div>
+                    <div class="bg-amber-50 border border-amber-100 rounded p-2"><span class="text-gray-500">Trạm tiếp theo</span><br><strong id="kioskNext">-</strong></div>
+                    <div class="bg-gray-50 border rounded p-2"><span class="text-gray-500">Pin robot</span><br><strong id="kioskBattery">-</strong></div>
+                    <div class="bg-gray-50 border rounded p-2"><span class="text-gray-500">Kết nối / tốc độ</span><br><strong id="kioskTelemetry">Online · 0.0 m/s</strong></div>
+                </div>
+                
+                <div id="routeStopsContainer" class="flex-1 overflow-y-auto space-y-2 pr-2">
+                    <div class="text-gray-500 text-sm italic text-center mt-10">Chưa có lộ trình. Hãy bấm "Lấy lộ trình".</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Middle Panel: Robot Screen (Ad Display) -->
+        <div class="w-1/3 flex flex-col">
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
+                <h2 class="text-lg font-semibold mb-3 border-b pb-2 flex justify-between items-center">
+                    <span>📱 Màn hình Robot</span>
+                    <span id="countdownTimer" class="text-red-500 font-mono font-bold hidden">0s</span>
+                </h2>
+                
+                <div id="robotScreenContent" class="flex-1 bg-gray-900 rounded-lg flex flex-col items-center justify-center text-center p-6 relative overflow-hidden">
+                    
+                    <div id="idleState" class="text-gray-400">
+                        <svg class="w-16 h-16 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <p>Robot đang chờ đợi...</p>
+                    </div>
+
+                    <div id="adState" class="hidden w-full h-full flex flex-col relative z-10">
+                        <img id="adImage" src="" alt="Ad Banner" class="w-full max-h-64 object-contain rounded mb-4 bg-black/20">
+                        <div class="bg-black/50 p-4 rounded text-white flex-1 flex items-center justify-center">
+                            <p id="adText" class="text-lg font-medium">...</p>
+                        </div>
+                        <button id="btnAdClick" class="mt-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded">
+                            👆 Xem sản phẩm quảng cáo
+                        </button>
+                    </div>
+
+                </div>
+
+                <div id="ttsStatus" class="mt-3 text-sm text-center text-gray-500 flex items-center justify-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-gray-300 inline-block" id="ttsIndicator"></span>
+                    <span id="ttsLabel">TTS: Sẵn sàng</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: API Console Logs -->
+        <div class="w-1/3 flex flex-col">
+            <div class="bg-gray-900 text-green-400 p-4 rounded-lg shadow-sm border border-gray-700 h-full flex flex-col font-mono">
+                <div class="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
+                    <h2 class="text-sm font-semibold text-gray-300">🖥️ API Console Log</h2>
+                    <button id="btnClearLog" class="text-xs text-gray-400 hover:text-white">Clear</button>
+                </div>
+                <div id="consoleContainer" class="flex-1 console-log space-y-1">
+                    <div class="text-gray-500">>> Hệ thống sẵn sàng...</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- State Management ---
+        let currentRoute = null;
+        let currentStopIndex = -1;
+        let adInterval = null;
+        let currentAdItem = null;
+        let activePlaylistKey = null;
+        let playbackGeneration = 0;
+        let synth = window.speechSynthesis;
+        let robotHubConnection = null;
+        let currentRobotStatus = 'UNKNOWN';
+
+        // --- DOM Elements ---
+        const els = {
+            baseUrl: document.getElementById('baseUrl'),
+            robotId: document.getElementById('robotId'),
+            btnFetchRoute: document.getElementById('btnFetchRoute'),
+            btnDispatch: document.getElementById('btnDispatch'),
+            btnRunNode: document.getElementById('btnRunNode'),
+            btnRunZone: document.getElementById('btnRunZone'),
+            btnRunMap: document.getElementById('btnRunMap'),
+            btnRunDemo: document.getElementById('btnRunDemo'),
+            btnPauseRobot: document.getElementById('btnPauseRobot'),
+            btnResumeRobot: document.getElementById('btnResumeRobot'),
+            btnStopRobot: document.getElementById('btnStopRobot'),
+            btnEmergencyStop: document.getElementById('btnEmergencyStop'),
+            robotCode: document.getElementById('robotCode'),
+            realtimeStatus: document.getElementById('realtimeStatus'),
+            flowType: document.getElementById('flowType'),
+            zoneId: document.getElementById('zoneId'),
+            productId: document.getElementById('productId'),
+            nodeId: document.getElementById('nodeId'),
+            routeStopsContainer: document.getElementById('routeStopsContainer'),
+            kioskLocation: document.getElementById('kioskLocation'),
+            kioskNode: document.getElementById('kioskNode'),
+            kioskProgress: document.getElementById('kioskProgress'),
+            kioskCoordinates: document.getElementById('kioskCoordinates'),
+            kioskNext: document.getElementById('kioskNext'),
+            kioskBattery: document.getElementById('kioskBattery'),
+            kioskTelemetry: document.getElementById('kioskTelemetry'),
+            consoleContainer: document.getElementById('consoleContainer'),
+            btnClearLog: document.getElementById('btnClearLog'),
+            
+            // Robot Screen
+            idleState: document.getElementById('idleState'),
+            adState: document.getElementById('adState'),
+            adImage: document.getElementById('adImage'),
+            adText: document.getElementById('adText'),
+            btnAdClick: document.getElementById('btnAdClick'),
+            countdownTimer: document.getElementById('countdownTimer'),
+            ttsIndicator: document.getElementById('ttsIndicator'),
+            ttsLabel: document.getElementById('ttsLabel')
+        };
+
+        // --- Logger ---
+        function logApi(method, endpoint, reqBody = null, resStatus = null, resBody = null) {
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = 'border-b border-gray-800 pb-1 mb-1';
+            
+            let reqHtml = '';
+            if (reqBody) {
+                reqHtml = `<div class="text-blue-300 mt-1 pl-2 text-xs">REQ: ${JSON.stringify(reqBody)}</div>`;
+            }
+
+            let resHtml = '';
+            if (resStatus) {
+                const statusColor = resStatus >= 200 && resStatus < 300 ? 'text-green-400' : 'text-red-400';
+                resHtml = `<div class="${statusColor} pl-2 text-xs">RES [${resStatus}]: ${resBody ? JSON.stringify(resBody).substring(0, 150) + '...' : ''}</div>`;
+            }
+
+            div.innerHTML = `
+                <div class="text-yellow-300">[${time}] ${method} ${endpoint}</div>
+                ${reqHtml}
+                ${resHtml}
+            `;
+            els.consoleContainer.appendChild(div);
+            els.consoleContainer.scrollTop = els.consoleContainer.scrollHeight;
+        }
+
+        function logError(msg) {
+            const div = document.createElement('div');
+            div.className = 'text-red-500 text-xs border-b border-gray-800 pb-1 mb-1';
+            div.innerText = `[ERROR] ${msg}`;
+            els.consoleContainer.appendChild(div);
+            els.consoleContainer.scrollTop = els.consoleContainer.scrollHeight;
+        }
+
+        els.btnClearLog.addEventListener('click', () => {
+            els.consoleContainer.innerHTML = '<div class="text-gray-500">>> Hệ thống sẵn sàng...</div>';
+        });
+
+        // --- Core Functions ---
+
+        async function fetchRoute() {
+            const baseUrl = els.baseUrl.value.trim();
+            const robotId = els.robotId.value.trim();
+            const robotCode = els.robotCode.value.trim();
+            
+            if (!baseUrl || !robotId) {
+                alert("Vui lòng nhập đủ URL và Robot ID");
+                return;
+            }
+
+            els.btnFetchRoute.disabled = true;
+            els.btnFetchRoute.innerText = "⏳ Đang tải...";
+            
+            const endpoint = `/api/v1/ad-campaign/robot/${encodeURIComponent(robotCode)}/broadcast/route`;
+            
+            try {
+                logApi('GET', endpoint);
+                const res = await fetch(`${baseUrl}${endpoint}`);
+                
+                let data = null;
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    data = await res.json();
+                }
+
+                logApi('GET', endpoint, null, res.status, data);
+
+                if (res.ok && data) {
+                    currentRoute = data;
+                    currentStopIndex = -1;
+                    renderRouteStops(data.stops || []);
+                    resetRobotScreen();
+                } else {
+                    logError(`Fetch failed: ${res.status}`);
+                    if (res.status === 404) {
+                        logError('Robot chưa được gán autonomous ad route; hãy dùng Dispatch autonomous (BE + DB).');
+                    } else {
+                        alert(`Không thể lấy lộ trình! Lỗi: ${res.status}`);
+                    }
+                }
+            } catch (err) {
+                logError(err.message);
+                alert("Lỗi kết nối tới Server! Đảm bảo server đang chạy và không bị lỗi CORS.");
+            } finally {
+                els.btnFetchRoute.disabled = false;
+                els.btnFetchRoute.innerText = "📍 Lấy lộ trình tự động";
+            }
+        }
+
+        // Gọi centralized dispatcher thật của Backend. Mọi request tại đây
+        // đều được publish MQTT xuống robot.
+        async function dispatchAutonomous(options = {}) {
+            const baseUrl = els.baseUrl.value.trim();
+            const robotCode = els.robotCode.value.trim();
+            const flowType = els.flowType.value;
+            if (!baseUrl || !robotCode) {
+                alert('Vui lòng nhập API Base URL và Robot code');
+                return;
+            }
+
+            if (!options.confirmedReal) {
+                const confirmed = confirm(`⚠️ Gửi nhiệm vụ thật tới ${robotCode} qua MQTT? Hãy chắc chắn khu vực an toàn và E-Stop hoạt động.`);
+                if (!confirmed) return;
+                options.confirmedReal = true;
+            }
+            const endpoint = '/api/v1/navigation/dispatch-autonomous';
+            const payload = {
+                robotCode,
+                flowType,
+                zoneId: Number(els.zoneId.value) || undefined,
+                productId: Number(els.productId.value) || undefined,
+                nodeIds: Array.isArray(options.nodeIds) ? options.nodeIds : undefined,
+                demoRoute: options.demoRoute === true,
+                fullZoneMap: Array.isArray(options.nodeIds) && options.nodeIds.length > 0
+                    ? false
+                    : options.fullZoneMap !== false
+            };
+
+            els.btnDispatch.disabled = true;
+            els.btnDispatch.innerText = '⏳ Đang dispatch...';
+            try {
+                logApi('POST', endpoint, payload);
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+                logApi('POST', endpoint, null, res.status, data);
+                if (!res.ok || !data) throw new Error(`Dispatch failed: HTTP ${res.status}`);
+
+                // Dispatch builds navigation waypoints. Fetch the zone playlist
+                // separately as a fallback for maps whose nodes are not linked
+                // to AdRouteNodes yet.
+                let zonePlaylist = [];
+                const zoneId = Number(els.zoneId.value);
+                const robotId = Number(els.robotId.value);
+                if (flowType === 'ad' && zoneId > 0 && robotId > 0) {
+                    const playlistEndpoint = `/api/v1/ad-campaign/robot-playlist/${robotId}/zone/${zoneId}`;
+                    try {
+                        logApi('GET', playlistEndpoint);
+                        const playlistRes = await fetch(`${baseUrl}${playlistEndpoint}`);
+                        const playlistData = playlistRes.headers.get('content-type')?.includes('json')
+                            ? await playlistRes.json() : null;
+                        logApi('GET', playlistEndpoint, null, playlistRes.status, playlistData);
+                        if (playlistRes.ok && playlistData?.playlist) zonePlaylist = playlistData.playlist;
+                    } catch (playlistErr) {
+                        logError(`Không lấy được playlist Zone ${zoneId}: ${playlistErr.message}`);
+                    }
+                }
+
+                currentRoute = {
+                    missionId: data.missionId,
+                    adRouteId: 0,
+                    routeName: `Dispatch ${data.flowType || flowType} · ${String(data.missionId || '').slice(0, 8)}`,
+                    isAutonomous: true,
+                    stops: (data.waypoints || []).map((w, index) => ({
+                        sequenceOrder: index + 1,
+                        nodeId: w.nodeId,
+                        nodeName: w.nodeName,
+                        xCoord: w.xCoord,
+                        yCoord: w.yCoord,
+                        zoneId: w.zoneId ?? payload.zoneId ?? null,
+                        zoneName: w.zoneName || (payload.zoneId ? `Zone ${payload.zoneId}` : null),
+                        shelfId: w.shelfId ?? null,
+                        shelfName: w.shelfName || null,
+                        aisleId: w.aisleId ?? null,
+                        aisleName: w.aisleName || null,
+                        productNames: Array.isArray(w.productNames) ? w.productNames : [],
+                        dwellTimeSeconds: w.effectiveDwellTimeSeconds || w.dwellTimeSeconds || 0,
+                        effectiveDwellTimeSeconds: w.effectiveDwellTimeSeconds || w.dwellTimeSeconds || 0,
+                        playlist: (w.playlist && w.playlist.length > 0) ? w.playlist : zonePlaylist
+                    }))
+                };
+                currentStopIndex = -1;
+                renderRouteStops(currentRoute.stops);
+                resetRobotScreen();
+                logApi('INFO', 'MISSION_READY', null, 200, {
+                    missionId: data.missionId,
+                    stops: currentRoute.stops.length,
+                    message: data.message
+                });
+            } catch (err) {
+                logError(err.message);
+                alert(err.message);
+            } finally {
+                els.btnDispatch.disabled = false;
+                els.btnDispatch.innerText = '🚀 Dispatch autonomous (BE + DB)';
+            }
+        }
+
+        // Chạy thật đúng một waypoint qua BE → MQTT → ROS2.
+        async function runSingleNode() {
+            const nodeId = Number(els.nodeId.value);
+            if (!nodeId || nodeId < 1) {
+                alert('Vui lòng nhập Node ID hợp lệ.');
+                return;
+            }
+            await dispatchAutonomous({ nodeIds: [nodeId], fullZoneMap: false });
+        }
+
+        // Dispatch thật toàn bộ waypoint của Zone; ROS2 chịu trách nhiệm di chuyển.
+        async function runWholeZone() {
+            if (!Number(els.zoneId.value)) {
+                alert('Vui lòng nhập Zone ID trước khi chạy toàn bộ map.');
+                return;
+            }
+            els.btnRunZone.disabled = true;
+            els.btnRunZone.innerText = '⏳ Đang chạy toàn bộ Zone...';
+            try {
+                await dispatchAutonomous({ fullZoneMap: false });
+                logApi('INFO', 'ZONE_MISSION_DISPATCHED', null, 202, {
+                    zoneId: Number(els.zoneId.value),
+                    stops: currentRoute?.stops?.length || 0
+                });
+            } finally {
+                els.btnRunZone.disabled = false;
+                els.btnRunZone.innerText = '🗺️ Chạy toàn bộ map trong Zone';
+            }
+        }
+
+        // Map is the parent of the four configured zones. Dispatch each zone,
+        // merge all waypoints into one route, then run the complete map.
+        async function runWholeMap() {
+            const originalZone = els.zoneId.value;
+            const allStops = [];
+            els.btnRunMap.disabled = true;
+            els.btnRunMap.innerText = '⏳ Đang load Map (Zone 1 → 4)...';
+            try {
+                // New BE contract: one fullZoneMap request already returns all
+                // nodes across the active map and their zone playlists.
+                await dispatchAutonomous({ fullZoneMap: true });
+                if (currentRoute?.stops?.length) allStops.push(...currentRoute.stops);
+
+                const zones = new Set(allStops.map(stop => Number(stop.zoneId)).filter(Boolean));
+                if (zones.size < 4) {
+                    logApi('WARN', 'REAL_ROBOT_FULL_MAP_RESPONSE_INCOMPLETE', null, 200, {
+                        message: 'BE trả về thiếu Zone; không tự dispatch nhiều mission chồng lên robot.'
+                    });
+                }
+                const missionId = currentRoute?.missionId;
+                currentRoute = {
+                    missionId,
+                    adRouteId: 0,
+                    routeName: 'Toàn bộ Map — Zone 1 → Zone 4',
+                    isAutonomous: true,
+                    stops: allStops.map((stop, index) => ({ ...stop, sequenceOrder: index + 1 }))
+                };
+                currentStopIndex = -1;
+                renderRouteStops(currentRoute.stops);
+                resetRobotScreen();
+                logApi('INFO', 'FULL_MAP_READY', null, 200, {
+                    zones: [1, 2, 3, 4],
+                    stops: currentRoute.stops.length
+                });
+            } finally {
+                els.zoneId.value = originalZone;
+                els.btnRunMap.disabled = false;
+                els.btnRunMap.innerText = '🌐 Chạy toàn bộ Map (4 Zone)';
+            }
+        }
+
+        // Một nhiệm vụ thật gồm đúng một waypoint mở đại diện cho mỗi Zone.
+        // Backend sẽ từ chối trước khi publish MQTT nếu bất kỳ Zone nào chưa an toàn.
+        async function runCouncilDemo() {
+            els.btnRunDemo.disabled = true;
+            els.btnRunDemo.innerText = '⏳ Đang kiểm tra route demo...';
+            try {
+                await dispatchAutonomous({ demoRoute: true, fullZoneMap: false });
+                logApi('INFO', 'COUNCIL_DEMO_DISPATCHED', null, 202, {
+                    missionId: currentRoute?.missionId,
+                    stops: currentRoute?.stops?.length || 0
+                });
+            } finally {
+                els.btnRunDemo.disabled = false;
+                els.btnRunDemo.innerText = '🎓 Demo hội đồng (1 Node / Zone)';
+            }
+        }
+
+        function updateRobotControlButtons(status) {
+            currentRobotStatus = String(status || 'UNKNOWN').toUpperCase();
+            els.btnPauseRobot.dataset.robotStatus = currentRobotStatus;
+            els.btnResumeRobot.dataset.robotStatus = currentRobotStatus;
+            els.btnPauseRobot.title = `Gửi PAUSE_NAV (trạng thái nhận gần nhất: ${currentRobotStatus})`;
+            els.btnResumeRobot.title = `Gửi RESUME_NAV (trạng thái nhận gần nhất: ${currentRobotStatus})`;
+        }
+
+        async function sendRobotControl({ action, command, button, pendingText, idleText, confirmation, waitingState, emergency = false }) {
+            const baseUrl = els.baseUrl.value.trim();
+            const robotCode = els.robotCode.value.trim();
+            if (!baseUrl || !robotCode) {
+                alert('Vui lòng nhập API Base URL và Robot code.');
+                return;
+            }
+
+            if (!confirm(confirmation(robotCode))) return;
+            if (emergency && !confirm('XÁC NHẬN LẦN 2: Robot sẽ dừng khẩn cấp. Chỉ tiếp tục khi khu vực đã an toàn và E-Stop được reset tại robot.')) return;
+
+            const endpoint = `/api/v1/navigation/robots/${encodeURIComponent(robotCode)}/${action}`;
+            button.disabled = true;
+            button.innerText = pendingText;
+
+            try {
+                logApi('POST', endpoint, { robotCode, command });
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = res.headers.get('content-type')?.includes('json')
+                    ? await res.json() : null;
+                logApi('POST', endpoint, null, res.status, data);
+                if (!res.ok) throw new Error(`${command} failed: HTTP ${res.status}`);
+
+                if (synth) synth.cancel();
+                updateKioskStatus(currentRoute?.stops?.[currentStopIndex] || null, waitingState);
+            } catch (err) {
+                logError(`${command} request failed: ${err.message}`);
+                alert(err.message);
+            } finally {
+                button.innerText = idleText;
+                button.disabled = false;
+            }
+        }
+
+        function pauseRobotMission() {
+            return sendRobotControl({
+                action: 'pause', command: 'PAUSE_NAV', button: els.btnPauseRobot,
+                pendingText: '⏳ Đang tạm dừng...', idleText: '⏸ Tạm dừng',
+                confirmation: code => `Tạm dừng nhiệm vụ của ${code}? Robot sẽ giữ lại các waypoint còn lại.`,
+                waitingState: 'Đã gửi PAUSE_NAV · Chờ robot xác nhận PAUSED'
+            });
+        }
+
+        function resumeRobotMission() {
+            return sendRobotControl({
+                action: 'resume', command: 'RESUME_NAV', button: els.btnResumeRobot,
+                pendingText: '⏳ Đang tiếp tục...', idleText: '▶ Tiếp tục',
+                confirmation: code => `Tiếp tục nhiệm vụ đang tạm dừng của ${code}?`,
+                waitingState: 'Đã gửi RESUME_NAV · Chờ robot tiếp tục NAVIGATING'
+            });
+        }
+
+        function stopRobotMission() {
+            return sendRobotControl({
+                action: 'stop', command: 'CANCEL_NAV', button: els.btnStopRobot,
+                pendingText: '⏳ Đang dừng...', idleText: '⏹ Dừng nhiệm vụ',
+                confirmation: code => `Dừng mềm nhiệm vụ của ${code}? Lệnh CANCEL_NAV sẽ được gửi thật qua MQTT.`,
+                waitingState: 'Đã gửi CANCEL_NAV · Chờ robot xác nhận CANCELLED'
+            });
+        }
+
+        function emergencyStopRobot() {
+            return sendRobotControl({
+                action: 'estop', command: 'ESTOP', button: els.btnEmergencyStop,
+                pendingText: '🚨 ĐANG E-STOP...', idleText: '🚨 E-STOP', emergency: true,
+                confirmation: code => `DỪNG KHẨN CẤP ${code}? Đây không phải dừng nhiệm vụ thông thường.`,
+                waitingState: '🚨 Đã gửi ESTOP · Kiểm tra robot và khu vực ngay'
+            });
+        }
+
+        function updateKioskStatus(stop = null, state = 'Đang chờ nhiệm vụ') {
+            const total = currentRoute?.stops?.length || 0;
+            const completed = Math.max(0, currentStopIndex);
+            const next = stop ? currentRoute?.stops?.[currentStopIndex + 1] : null;
+            els.kioskLocation.innerText = state;
+            els.kioskNode.innerText = stop ? `${stop.nodeName || `Node ${stop.nodeId}`} · ${stop.zoneName || 'Zone -'}` : '-';
+            els.kioskProgress.innerText = `${Math.min(completed + (stop ? 1 : 0), total)} / ${total}`;
+            els.kioskCoordinates.innerText = stop ? `x ${Number(stop.xCoord ?? 0).toFixed(2)}, y ${Number(stop.yCoord ?? 0).toFixed(2)}` : 'x -, y -';
+            els.kioskNext.innerText = next ? `${next.nodeName || `Node ${next.nodeId}`} · ${next.zoneName || ''}` : (total ? 'Hoàn tất' : '-');
+        }
+
+        function renderRouteStops(stops) {
+            els.routeStopsContainer.innerHTML = '';
+            
+            if (!stops || stops.length === 0) {
+                els.routeStopsContainer.innerHTML = '<div class="text-gray-500 text-sm text-center mt-4">Lộ trình rỗng.</div>';
+                updateKioskStatus(null, 'Không có waypoint');
+                return;
+            }
+
+            updateKioskStatus(null, 'Sẵn sàng xuất phát');
+
+            stops.forEach((stop, idx) => {
+                const hasAd = stop.playlist && stop.playlist.length > 0;
+                
+                const html = `
+                    <div id="stop-${idx}" class="stop-item bg-gray-50 p-3 rounded border border-gray-200 flex justify-between items-center">
+                        <div>
+                            <div class="font-medium text-sm text-gray-800">
+                                <span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-xs mr-2">#${stop.sequenceOrder}</span>
+                                Node: ${stop.nodeName || stop.nodeId}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                Zone: ${stop.zoneName || 'N/A'} (ID: ${stop.zoneId || '-'}) 
+                                | Dãy: ${stop.aisleName || '-'} (ID: ${stop.aisleId || '-'})
+                                | Kệ: ${stop.shelfName || '-'}
+                                ${stop.productNames?.length ? `<br>🛒 Sản phẩm: ${stop.productNames.join(', ')}` : ''}
+                            </div>
+                        </div>
+                        <div>
+                            ${hasAd ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-medium border border-indigo-200">🎵 ${stop.playlist.length} Ads</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                els.routeStopsContainer.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        function setActiveRealStop(index, state) {
+            if (!currentRoute?.stops?.length || index < 0) return null;
+            document.querySelectorAll('.stop-item').forEach(el => el.classList.remove('stop-active'));
+            currentStopIndex = index;
+            const stop = currentRoute.stops[index];
+            const currentElement = document.getElementById(`stop-${index}`);
+            if (currentElement) {
+                currentElement.classList.add('stop-active');
+                currentElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            updateKioskStatus(stop, state);
+            return stop;
+        }
+
+        async function handleRealNavigationStatus(message) {
+            const status = String(message?.navStatus ?? message?.status ?? 'UNKNOWN').toUpperCase();
+            const waypoint = message?.currentWaypoint ?? message?.waypoint ?? null;
+            const missionId = message?.missionId ?? null;
+            const waypointIndex = message?.waypointIndex ?? null;
+            const dwellTimeSeconds = message?.dwellTimeSeconds ?? null;
+            logApi('MQTT', 'navigation_status', null, 200, {
+                status, missionId, waypoint, waypointIndex, dwellTimeSeconds
+            });
+            updateRobotControlButtons(status);
+
+            const stopIndex = waypoint && currentRoute?.stops
+                ? currentRoute.stops.findIndex(stop => stop.nodeName === waypoint)
+                : currentStopIndex;
+
+            if (status === 'NAVIGATING' || status === 'MOVING') {
+                setActiveRealStop(stopIndex, `Robot thật: ${status}${waypoint ? ` → ${waypoint}` : ''}`);
+                return;
+            }
+
+            if (status === 'PAUSED') {
+                setActiveRealStop(stopIndex, `Robot đã tạm dừng${waypoint ? ` tại ${waypoint}` : ''}`);
+                return;
+            }
+
+            if (status === 'ARRIVED') {
+                const stop = setActiveRealStop(stopIndex, `Robot đã đến ${waypoint || 'waypoint'}`);
+                if (!stop) return;
+                await sendRobotEvent(stop);
+                updateKioskStatus(stop, 'Robot đã đến · chờ ROS xác nhận phát quảng cáo');
+                return;
+            }
+
+            if (status === 'PLAYLIST_PLAYING') {
+                const stop = setActiveRealStop(stopIndex, `Đang phát quảng cáo${waypoint ? ` tại ${waypoint}` : ''}`);
+                const playbackKey = `${missionId || currentRoute?.missionId || 'mission'}:${waypointIndex ?? stopIndex}`;
+                if (activePlaylistKey === playbackKey) return;
+
+                const realtimePlaylist = normalizeRealtimePlaylist(message?.playlist);
+                const playlist = stop?.playlist?.length ? stop.playlist : realtimePlaylist;
+                activePlaylistKey = playbackKey;
+                updateKioskStatus(stop, `Đang phát quảng cáo · robot dừng ${dwellTimeSeconds ?? stop?.dwellTimeSeconds ?? '-'}s`);
+
+                if (playlist.length) {
+                    playPlaylist(playlist).catch(err => logError(`Playlist failed: ${err.message}`));
+                } else {
+                    logError(`Waypoint ${waypoint || waypointIndex} không có nội dung quảng cáo.`);
+                }
+                return;
+            }
+
+            if (status === 'PLAYLIST_COMPLETE') {
+                const stop = currentRoute?.stops?.[currentStopIndex] || null;
+                resetRobotScreen();
+                updateKioskStatus(stop, `Đã phát xong quảng cáo${waypoint ? ` tại ${waypoint}` : ''} · chuẩn bị đi tiếp`);
+                return;
+            }
+
+            if (status === 'COMPLETED') {
+                resetRobotScreen();
+                const currentElement = document.getElementById(`stop-${currentStopIndex}`);
+                if (currentElement) {
+                    currentElement.classList.remove('stop-active');
+                    currentElement.classList.add('stop-completed');
+                }
+                updateKioskStatus(
+                    currentRoute?.stops?.[currentStopIndex] || null,
+                    'Robot đã hoàn thành nhiệm vụ');
+                return;
+            }
+
+            if (status === 'FAILED' || status === 'CANCELLED' || status === 'BLOCKED' || status === 'ESTOP') {
+                resetRobotScreen();
+                updateKioskStatus(
+                    currentRoute?.stops?.[currentStopIndex] || null,
+                    status === 'ESTOP' ? '🚨 ROBOT ĐANG E-STOP' : `Robot: ${status}`);
+            }
+        }
+
+        async function connectRobotRealtime() {
+            if (!window.signalR) {
+                els.realtimeStatus.innerText = 'SignalR: thiếu thư viện';
+                els.realtimeStatus.className = 'bg-red-100 text-red-700 text-xs font-medium py-1 px-3 rounded';
+                return;
+            }
+
+            if (robotHubConnection) {
+                try { await robotHubConnection.stop(); } catch { }
+            }
+
+            const baseUrl = els.baseUrl.value.trim().replace(/\/$/, '');
+            const robotCode = els.robotCode.value.trim();
+            if (!baseUrl || !robotCode) return;
+
+            robotHubConnection = new signalR.HubConnectionBuilder()
+                .withUrl(`${baseUrl}/hubs/robot`)
+                .withAutomaticReconnect([0, 1000, 3000, 5000, 10000])
+                .build();
+
+            robotHubConnection.on('navigationStatus', handleRealNavigationStatus);
+            robotHubConnection.on('telemetry', telemetry => {
+                const x = telemetry?.xCoord ?? telemetry?.XCoord;
+                const y = telemetry?.yCoord ?? telemetry?.YCoord;
+                const battery = telemetry?.battery ?? telemetry?.Battery;
+                const online = telemetry?.isOnline ?? telemetry?.IsOnline;
+                const status = String(telemetry?.status ?? telemetry?.Status ?? 'UNKNOWN').toUpperCase();
+                if (x != null && y != null) {
+                    els.kioskCoordinates.innerText = `x ${Number(x).toFixed(2)}, y ${Number(y).toFixed(2)}`;
+                }
+                els.kioskBattery.innerText = battery == null ? '-' : `${battery}%`;
+                els.kioskTelemetry.innerText = `${online === false ? 'Offline' : 'Online'} · ${status}`;
+                if (status === 'ESTOP') {
+                    updateRobotControlButtons(status);
+                    resetRobotScreen();
+                    updateKioskStatus(currentRoute?.stops?.[currentStopIndex] || null, '🚨 ROBOT ĐANG E-STOP');
+                }
+            });
+            robotHubConnection.onreconnecting(() => {
+                els.realtimeStatus.innerText = 'SignalR: đang kết nối lại...';
+                els.realtimeStatus.className = 'bg-amber-100 text-amber-700 text-xs font-medium py-1 px-3 rounded';
+            });
+            robotHubConnection.onreconnected(async () => {
+                await robotHubConnection.invoke('JoinRobotGroup', robotCode);
+                els.realtimeStatus.innerText = `SignalR: ${robotCode} online`;
+                els.realtimeStatus.className = 'bg-green-100 text-green-700 text-xs font-medium py-1 px-3 rounded';
+            });
+            robotHubConnection.onclose(() => {
+                els.realtimeStatus.innerText = 'SignalR: mất kết nối';
+                els.realtimeStatus.className = 'bg-red-100 text-red-700 text-xs font-medium py-1 px-3 rounded';
+            });
+
+            try {
+                await robotHubConnection.start();
+                await robotHubConnection.invoke('JoinRobotGroup', robotCode);
+                els.realtimeStatus.innerText = `SignalR: ${robotCode} online`;
+                els.realtimeStatus.className = 'bg-green-100 text-green-700 text-xs font-medium py-1 px-3 rounded';
+                logApi('INFO', 'SIGNALR_CONNECTED', null, 200, { robotCode });
+            } catch (err) {
+                els.realtimeStatus.innerText = 'SignalR: kết nối thất bại';
+                els.realtimeStatus.className = 'bg-red-100 text-red-700 text-xs font-medium py-1 px-3 rounded';
+                logError(`SignalR: ${err.message}`);
+            }
+        }
+
+        async function sendRobotEvent(stop) {
+            const baseUrl = els.baseUrl.value.trim();
+            const robotId = els.robotId.value.trim();
+            
+            const endpoint = `/api/v1/robot-events`;
+            const payload = {
+                robotId: parseInt(robotId),
+                zoneId: stop.zoneId || 0,
+                // Backend RobotEventRequestDto lưu XCoord/YCoord dạng int.
+                // Làm tròn tọa độ mét để model binding và log campaign ổn định.
+                xCoord: Math.round(Number(stop.xCoord ?? stop.x ?? 0)),
+                yCoord: Math.round(Number(stop.yCoord ?? stop.y ?? 0)),
+                timestamp: new Date().toISOString()
+            };
+
+            // Only send if we have a valid ZoneID
+            if (payload.zoneId <= 0) return;
+
+            try {
+                logApi('POST', endpoint, payload);
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let data = null;
+                if (res.headers.get("content-type")?.includes("json")) {
+                    data = await res.json();
+                }
+                logApi('POST', endpoint, null, res.status, data);
+            } catch (err) {
+                logError("Failed to send Robot Event: " + err.message);
+            }
+        }
+
+        async function sendImpression(item, stop) {
+            const baseUrl = els.baseUrl.value.trim();
+            const campaignId = item.adCampaignId;
+            if (!campaignId) return;
+            
+            const endpoint = `/api/v1/ad-campaigns/${campaignId}/impression`;
+            const payload = {
+                productId: item.productId || undefined,
+                zoneId: stop?.zoneId || undefined
+            };
+
+            try {
+                logApi('POST', endpoint, payload);
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                let data = null;
+                if (res.headers.get("content-type")?.includes("json")) {
+                    data = await res.json();
+                }
+                logApi('POST', endpoint, null, res.status, data);
+            } catch (err) {
+                logError("Failed to send Impression: " + err.message);
+            }
+        }
+
+        function resetRobotScreen() {
+            playbackGeneration++;
+            activePlaylistKey = null;
+            els.idleState.classList.remove('hidden');
+            els.adState.classList.add('hidden');
+            els.countdownTimer.classList.add('hidden');
+            els.ttsIndicator.classList.replace('bg-green-500', 'bg-gray-300');
+            els.ttsLabel.innerText = "TTS: Sẵn sàng";
+            els.btnAdClick.classList.add('hidden');
+            currentAdItem = null;
+            if (synth.speaking) synth.cancel();
+            if (adInterval) clearInterval(adInterval);
+        }
+
+        function normalizeRealtimePlaylist(items) {
+            if (!Array.isArray(items)) return [];
+            return items.map(item => ({
+                sponsoredId: item.sponsoredId ?? item.id,
+                adCampaignId: item.adCampaignId,
+                productId: item.productId,
+                productName: item.productName ?? item.name,
+                displayDurationSeconds: item.displayDurationSeconds ?? item.durationSeconds ?? 5,
+                imageUrl: item.imageUrl,
+                mediaContents: item.mediaContents || []
+            }));
+        }
+
+        async function playPlaylist(items) {
+            const generation = ++playbackGeneration;
+            els.idleState.classList.add('hidden');
+            els.adState.classList.remove('hidden');
+            els.countdownTimer.classList.remove('hidden');
+
+            for (const item of items) {
+                if (generation !== playbackGeneration) return;
+                await displayAd(item, generation);
+                if (generation !== playbackGeneration) return;
+                // Sau khi phát xong, gửi Impression để charge tiền
+                if (item.adCampaignId) {
+                    await sendImpression(item, currentRoute.stops[currentStopIndex]);
+                }
+            }
+
+            if (generation === playbackGeneration) resetRobotScreen();
+        }
+
+        function displayAd(item, generation) {
+            return new Promise((resolve) => {
+                currentAdItem = item;
+                els.btnAdClick.classList.remove('hidden');
+                // Set UI
+                const media = item.mediaContents && item.mediaContents.length > 0 ? item.mediaContents[0] : null;
+                els.adImage.src = media ? media.resourceUrl : (item.imageUrl || 'https://via.placeholder.com/800x400?text=No+Image');
+                els.adText.innerText = media ? media.contentText : (item.productName || '(Không có nội dung đọc)');
+                
+                let timeLeft = item.displayDurationSeconds || 5;
+                els.countdownTimer.innerText = `${timeLeft}s`;
+
+                const textToRead = media ? media.contentText : item.productName;
+
+                // Play TTS
+                if (textToRead) {
+                    const utterance = new SpeechSynthesisUtterance(textToRead);
+                    utterance.lang = 'vi-VN'; // Vietnamese
+                    
+                    utterance.onstart = () => {
+                        els.ttsIndicator.classList.replace('bg-gray-300', 'bg-green-500');
+                        els.ttsLabel.innerText = "Đang đọc...";
+                    };
+                    utterance.onend = () => {
+                        els.ttsIndicator.classList.replace('bg-green-500', 'bg-gray-300');
+                        els.ttsLabel.innerText = "TTS: Xong";
+                    };
+                    
+                    synth.cancel(); // Stop current
+                    synth.speak(utterance);
+                }
+
+                // Countdown loop
+                adInterval = setInterval(() => {
+                    if (generation !== playbackGeneration) {
+                        clearInterval(adInterval);
+                        resolve();
+                        return;
+                    }
+                    timeLeft--;
+                    if (timeLeft < 0) timeLeft = 0;
+                    els.countdownTimer.innerText = `${timeLeft}s`;
+                    
+                    if (timeLeft <= 0) {
+                        clearInterval(adInterval);
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        async function sendClick() {
+            const item = currentAdItem;
+            const stop = currentRoute?.stops?.[currentStopIndex];
+            if (!item?.adCampaignId) return;
+            const baseUrl = els.baseUrl.value.trim();
+            const endpoint = `/api/v1/ad-campaigns/${item.adCampaignId}/click`;
+            const payload = {
+                productId: item.productId || undefined,
+                zoneId: stop?.zoneId || undefined
+            };
+            try {
+                logApi('POST', endpoint, payload);
+                const res = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+                logApi('POST', endpoint, null, res.status, data);
+            } catch (err) {
+                logError('Failed to send Click: ' + err.message);
+            }
+        }
+
+        // --- Event Listeners ---
+        els.btnFetchRoute.addEventListener('click', fetchRoute);
+        els.btnDispatch.addEventListener('click', dispatchAutonomous);
+        els.btnRunNode.addEventListener('click', runSingleNode);
+        els.btnRunZone.addEventListener('click', runWholeZone);
+        els.btnRunMap.addEventListener('click', runWholeMap);
+        els.btnRunDemo.addEventListener('click', runCouncilDemo);
+        els.btnPauseRobot.addEventListener('click', pauseRobotMission);
+        els.btnResumeRobot.addEventListener('click', resumeRobotMission);
+        els.btnStopRobot.addEventListener('click', stopRobotMission);
+        els.btnEmergencyStop.addEventListener('click', emergencyStopRobot);
+        els.btnAdClick.addEventListener('click', sendClick);
+        els.robotCode.addEventListener('change', connectRobotRealtime);
+        els.baseUrl.addEventListener('change', connectRobotRealtime);
+        connectRobotRealtime();
+
+    </script>
+</body>
+</html>
