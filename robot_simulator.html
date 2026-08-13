@@ -97,7 +97,13 @@
                         🗺️ Chạy toàn bộ map trong Zone
                     </button>
                     <button id="btnRunMap" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded transition-colors">
-                        🌐 Chạy toàn bộ Map (4 Zone)
+                        📢 Quảng cáo toàn bộ Map (4 Zone)
+                    </button>
+                    <button id="btnRunPatrol" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded transition-colors">
+                        📷 Demo 5: Tuần tra AI Vision
+                    </button>
+                    <button id="btnTestVisionCapture" class="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors">
+                        📸 Test chụp 1 ảnh (không chạy robot)
                     </button>
                     <button id="btnRunDemo" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-semibold py-2 px-4 rounded transition-colors">
                         🎓 Demo hội đồng (1 Node / Zone)
@@ -182,14 +188,40 @@
         </div>
 
         <!-- Right Panel: API Console Logs -->
-        <div class="w-1/3 flex flex-col">
-            <div class="bg-gray-900 text-green-400 p-4 rounded-lg shadow-sm border border-gray-700 h-full flex flex-col font-mono">
+        <div class="w-1/3 flex flex-col gap-4 overflow-hidden">
+            <div class="bg-gray-900 text-green-400 p-4 rounded-lg shadow-sm border border-gray-700 flex-1 min-h-0 flex flex-col font-mono">
                 <div class="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
                     <h2 class="text-sm font-semibold text-gray-300">🖥️ API Console Log</h2>
                     <button id="btnClearLog" class="text-xs text-gray-400 hover:text-white">Clear</button>
                 </div>
                 <div id="consoleContainer" class="flex-1 console-log space-y-1">
                     <div class="text-gray-500">>> Hệ thống sẵn sàng...</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 h-1/2 min-h-0 flex flex-col">
+                <div class="flex justify-between items-center border-b pb-2 mb-2">
+                    <h2 class="text-sm font-bold text-gray-800">📷 AI Vision Patrol</h2>
+                    <span id="visionStatus" class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Chưa khởi động</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 min-h-0 flex-1">
+                    <div class="relative bg-black rounded overflow-hidden min-h-32">
+                        <video id="visionCamera" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                        <canvas id="visionCanvas" class="hidden"></canvas>
+                        <div id="cameraPlaceholder" class="absolute inset-0 flex items-center justify-center text-center text-xs text-gray-400 p-3">
+                            Camera sau sẽ mở trước khi dispatch tuần tra.
+                        </div>
+                    </div>
+                    <div class="flex flex-col min-h-0">
+                        <div class="grid grid-cols-3 gap-1 text-center text-xs mb-2">
+                            <div class="bg-blue-50 rounded p-1"><strong id="visionScanned" class="block text-blue-700">0</strong>Đã quét</div>
+                            <div class="bg-red-50 rounded p-1"><strong id="visionAlerts" class="block text-red-700">0</strong>Cảnh báo</div>
+                            <div class="bg-amber-50 rounded p-1"><strong id="visionPending" class="block text-amber-700">0</strong>Đang xử lý</div>
+                        </div>
+                        <div id="visionResults" class="flex-1 min-h-0 overflow-y-auto space-y-2 text-xs">
+                            <div class="text-gray-400 italic">Chưa có kết quả quét kệ.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -207,6 +239,17 @@
         let synth = window.speechSynthesis;
         let robotHubConnection = null;
         let currentRobotStatus = 'UNKNOWN';
+        let cameraStream = null;
+        let isVisionMission = false;
+        let visionRobotCompleted = false;
+        let visionQueueRunning = false;
+        let visionScannedCount = 0;
+        let visionAlertCount = 0;
+        let visionPendingCount = 0;
+        let visionFailedCount = 0;
+        let isVisionCameraTest = false;
+        const visionQueue = [];
+        const capturedVisionKeys = new Set();
 
         // --- DOM Elements ---
         const els = {
@@ -217,6 +260,8 @@
             btnRunNode: document.getElementById('btnRunNode'),
             btnRunZone: document.getElementById('btnRunZone'),
             btnRunMap: document.getElementById('btnRunMap'),
+            btnRunPatrol: document.getElementById('btnRunPatrol'),
+            btnTestVisionCapture: document.getElementById('btnTestVisionCapture'),
             btnRunDemo: document.getElementById('btnRunDemo'),
             btnPauseRobot: document.getElementById('btnPauseRobot'),
             btnResumeRobot: document.getElementById('btnResumeRobot'),
@@ -238,6 +283,14 @@
             kioskTelemetry: document.getElementById('kioskTelemetry'),
             consoleContainer: document.getElementById('consoleContainer'),
             btnClearLog: document.getElementById('btnClearLog'),
+            visionCamera: document.getElementById('visionCamera'),
+            visionCanvas: document.getElementById('visionCanvas'),
+            cameraPlaceholder: document.getElementById('cameraPlaceholder'),
+            visionStatus: document.getElementById('visionStatus'),
+            visionScanned: document.getElementById('visionScanned'),
+            visionAlerts: document.getElementById('visionAlerts'),
+            visionPending: document.getElementById('visionPending'),
+            visionResults: document.getElementById('visionResults'),
             
             // Robot Screen
             idleState: document.getElementById('idleState'),
@@ -344,25 +397,25 @@
         async function dispatchAutonomous(options = {}) {
             const baseUrl = els.baseUrl.value.trim();
             const robotCode = els.robotCode.value.trim();
-            const flowType = els.flowType.value;
+            const flowType = options.flowType || els.flowType.value;
             if (!baseUrl || !robotCode) {
                 alert('Vui lòng nhập API Base URL và Robot code');
-                return;
+                return null;
             }
 
             if (!options.confirmedReal) {
                 const confirmed = confirm(`⚠️ Gửi nhiệm vụ thật tới ${robotCode} qua MQTT? Hãy chắc chắn khu vực an toàn và E-Stop hoạt động.`);
-                if (!confirmed) return;
+                if (!confirmed) return null;
                 options.confirmedReal = true;
             }
             const endpoint = '/api/v1/navigation/dispatch-autonomous';
             const payload = {
                 robotCode,
                 flowType,
-                zoneId: Number(els.zoneId.value) || undefined,
-                productId: Number(els.productId.value) || undefined,
+                zoneId: options.omitSelections ? undefined : Number(els.zoneId.value) || undefined,
+                productId: options.omitSelections ? undefined : Number(els.productId.value) || undefined,
                 nodeIds: Array.isArray(options.nodeIds) ? options.nodeIds : undefined,
-                demoRoute: options.demoRoute === true,
+                demoRoute: options.demoRoute === true ? true : undefined,
                 fullZoneMap: Array.isArray(options.nodeIds) && options.nodeIds.length > 0
                     ? false
                     : options.fullZoneMap !== false
@@ -403,6 +456,7 @@
 
                 currentRoute = {
                     missionId: data.missionId,
+                    flowType: data.flowType || flowType,
                     adRouteId: 0,
                     routeName: `Dispatch ${data.flowType || flowType} · ${String(data.missionId || '').slice(0, 8)}`,
                     isAutonomous: true,
@@ -418,6 +472,7 @@
                         shelfName: w.shelfName || null,
                         aisleId: w.aisleId ?? null,
                         aisleName: w.aisleName || null,
+                        role: w.nodeRole ?? w.role ?? null,
                         productNames: Array.isArray(w.productNames) ? w.productNames : [],
                         dwellTimeSeconds: w.effectiveDwellTimeSeconds || w.dwellTimeSeconds || 0,
                         effectiveDwellTimeSeconds: w.effectiveDwellTimeSeconds || w.dwellTimeSeconds || 0,
@@ -432,9 +487,11 @@
                     stops: currentRoute.stops.length,
                     message: data.message
                 });
+                return data;
             } catch (err) {
                 logError(err.message);
                 alert(err.message);
+                return null;
             } finally {
                 els.btnDispatch.disabled = false;
                 els.btnDispatch.innerText = '🚀 Dispatch autonomous (BE + DB)';
@@ -471,17 +528,19 @@
             }
         }
 
-        // Map is the parent of the four configured zones. Dispatch each zone,
-        // merge all waypoints into one route, then run the complete map.
+        // Một mission quảng cáo thật đi xuyên 4 Zone. Backend chỉ gắn playlist
+        // cho đúng một trạm quảng cáo mỗi Zone; các node còn lại là transit.
         async function runWholeMap() {
-            const originalZone = els.zoneId.value;
             const allStops = [];
             els.btnRunMap.disabled = true;
-            els.btnRunMap.innerText = '⏳ Đang load Map (Zone 1 → 4)...';
+            els.btnRunMap.innerText = '⏳ Đang tạo mission quảng cáo 4 Zone...';
             try {
-                // New BE contract: one fullZoneMap request already returns all
-                // nodes across the active map and their zone playlists.
-                await dispatchAutonomous({ fullZoneMap: true });
+                const dispatched = await dispatchAutonomous({
+                    flowType: 'ad',
+                    fullZoneMap: true,
+                    omitSelections: true
+                });
+                if (!dispatched) return;
                 if (currentRoute?.stops?.length) allStops.push(...currentRoute.stops);
 
                 const zones = new Set(allStops.map(stop => Number(stop.zoneId)).filter(Boolean));
@@ -493,8 +552,9 @@
                 const missionId = currentRoute?.missionId;
                 currentRoute = {
                     missionId,
+                    flowType: 'ad',
                     adRouteId: 0,
-                    routeName: 'Toàn bộ Map — Zone 1 → Zone 4',
+                    routeName: 'Quảng cáo toàn bộ Map — Zone 1 → Zone 4',
                     isAutonomous: true,
                     stops: allStops.map((stop, index) => ({ ...stop, sequenceOrder: index + 1 }))
                 };
@@ -503,13 +563,349 @@
                 resetRobotScreen();
                 logApi('INFO', 'FULL_MAP_READY', null, 200, {
                     zones: [1, 2, 3, 4],
-                    stops: currentRoute.stops.length
+                    stops: currentRoute.stops.length,
+                    adStops: currentRoute.stops.filter(stop => stop.role === 'ad').length
                 });
             } finally {
-                els.zoneId.value = originalZone;
                 els.btnRunMap.disabled = false;
-                els.btnRunMap.innerText = '🌐 Chạy toàn bộ Map (4 Zone)';
+                els.btnRunMap.innerText = '📢 Quảng cáo toàn bộ Map (4 Zone)';
             }
+        }
+
+        function setVisionStatus(text, tone = 'gray') {
+            const tones = {
+                gray: 'bg-gray-100 text-gray-600',
+                blue: 'bg-blue-100 text-blue-700',
+                green: 'bg-green-100 text-green-700',
+                amber: 'bg-amber-100 text-amber-700',
+                red: 'bg-red-100 text-red-700'
+            };
+            els.visionStatus.className = `text-xs px-2 py-1 rounded ${tones[tone] || tones.gray}`;
+            els.visionStatus.innerText = text;
+        }
+
+        function updateVisionCounters() {
+            els.visionScanned.innerText = String(visionScannedCount);
+            els.visionAlerts.innerText = String(visionAlertCount);
+            els.visionPending.innerText = String(visionPendingCount);
+        }
+
+        function resetVisionSession() {
+            isVisionMission = false;
+            visionRobotCompleted = false;
+            visionQueue.length = 0;
+            capturedVisionKeys.clear();
+            visionScannedCount = 0;
+            visionAlertCount = 0;
+            visionPendingCount = 0;
+            visionFailedCount = 0;
+            isVisionCameraTest = false;
+            els.visionResults.innerHTML = '<div class="text-gray-400 italic">Đang chờ robot đến node kệ đầu tiên...</div>';
+            updateVisionCounters();
+        }
+
+        async function ensureRearCameraReady() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('Trình duyệt/WebView không hỗ trợ camera. Hãy chạy trang bằng HTTPS và cấp quyền Camera.');
+            }
+            if (cameraStream?.getVideoTracks().some(track => track.readyState === 'live')
+                && els.visionCamera.readyState >= 2) {
+                return;
+            }
+
+            setVisionStatus('Đang mở camera sau...', 'amber');
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+            els.visionCamera.srcObject = cameraStream;
+            await els.visionCamera.play();
+            if (els.visionCamera.readyState < 2) {
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error('Camera không trả frame sau 8 giây.')), 8000);
+                    els.visionCamera.addEventListener('loadeddata', () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    }, { once: true });
+                });
+            }
+            if (!els.visionCamera.videoWidth || !els.visionCamera.videoHeight)
+                throw new Error('Camera đã mở nhưng chưa có frame hợp lệ.');
+
+            els.cameraPlaceholder.classList.add('hidden');
+            setVisionStatus('Camera thật sẵn sàng', 'green');
+        }
+
+        function stopVisionCamera() {
+            if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+            els.visionCamera.srcObject = null;
+            els.cameraPlaceholder.classList.remove('hidden');
+        }
+
+        async function checkVisionReadiness() {
+            const baseUrl = els.baseUrl.value.trim().replace(/\/$/, '');
+            const endpoint = '/api/v1/shelf-patrol/readiness';
+            logApi('GET', endpoint);
+            const response = await fetch(`${baseUrl}${endpoint}`);
+            const data = response.headers.get('content-type')?.includes('json') ? await response.json() : null;
+            logApi('GET', endpoint, null, response.status, data);
+            if (!response.ok || !data?.ready)
+                throw new Error(data?.message || `AI Vision readiness thất bại: HTTP ${response.status}`);
+            return data;
+        }
+
+        async function runVisionPatrol() {
+            if (isVisionMission || isVisionCameraTest || visionPendingCount > 0 || visionQueueRunning) {
+                alert('Demo AI Vision trước vẫn đang chạy hoặc còn ảnh đang phân tích.');
+                return;
+            }
+            els.btnRunPatrol.disabled = true;
+            els.btnRunPatrol.innerText = '⏳ Đang kiểm tra Camera + Gemini...';
+            resetVisionSession();
+            try {
+                await ensureRearCameraReady();
+                await checkVisionReadiness();
+                isVisionMission = true;
+                const dispatched = await dispatchAutonomous({
+                    flowType: 'patrol',
+                    fullZoneMap: true,
+                    omitSelections: true
+                });
+                if (!dispatched) {
+                    isVisionMission = false;
+                    stopVisionCamera();
+                    setVisionStatus('Không dispatch', 'red');
+                    return;
+                }
+                currentRoute.flowType = 'patrol';
+                currentRoute.routeName = 'Demo 5 — Tuần tra AI Vision toàn Map';
+                renderRouteStops(currentRoute.stops);
+                setVisionStatus('Robot đang tuần tra', 'blue');
+                logApi('INFO', 'VISION_PATROL_DISPATCHED', null, 202, {
+                    missionId: currentRoute.missionId,
+                    photoStops: currentRoute.stops.filter(stop => stop.role === 'photo').length
+                });
+            } catch (err) {
+                isVisionMission = false;
+                stopVisionCamera();
+                setVisionStatus('Không sẵn sàng', 'red');
+                logError(`AI Vision Patrol: ${err.message}`);
+                alert(`Không thể chạy Demo 5: ${err.message}`);
+            } finally {
+                els.btnRunPatrol.disabled = false;
+                els.btnRunPatrol.innerText = '📷 Demo 5: Tuần tra AI Vision';
+            }
+        }
+
+        async function testSingleVisionCapture() {
+            if (isVisionMission || isVisionCameraTest || visionPendingCount > 0 || visionQueueRunning) {
+                alert('AI Vision đang chạy hoặc còn ảnh đang phân tích. Hãy chờ hoàn tất.');
+                return;
+            }
+
+            const nodeId = Number(els.nodeId.value || 1);
+            const robotId = Number(els.robotId.value);
+            const robotCode = els.robotCode.value.trim();
+            if (!Number.isInteger(nodeId) || nodeId <= 0) {
+                alert('Node ID phải là số nguyên dương.');
+                els.nodeId.focus();
+                return;
+            }
+            if (!Number.isInteger(robotId) || robotId <= 0 || !robotCode) {
+                alert('Robot code và Robot DB ID chưa hợp lệ.');
+                return;
+            }
+
+            els.nodeId.value = String(nodeId);
+            els.btnTestVisionCapture.disabled = true;
+            els.btnTestVisionCapture.innerText = '⏳ Đang mở camera và chụp...';
+            resetVisionSession();
+            els.visionResults.innerHTML = '<div class="text-sky-700 italic">Test độc lập: không dispatch và không điều khiển robot.</div>';
+
+            try {
+                await checkVisionReadiness();
+                await ensureRearCameraReady();
+                isVisionCameraTest = true;
+                visionRobotCompleted = true;
+                const missionId = `camera-test-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+                const captured = await captureVisionFrame({
+                    nodeId,
+                    nodeName: `Camera test Node ${nodeId}`,
+                    role: 'photo'
+                }, missionId, 0);
+                if (!captured) throw new Error('Không tạo được ảnh JPEG từ camera.');
+
+                logApi('INFO', 'VISION_CAMERA_TEST_CAPTURED', null, 202, {
+                    robotCode,
+                    missionId,
+                    nodeId,
+                    mqttPublished: false
+                });
+                els.btnTestVisionCapture.innerText = '🧠 Đang phân tích ảnh...';
+            } catch (err) {
+                isVisionCameraTest = false;
+                visionRobotCompleted = false;
+                stopVisionCamera();
+                setVisionStatus('Test camera thất bại', 'red');
+                logError(`VISION_CAMERA_TEST: ${err.message}`);
+                alert(`Không thể test chụp ảnh: ${err.message}`);
+                els.btnTestVisionCapture.disabled = false;
+                els.btnTestVisionCapture.innerText = '📸 Test chụp 1 ảnh (không chạy robot)';
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            })[char]);
+        }
+
+        function renderVisionAnalysis(result, failed = false) {
+            if (els.visionResults.querySelector('.text-gray-400')) els.visionResults.innerHTML = '';
+            const needsRestock = result?.needsRestock === true;
+            const statusClass = failed
+                ? 'border-red-300 bg-red-50'
+                : needsRestock
+                    ? 'border-amber-300 bg-amber-50'
+                    : 'border-green-300 bg-green-50';
+            const levels = Array.isArray(result?.levels)
+                ? result.levels.map(level =>
+                    `T${escapeHtml(level.levelNumber)}: ${Number(level.occupancyRatePct || 0).toFixed(0)}%${level.isOccluded ? ' (bị che)' : ''}`
+                ).join(' · ')
+                : '';
+            const title = failed
+                ? `❌ Node ${escapeHtml(result?.nodeId ?? '-')}: phân tích lỗi`
+                : `${needsRestock ? '⚠️' : '✅'} ${escapeHtml(result?.aisleCode || result?.aisleName || 'Kệ')} · Node ${escapeHtml(result?.nodeId)}`;
+            els.visionResults.insertAdjacentHTML('afterbegin', `
+                <div class="border rounded p-2 ${statusClass}">
+                    <div class="font-semibold">${title}</div>
+                    ${failed
+                        ? `<div class="text-red-700 mt-1">${escapeHtml(result?.errorMessage || 'Gemini Vision thất bại')}</div>`
+                        : `<div class="mt-1">Còn hàng: <strong>${Number(result?.occupancyRatePct || 0).toFixed(1)}%</strong> · Trống: <strong>${escapeHtml(result?.emptySlotCount || 0)}</strong></div>
+                           <div class="text-gray-600 mt-1">${levels}</div>
+                           <div class="mt-1">${escapeHtml(result?.aiRecommendation || '')}</div>`}
+                </div>`);
+        }
+
+        function captureVisionFrame(stop, missionId, waypointIndex) {
+            const effectiveIndex = Number.isInteger(Number(waypointIndex)) ? Number(waypointIndex) : currentStopIndex;
+            const key = `${missionId || currentRoute?.missionId || 'mission'}:${effectiveIndex}`;
+            if (capturedVisionKeys.has(key)) return Promise.resolve(false);
+            capturedVisionKeys.add(key);
+
+            return new Promise(resolve => {
+                try {
+                    if (!cameraStream || els.visionCamera.readyState < 2)
+                        throw new Error('Camera thật không còn frame tại thời điểm ARRIVED.');
+                    const sourceWidth = els.visionCamera.videoWidth;
+                    const sourceHeight = els.visionCamera.videoHeight;
+                    const targetWidth = Math.min(1280, sourceWidth);
+                    const targetHeight = Math.round(sourceHeight * targetWidth / sourceWidth);
+                    els.visionCanvas.width = targetWidth;
+                    els.visionCanvas.height = targetHeight;
+                    const context = els.visionCanvas.getContext('2d', { alpha: false });
+                    context.drawImage(els.visionCamera, 0, 0, targetWidth, targetHeight);
+
+                    els.visionCanvas.toBlob(blob => {
+                        if (!blob) {
+                            renderVisionAnalysis({ nodeId: stop.nodeId, errorMessage: 'Không tạo được JPEG từ camera.' }, true);
+                            resolve(false);
+                            return;
+                        }
+                        visionPendingCount++;
+                        visionQueue.push({ blob, stop, missionId: missionId || currentRoute?.missionId, waypointIndex: effectiveIndex });
+                        updateVisionCounters();
+                        setVisionStatus(`Đã chụp Node ${stop.nodeId} · đang phân tích`, 'amber');
+                        processVisionQueue();
+                        resolve(true);
+                    }, 'image/jpeg', 0.75);
+                } catch (err) {
+                    renderVisionAnalysis({ nodeId: stop.nodeId, errorMessage: err.message }, true);
+                    setVisionStatus('Lỗi camera', 'red');
+                    logError(`VISION_CAPTURE Node ${stop.nodeId}: ${err.message}`);
+                    resolve(false);
+                }
+            });
+        }
+
+        async function processVisionQueue() {
+            if (visionQueueRunning) return;
+            visionQueueRunning = true;
+            try {
+                while (visionQueue.length) {
+                    const job = visionQueue.shift();
+                    const endpoint = '/api/v1/shelf-patrol/analyze-node';
+                    const form = new FormData();
+                    form.append('image', job.blob, `shelf-node-${job.stop.nodeId}.jpg`);
+                    form.append('robotCode', els.robotCode.value.trim());
+                    form.append('robotId', els.robotId.value.trim());
+                    form.append('missionId', job.missionId);
+                    form.append('waypointIndex', String(job.waypointIndex));
+                    form.append('nodeId', String(job.stop.nodeId));
+                    form.append('capturedAt', new Date().toISOString());
+
+                    try {
+                        logApi('POST', endpoint, {
+                            robotCode: els.robotCode.value.trim(),
+                            missionId: job.missionId,
+                            waypointIndex: job.waypointIndex,
+                            nodeId: job.stop.nodeId,
+                            imageBytes: job.blob.size
+                        });
+                        const response = await fetch(`${els.baseUrl.value.trim()}${endpoint}`, {
+                            method: 'POST',
+                            body: form
+                        });
+                        const result = response.headers.get('content-type')?.includes('json')
+                            ? await response.json() : null;
+                        logApi('POST', endpoint, null, response.status, result);
+                        if (!response.ok || !result || String(result.analysisStatus).toLowerCase() === 'failed') {
+                            visionFailedCount++;
+                            renderVisionAnalysis(result || {
+                                nodeId: job.stop.nodeId,
+                                errorMessage: `HTTP ${response.status}`
+                            }, true);
+                        } else {
+                            visionScannedCount++;
+                            if (result.needsRestock) visionAlertCount++;
+                            renderVisionAnalysis(result);
+                        }
+                    } catch (err) {
+                        visionFailedCount++;
+                        renderVisionAnalysis({ nodeId: job.stop.nodeId, errorMessage: err.message }, true);
+                        logError(`VISION_ANALYZE Node ${job.stop.nodeId}: ${err.message}`);
+                    } finally {
+                        visionPendingCount = Math.max(0, visionPendingCount - 1);
+                        updateVisionCounters();
+                    }
+                }
+            } finally {
+                visionQueueRunning = false;
+                finalizeVisionMissionIfReady();
+            }
+        }
+
+        function finalizeVisionMissionIfReady() {
+            if (!visionRobotCompleted || visionPendingCount > 0 || visionQueueRunning) return;
+            const completedCameraTest = isVisionCameraTest;
+            isVisionMission = false;
+            isVisionCameraTest = false;
+            if (completedCameraTest) {
+                setVisionStatus(
+                    visionFailedCount > 0 ? 'Test ảnh thất bại · xem lỗi' : 'Test ảnh thành công',
+                    visionFailedCount > 0 ? 'red' : (visionAlertCount > 0 ? 'amber' : 'green'));
+                els.btnTestVisionCapture.disabled = false;
+                els.btnTestVisionCapture.innerText = '📸 Test chụp 1 ảnh (không chạy robot)';
+            } else {
+                setVisionStatus(`Hoàn tất · ${visionScannedCount} kệ · ${visionAlertCount} cảnh báo`,
+                    visionFailedCount > 0 ? 'red' : (visionAlertCount > 0 ? 'amber' : 'green'));
+            }
+            stopVisionCamera();
         }
 
         // Một nhiệm vụ thật gồm đúng một waypoint mở đại diện cho mỗi Zone.
@@ -633,7 +1029,11 @@
             updateKioskStatus(null, 'Sẵn sàng xuất phát');
 
             stops.forEach((stop, idx) => {
-                const hasAd = stop.playlist && stop.playlist.length > 0;
+                const roleBadge = stop.role === 'photo'
+                    ? '<span class="bg-teal-100 text-teal-700 text-xs px-2 py-1 rounded font-medium border border-teal-200">📷 AI Vision</span>'
+                    : stop.role === 'ad'
+                        ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-medium border border-indigo-200">🎵 ${stop.playlist?.length || 0} Ads</span>`
+                        : '<span class="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded border">➡ Đi ngang</span>';
                 
                 const html = `
                     <div id="stop-${idx}" class="stop-item bg-gray-50 p-3 rounded border border-gray-200 flex justify-between items-center">
@@ -650,7 +1050,7 @@
                             </div>
                         </div>
                         <div>
-                            ${hasAd ? `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-medium border border-indigo-200">🎵 ${stop.playlist.length} Ads</span>` : ''}
+                            ${roleBadge}
                         </div>
                     </div>
                 `;
@@ -678,14 +1078,17 @@
             const missionId = message?.missionId ?? null;
             const waypointIndex = message?.waypointIndex ?? null;
             const dwellTimeSeconds = message?.dwellTimeSeconds ?? null;
+            const waypointRole = message?.role ?? null;
             logApi('MQTT', 'navigation_status', null, 200, {
                 status, missionId, waypoint, waypointIndex, dwellTimeSeconds
             });
             updateRobotControlButtons(status);
 
-            const stopIndex = waypoint && currentRoute?.stops
-                ? currentRoute.stops.findIndex(stop => stop.nodeName === waypoint)
-                : currentStopIndex;
+            const stopIndex = waypointIndex != null && currentRoute?.stops?.[Number(waypointIndex)]
+                ? Number(waypointIndex)
+                : waypoint && currentRoute?.stops
+                    ? currentRoute.stops.findIndex(stop => stop.nodeName === waypoint)
+                    : currentStopIndex;
 
             if (status === 'NAVIGATING' || status === 'MOVING') {
                 setActiveRealStop(stopIndex, `Robot thật: ${status}${waypoint ? ` → ${waypoint}` : ''}`);
@@ -700,12 +1103,20 @@
             if (status === 'ARRIVED') {
                 const stop = setActiveRealStop(stopIndex, `Robot đã đến ${waypoint || 'waypoint'}`);
                 if (!stop) return;
-                await sendRobotEvent(stop);
-                updateKioskStatus(stop, 'Robot đã đến · chờ ROS xác nhận phát quảng cáo');
+                if (currentRoute?.flowType === 'ad') {
+                    await sendRobotEvent(stop);
+                    updateKioskStatus(stop, stop.role === 'ad'
+                        ? 'Robot đã đến · chờ ROS xác nhận phát quảng cáo'
+                        : 'Robot đi ngang · chuẩn bị đến node tiếp theo');
+                } else if (isVisionMission && (waypointRole === 'photo' || stop.role === 'photo')) {
+                    updateKioskStatus(stop, 'Robot đã đến · đang chụp camera AI Vision');
+                    captureVisionFrame(stop, missionId, waypointIndex);
+                }
                 return;
             }
 
             if (status === 'PLAYLIST_PLAYING') {
+                if (currentRoute?.flowType !== 'ad') return;
                 const stop = setActiveRealStop(stopIndex, `Đang phát quảng cáo${waypoint ? ` tại ${waypoint}` : ''}`);
                 const playbackKey = `${missionId || currentRoute?.missionId || 'mission'}:${waypointIndex ?? stopIndex}`;
                 if (activePlaylistKey === playbackKey) return;
@@ -740,6 +1151,13 @@
                 updateKioskStatus(
                     currentRoute?.stops?.[currentStopIndex] || null,
                     'Robot đã hoàn thành nhiệm vụ');
+                if (isVisionMission) {
+                    visionRobotCompleted = true;
+                    setVisionStatus(visionPendingCount > 0
+                        ? `Robot đã xong · còn ${visionPendingCount} ảnh AI`
+                        : 'Robot đã xong · đang chốt kết quả', 'blue');
+                    finalizeVisionMissionIfReady();
+                }
                 return;
             }
 
@@ -748,6 +1166,11 @@
                 updateKioskStatus(
                     currentRoute?.stops?.[currentStopIndex] || null,
                     status === 'ESTOP' ? '🚨 ROBOT ĐANG E-STOP' : `Robot: ${status}`);
+                if (isVisionMission) {
+                    isVisionMission = false;
+                    stopVisionCamera();
+                    setVisionStatus(`Mission ${status}`, 'red');
+                }
             }
         }
 
@@ -1006,6 +1429,8 @@
         els.btnRunNode.addEventListener('click', runSingleNode);
         els.btnRunZone.addEventListener('click', runWholeZone);
         els.btnRunMap.addEventListener('click', runWholeMap);
+        els.btnRunPatrol.addEventListener('click', runVisionPatrol);
+        els.btnTestVisionCapture.addEventListener('click', testSingleVisionCapture);
         els.btnRunDemo.addEventListener('click', runCouncilDemo);
         els.btnPauseRobot.addEventListener('click', pauseRobotMission);
         els.btnResumeRobot.addEventListener('click', resumeRobotMission);
@@ -1014,6 +1439,7 @@
         els.btnAdClick.addEventListener('click', sendClick);
         els.robotCode.addEventListener('change', connectRobotRealtime);
         els.baseUrl.addEventListener('change', connectRobotRealtime);
+        window.addEventListener('beforeunload', stopVisionCamera);
         connectRobotRealtime();
 
     </script>
