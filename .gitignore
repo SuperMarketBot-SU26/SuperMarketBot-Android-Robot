@@ -45,3 +45,5 @@ example
 
 SmartMarketBot_3D_lib.zip
 ScreenFlow_Robot.drawio
+scripts/setup_android_tools.ps1
+setup_android_tools.bat
