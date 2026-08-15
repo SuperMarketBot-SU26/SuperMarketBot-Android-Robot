@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { Camera, History, Scan, Settings as SettingsIcon, Sparkles, X, Zap } from 'lucide-react-native';

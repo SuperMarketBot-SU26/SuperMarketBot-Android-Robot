@@ -6,7 +6,7 @@
  * vẽ vị trí robot + các tia quét lên nền bản đồ tải từ Backend.
  *
  * Hỗ trợ chọn Fixed Route → vẽ polyline → gửi mảng waypoints xuống ESP32
- * qua WebSocket port 81 (fallback POST /api/robots/command khi WS đóng).
+ * qua Backend dispatcher; không gửi waypoint trực tiếp xuống ESP32.
  *
  * Quản lý bản đồ / CRUD route → THUỘC VỀ WEB MANAGER.
  */
@@ -19,7 +19,7 @@ import {
 import { Canvas, Circle, Line, Group, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MapPin, Wifi, WifiOff, ChevronLeft, Maximize2, List, Play, CircleAlert } from 'lucide-react-native';
+import { MapPin, Wifi, WifiOff, ChevronLeft, Maximize2, List, Play } from 'lucide-react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring,
 } from 'react-native-reanimated';
@@ -66,6 +66,7 @@ const LidarRay = React.memo(({ point, robotX, robotY, scale, headingRad }: Lidar
     </>
   );
 });
+LidarRay.displayName = 'LidarRay';
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function MapViewerScreen() {
@@ -76,7 +77,7 @@ export default function MapViewerScreen() {
     startLidar, stopLidar, rosToPixel,
   } = useMapViewer();
 
-  const { selectedRoute, isMock } = useRoute();
+  const { selectedRoute } = useRoute();
 
   const [isFullscreen, setFullscreen] = useState(false);
   const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
@@ -291,12 +292,6 @@ export default function MapViewerScreen() {
             >
               {selectedRoute?.routeName ?? 'Chọn lộ trình...'}
             </Text>
-            {isMock ? (
-              <View style={styles.mockChip}>
-                <CircleAlert size={10} color="#f59e0b" />
-                <Text style={styles.mockChipText}>MOCK</Text>
-              </View>
-            ) : null}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -308,20 +303,26 @@ export default function MapViewerScreen() {
             activeOpacity={0.8}
             onPress={async () => {
               if (!selectedRoute) return;
-              const waypoints = selectedRoute.waypoints
-                .slice()
-                .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
-                .map((w) => ({ x: w.x, y: w.y, nodeId: w.nodeId }));
-              const result = await RobotControlService.sendNavigateWithFallback(waypoints);
-              if (result.sent) {
+              if (selectedRoute.robotRouteId <= 0) {
+                setSendStatus({ type: 'error', text: 'Route không hợp lệ để điều khiển robot thật' });
+                return;
+              }
+              const flowType = selectedRoute.routeType.toLowerCase().includes('patrol') ? 'patrol' : 'ad';
+              const result = await RobotControlService.dispatchAutonomous({
+                robotCode: process.env.EXPO_PUBLIC_ROBOT_CODE ?? 'RB001',
+                flowType,
+                robotRouteId: selectedRoute.robotRouteId,
+                floorId: 1,
+              });
+              if (result.ok) {
                 setSendStatus({
                   type: 'success',
-                  text: `Đã gửi ${waypoints.length} waypoint qua BE → MQTT`,
+                  text: `BE đã tạo mission thật cho route ${selectedRoute.routeName}`,
                 });
               } else {
                 setSendStatus({
                   type: 'error',
-                  text: 'Không gửi được — kiểm tra kết nối Backend',
+                  text: result.data?.detail || result.data?.title || `Không dispatch được (${result.status})`,
                 });
               }
               setTimeout(() => setSendStatus({ type: null, text: '' }), 3500);
@@ -510,23 +511,6 @@ const styles = StyleSheet.create({
     color: '#e8edf4',
     fontSize: 13,
     fontWeight: '600',
-  },
-  mockChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 20,
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-  },
-  mockChipText: {
-    color: '#fbbf24',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.4,
   },
   startBtn: {
     flexDirection: 'row',

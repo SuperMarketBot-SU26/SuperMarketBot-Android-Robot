@@ -255,6 +255,7 @@ export default function MemberCartScreen() {
                             productName: item.productName,
                           })));
                           speak(`Hãy đi theo tôi. Lộ trình có ${mission?.targetNodeCount || 0} điểm kệ.`);
+                          router.push('/cart-guide-map' as any);
                         } catch (error: any) {
                           Alert.alert('Không thể bắt đầu', error?.message || 'Robot chưa nhận được nhiệm vụ.');
                           speak('Xin lỗi, chưa thể tạo lộ trình cho giỏ hàng này.');

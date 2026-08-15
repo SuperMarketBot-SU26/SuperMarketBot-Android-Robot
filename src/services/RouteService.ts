@@ -4,8 +4,7 @@
  * Lấy danh sách các lộ trình cố định (Fixed Routes) cho 1 bản đồ từ Backend.
  * Endpoint: GET ${BASE_URL}/api/v1/routes?mapId={mapId}
  *
- * Khi BE không khả dụng hoặc trả về rỗng, caller sẽ tự fallback sang mock
- * trong `mocks/routes.mock.json` (xem RouteContext).
+ * Khi BE không khả dụng hoặc trả về rỗng, caller phải khóa điều khiển robot.
  */
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
@@ -37,7 +36,7 @@ export interface RobotRoute {
 
 /**
  * Fetch danh sách routes theo mapId.
- * Trả `[]` + console.warn khi lỗi (KHÔNG throw) để caller fallback mock.
+ * Trả `[]` + console.warn khi lỗi (KHÔNG throw) để UI khóa điều khiển.
  */
 export async function fetchRoutesByMap(mapId: number): Promise<RobotRoute[]> {
   const url = `${BASE_URL}/api/v1/routes?mapId=${mapId}`;

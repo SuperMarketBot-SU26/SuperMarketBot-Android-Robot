@@ -27,6 +27,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép SmartMarketBot dùng camera sau để quét tình trạng kệ hàng."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#F3FAF6",

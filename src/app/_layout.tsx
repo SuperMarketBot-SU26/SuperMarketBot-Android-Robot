@@ -11,8 +11,12 @@ import { NotificationProvider } from '../context/NotificationContext';
 import { GeofencingProvider } from '../context/GeofencingContext';
 import { RobotGuideProvider } from '../context/RobotGuideContext';
 import { RobotMissionRuntimeProvider } from '../context/RobotMissionRuntimeContext';
+import { RobotRealtimeProvider } from '../context/RobotRealtimeContext';
+import ZoneAdOverlay from '../components/ui/ZoneAdOverlay';
+import { useKeepAwake } from 'expo-keep-awake';
 
 function RootLayoutContent() {
+  useKeepAwake();
   const { resetTimer } = useIdleTimeout(60000); // 60 seconds
 
   return (
@@ -22,6 +26,7 @@ function RootLayoutContent() {
       onTouchMove={resetTimer}
     >
       <Stack screenOptions={{ headerShown: false }} />
+      <ZoneAdOverlay />
     </View>
   );
 }
@@ -32,19 +37,21 @@ export default function RootLayout() {
       <PortalProvider shouldAddRootHost>
         <NotificationProvider>
           <RobotAuthProvider>
-            <GeofencingProvider>
-              <RobotMissionRuntimeProvider>
-                <RobotGuideProvider>
-                  <MapViewerProvider>
-                    <RouteProvider>
-                      <RobotControlProvider>
-                        <RootLayoutContent />
-                      </RobotControlProvider>
-                    </RouteProvider>
-                  </MapViewerProvider>
-                </RobotGuideProvider>
-              </RobotMissionRuntimeProvider>
-            </GeofencingProvider>
+            <RobotRealtimeProvider>
+              <GeofencingProvider>
+                <RobotMissionRuntimeProvider>
+                  <RobotGuideProvider>
+                    <MapViewerProvider>
+                      <RouteProvider>
+                        <RobotControlProvider>
+                          <RootLayoutContent />
+                        </RobotControlProvider>
+                      </RouteProvider>
+                    </MapViewerProvider>
+                  </RobotGuideProvider>
+                </RobotMissionRuntimeProvider>
+              </GeofencingProvider>
+            </RobotRealtimeProvider>
           </RobotAuthProvider>
         </NotificationProvider>
       </PortalProvider>

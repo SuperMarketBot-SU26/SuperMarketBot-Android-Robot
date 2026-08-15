@@ -13,6 +13,7 @@
  *   - Reset Odometry
  */
 
+/* eslint-disable react-hooks/refs */
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,

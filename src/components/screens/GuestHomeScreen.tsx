@@ -10,7 +10,6 @@ import { Image } from 'expo-image';
 import RobotAdDisplay from '../robot/RobotAdDisplay';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 import { useGeofencing } from '../../context/GeofencingContext';
-import ZoneAdOverlay from '../ui/ZoneAdOverlay';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 
 export default function GuestHomeScreen() {
@@ -78,7 +77,6 @@ export default function GuestHomeScreen() {
     <View flex={1} backgroundColor="#fcfdfd" paddingTop={insets.top}>
 
       {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
-      <ZoneAdOverlay />
 
       {/* HEADER */}
       <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$4" paddingVertical="$4" backgroundColor="white" borderBottomWidth={1} borderBottomColor="#f0f0f0" zIndex={100}>

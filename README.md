@@ -175,7 +175,7 @@ Các nút hiện có:
 - Lấy route quảng cáo đã được gán.
 
 Mỗi lệnh làm robot chuyển động đều có hộp xác nhận để hạn chế bấm nhầm. E-STOP có xác nhận hai bước.
-
+scrcpy
 ### 3.2. Màn hình kiosk robot
 
 UI hiển thị realtime:

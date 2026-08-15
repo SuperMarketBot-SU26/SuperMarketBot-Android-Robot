@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 import { useRouter } from 'expo-router';
 import { Info, MapPin, Mic, ShoppingBag, Sparkles, Volume2, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -84,6 +85,32 @@ export default function VoiceSearchScreen() {
   // Robot float animation
   const robotY = useSharedValue(0);
   const glowOpacity = useSharedValue(0.6);
+
+  // Xử lý khi nhận diện thành công. Khai báo trước khi đăng ký Voice listener.
+  function handleVoiceRecognition(resultText: string) {
+    setStatus('processing');
+    const cleanedQuery = cleanSearchQuery(resultText);
+    setFinalQuery(cleanedQuery);
+
+    pulseScale1.value = withTiming(1);
+    pulseOpacity1.value = withTiming(0);
+    pulseScale2.value = withTiming(1);
+    pulseOpacity2.value = withTiming(0);
+    waveHeight1.value = withTiming(8);
+    waveHeight2.value = withTiming(8);
+    waveHeight3.value = withTiming(8);
+    waveHeight4.value = withTiming(8);
+    waveHeight5.value = withTiming(8);
+
+    setTimeout(() => {
+      if (isMounted.current) {
+        setStatus('success');
+        setAiResponse(`Đang tìm kiếm "${cleanedQuery}" cho bạn...`);
+        stop();
+        router.replace(`/member-search?query=${encodeURIComponent(cleanedQuery)}` as any);
+      }
+    }, 1000);
+  }
 
   useEffect(() => {
     isMounted.current = true;
@@ -254,8 +281,9 @@ export default function VoiceSearchScreen() {
           }
         );
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          console.warn('Microphone permission denied, using mock search fallback');
-          handleVoiceRecognition('Sữa chua không đường');
+          console.warn('Microphone permission denied');
+          setStatus('initial');
+          setTranscript('Chưa được cấp quyền microphone.');
           return;
         }
       }
@@ -265,51 +293,18 @@ export default function VoiceSearchScreen() {
 
       const isAvailable = await Voice.isAvailable().catch(() => false);
       if (!isAvailable) {
-        console.warn('Speech recognizer not available on this Android device (e.g. Xiaomi MI AI), using smart fallback');
-        setTimeout(() => {
-          if (isMounted.current) {
-            handleVoiceRecognition('Sữa chua không đường');
-          }
-        }, 2000);
+        console.warn('Speech recognizer not available on this Android device');
+        setStatus('initial');
+        setTranscript('Thiết bị không hỗ trợ nhận diện giọng nói. Vui lòng dùng tìm kiếm văn bản.');
         return;
       }
 
       await Voice.start('vi-VN');
     } catch (e) {
       console.error('Voice.start error:', e);
-      // Fallback grace mock search so app never crashes
-      handleVoiceRecognition('Sữa chua không đường');
+      setStatus('initial');
+      setTranscript('Không thể khởi động nhận diện giọng nói.');
     }
-  };
-
-  // Xử lý khi nhận diện thành công
-  const handleVoiceRecognition = (resultText: string) => {
-    setStatus('processing');
-    const cleanedQuery = cleanSearchQuery(resultText);
-    setFinalQuery(cleanedQuery);
-
-    // Dừng ripple animation của Mic
-    pulseScale1.value = withTiming(1);
-    pulseOpacity1.value = withTiming(0);
-    pulseScale2.value = withTiming(1);
-    pulseOpacity2.value = withTiming(0);
-
-    // Co hẹp sóng equalizer
-    waveHeight1.value = withTiming(8);
-    waveHeight2.value = withTiming(8);
-    waveHeight3.value = withTiming(8);
-    waveHeight4.value = withTiming(8);
-    waveHeight5.value = withTiming(8);
-
-    // AI Phản hồi & Chuyển sang trang kết quả
-    setTimeout(() => {
-      if (isMounted.current) {
-        setStatus('success');
-        setAiResponse(`Đang tìm kiếm "${cleanedQuery}" cho bạn...`);
-        stop();
-        router.replace(`/member-search?query=${encodeURIComponent(cleanedQuery)}` as any);
-      }
-    }, 1000);
   };
 
   // Style Animations
@@ -533,7 +528,7 @@ export default function VoiceSearchScreen() {
                   <YStack flex={1} gap="$2">
                     <Text fontSize={12} color="#0F5132" fontWeight="bold" letterSpacing={0.5}>MẸO MUA SẮM</Text>
                     <Text fontSize={12} color="#4A5568" lineHeight={18} fontWeight="500">
-                      Hãy bấm vào nút Micro ở giữa và nói to tên sản phẩm bạn cần tìm, ví dụ: "Sữa tươi Vinamilk".
+                      Hãy bấm vào nút Micro ở giữa và nói to tên sản phẩm bạn cần tìm, ví dụ: “Sữa tươi Vinamilk”.
                     </Text>
                   </YStack>
                 </XStack>

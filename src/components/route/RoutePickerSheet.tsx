@@ -3,7 +3,7 @@
  *
  * Bottom-sheet Modal để chọn Fixed Route.
  * Hiển thị tên route, số waypoint, routeType badge, zoneName.
- * Có badge "MOCK" nếu dữ liệu đang từ mock fallback.
+ * Chỉ hiển thị route thật do Backend trả về.
  */
 
 import React from 'react';
@@ -17,7 +17,7 @@ import {
   FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, MapPin, Layers, CircleAlert } from 'lucide-react-native';
+import { X, MapPin, Layers } from 'lucide-react-native';
 import { useRoute } from '../../context/RouteContext';
 import { RobotRoute } from '../../services/RouteService';
 
@@ -101,7 +101,7 @@ function RouteItem({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function RoutePickerSheet({ visible, onClose }: Props) {
-  const { routes, selectedRouteId, selectRoute, isMock, isLoading } = useRoute();
+  const { routes, selectedRouteId, selectRoute, isLoading } = useRoute();
 
   const handlePick = (id: number) => {
     selectRoute(id);
@@ -129,16 +129,6 @@ export default function RoutePickerSheet({ visible, onClose }: Props) {
             <X size={22} color="#8a97ab" />
           </TouchableOpacity>
         </View>
-
-        {/* Mock badge */}
-        {isMock ? (
-          <View style={styles.mockBadge}>
-            <CircleAlert size={14} color="#f59e0b" />
-            <Text style={styles.mockText}>
-              Đang dùng dữ liệu MOCK (BE chưa phản hồi)
-            </Text>
-          </View>
-        ) : null}
 
         {/* List */}
         {isLoading ? (
@@ -205,26 +195,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  mockBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(245,158,11,0.12)',
-    borderColor: '#f59e0b',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    borderRadius: 10,
-  },
-  mockText: {
-    color: '#fbbf24',
-    fontSize: 12,
-    fontWeight: '600',
-    flex: 1,
-  },
-
   item: {
     backgroundColor: '#111820',
     borderRadius: 14,

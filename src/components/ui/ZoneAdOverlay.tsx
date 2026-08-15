@@ -1,24 +1,28 @@
+/* eslint-disable react-hooks/immutability, react-hooks/set-state-in-effect */
 /**
  * ZoneAdOverlay.tsx
  *
- * Modal slide-up hiển thị quảng cáo / gợi ý sản phẩm
- * khi Robot di chuyển vào gần 1 kệ hàng (zoneEntered).
- *
- * - Auto-dismiss sau displayDurationSeconds của ad đầu tiên (hoặc 8s mặc định)
- * - Nút đóng thủ công
- * - Gọi logInteraction('Impression') khi hiển thị
+ * Giao diện Toàn Màn Hình Kiosk Phát Quảng Cáo Điểm Dừng (Navigation Node Ad Broadcast)
+ * - Tự động đẩy màn hình (Slide-up Full Screen) khi Robot đến trạm dừng có quảng cáo
+ * - Kết hợp hài hòa với màn hình Welcome (có Mini Robot Assistant ở góc phát biểu cảm TTS)
+ * - Hero Banner 16:9 chất lượng cao kèm Slogan chiến dịch
+ * - Thanh tiến trình Countdown trực quan (Progress Bar)
+ * - Nút Mua ngay / Xem chi tiết tương tác lớn
+ * - Tự động chuyển tuần tự các Banner trong Playlist của Trạm dừng
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet,
-  Dimensions, ScrollView, ActivityIndicator,
+  Dimensions, ScrollView, Pressable
 } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS,
+  useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS, FadeIn, FadeInDown
 } from 'react-native-reanimated';
-import { X, MapPin, Zap, Tag } from 'lucide-react-native';
+import {
+  MapPin, Zap, Tag, Clock, Volume2, ShoppingBag, ArrowRight, Sparkles, Store
+} from 'lucide-react-native';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { useGeofencing } from '../../context/GeofencingContext';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
@@ -26,17 +30,22 @@ import { useRobotVoice } from '../../hooks/useRobotVoice';
 const { width: SW, height: SH } = Dimensions.get('window');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
-// ─── Component ─────────────────────────────────────────────────────────────────
-
 export default function ZoneAdOverlay() {
-  const { isInZone, currentZone, currentPlaylist, isLoadingPlaylist, clearZone } = useGeofencing();
+  const { isInZone, currentZone, currentPlaylist, clearZone } = useGeofencing();
   const { speak } = useRobotVoice();
+  const speakRef = useRef(speak);
 
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [visible, setVisible] = useState(false);
-  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [timeLeft, setTimeLeft] = useState(12);
+  const [totalDuration, setTotalDuration] = useState(12);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Animated slide-up
+  useEffect(() => {
+    speakRef.current = speak;
+  }, [speak]);
+
+  // Animations
   const translateY = useSharedValue(SH);
   const overlayOpacity = useSharedValue(0);
 
@@ -47,8 +56,16 @@ export default function ZoneAdOverlay() {
     opacity: overlayOpacity.value,
   }));
 
+  const currentAd = (currentPlaylist && currentPlaylist.length > 0)
+    ? (currentPlaylist[currentAdIndex] || currentPlaylist[0])
+    : undefined;
+
   // Ghi log impression
   const logImpression = useCallback(async (ad: AdPlaylistItemDto) => {
+    if (ad.adCampaignId <= 0 || ad.sponsoredId <= 0) {
+      console.warn('[ZoneAdOverlay] Bỏ qua impression vì playlist thiếu AdCampaignId/SponsoredId thật.');
+      return;
+    }
     try {
       await AdService.logInteraction({
         adCampaignId: ad.adCampaignId,
@@ -60,49 +77,23 @@ export default function ZoneAdOverlay() {
         zoneId: currentZone?.zoneId,
       });
     } catch (e) {
-      console.warn('[ZoneAdOverlay] logInteraction failed:', e);
+      console.warn('[ZoneAdOverlay] logImpression failed:', e);
     }
   }, [currentZone]);
 
-  // Mở overlay khi vào zone
-  useEffect(() => {
-    if (isInZone && currentPlaylist.length > 0) {
-      setCurrentAdIndex(0);
-      setVisible(true);
-      translateY.value = withSpring(0, { damping: 20, stiffness: 200 });
-      overlayOpacity.value = withTiming(1, { duration: 300 });
-
-      // Log impression cho ad đầu tiên
-      logImpression(currentPlaylist[0]);
-
-      // TTS đọc quảng cáo
-      const ad = currentPlaylist[0];
-      const zoneName = currentZone?.objectName ?? 'khu vực này';
-      const priceStr = ad.productPrice > 0
-        ? ` chỉ ${ad.productPrice.toLocaleString('vi-VN')} đồng`
-        : '';
-      speak(`Chào mừng quý khách đến ${zoneName}! ${ad.productName}${priceStr}. Nhấn vào màn hình để xem thêm ưu đãi hấp dẫn.`);
-
-      // Auto-dismiss
-      const duration = (currentPlaylist[0].displayDurationSeconds || 8) * 1000;
-      dismissTimer.current = setTimeout(() => handleClose(), duration);
-    }
-
-    return () => {
-      if (dismissTimer.current) clearTimeout(dismissTimer.current);
-    };
-  }, [isInZone, currentPlaylist]);
-
   const handleClose = useCallback(() => {
-    translateY.value = withTiming(SH, { duration: 350 }, () => {
+    translateY.value = withTiming(SH, { duration: 300 }, () => {
       runOnJS(setVisible)(false);
       runOnJS(clearZone)();
     });
-    overlayOpacity.value = withTiming(0, { duration: 300 });
-    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    overlayOpacity.value = withTiming(0, { duration: 250 });
   }, [clearZone, translateY, overlayOpacity]);
 
   const handleAdClick = useCallback(async (ad: AdPlaylistItemDto) => {
+    if (ad.adCampaignId <= 0 || ad.sponsoredId <= 0) {
+      console.warn('[ZoneAdOverlay] Bỏ qua click log vì playlist thiếu AdCampaignId/SponsoredId thật.');
+      return;
+    }
     try {
       await AdService.logInteraction({
         adCampaignId: ad.adCampaignId,
@@ -118,105 +109,261 @@ export default function ZoneAdOverlay() {
     }
   }, [currentZone]);
 
-  if (!visible && !isInZone) return null;
+  // Mở overlay khi có zone/playlist mới
+  useEffect(() => {
+    if (isInZone && currentPlaylist.length > 0) {
+      console.log(`[ZoneAdOverlay] Mở màn hình Kiosk Ad cho ${currentPlaylist.length} quảng cáo`);
+      setCurrentAdIndex(0);
+      setVisible(true);
+      translateY.value = 0;
+      overlayOpacity.value = 1;
+    } else if (!isInZone) {
+      setVisible(false);
+    }
+  }, [isInZone, currentPlaylist]);
+
+  const lastSpokenKeyRef = useRef<string | null>(null);
+  // Khi chuyển sang ad mới
+  useEffect(() => {
+    if (!visible || !currentAd) {
+      lastSpokenKeyRef.current = null;
+      return;
+    }
+
+    const currentKey = `${currentAd.sponsoredId}-${currentAdIndex}`;
+
+    // Phân bổ đúng tổng dwell time của waypoint, có tính trọng số duration từ BE.
+    const weights = currentPlaylist.map((item) => Math.max(1, item.displayDurationSeconds || 1));
+    const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+    const requestedTotal = weights.reduce((sum, value) => sum + value, 0);
+    const dwellTime = Math.max(1, currentZone?.dwellTimeSeconds || requestedTotal || 30);
+    const allocatedBefore = weights
+      .slice(0, currentAdIndex)
+      .reduce((sum, weight) => sum + Math.max(1, Math.floor((dwellTime * weight) / totalWeight)), 0);
+    const duration = currentAdIndex === currentPlaylist.length - 1
+      ? Math.max(1, dwellTime - allocatedBefore)
+      : Math.max(1, Math.floor((dwellTime * weights[currentAdIndex]) / totalWeight));
+
+    setTotalDuration(duration);
+    setTimeLeft(duration);
+
+    // Chỉ phát voice và log impression 1 LẦN DUY NHẤT cho mỗi quảng cáo, không bị ngắt khi re-render
+    if (lastSpokenKeyRef.current !== currentKey) {
+      lastSpokenKeyRef.current = currentKey;
+      logImpression(currentAd);
+
+      // Phát âm thanh TTS tiếng Việt
+      const voiceResource = currentAd.mediaContents?.find(m => m.resourceType === 'VOICE_TEXT');
+      const imageResource = currentAd.mediaContents?.find(m => m.resourceType === 'IMAGE');
+      const speechText = voiceResource?.contentText || imageResource?.contentText || currentAd.productName;
+      const zoneLabel = currentZone?.objectName ? `Tại ${currentZone.objectName}: ` : '';
+      const priceText = currentAd.productPrice > 0 ? `, giá khuyến mãi ${currentAd.productPrice.toLocaleString('vi-VN')} đồng` : '';
+
+      setIsSpeaking(true);
+      void speakRef.current(`${zoneLabel}${speechText}${priceText}.`);
+      setTimeout(() => setIsSpeaking(false), 5000);
+    }
+
+    // Đếm ngược từng giây và tự động nhảy sản phẩm
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          if (currentAdIndex < currentPlaylist.length - 1) {
+            console.log(`[ZoneAdOverlay] Hết ${duration}s -> Tự động chuyển sang sản phẩm tiếp theo (${currentAdIndex + 2}/${currentPlaylist.length})`);
+            setCurrentAdIndex(idx => idx + 1);
+          } else {
+            console.log(`[ZoneAdOverlay] Đã phát xong playlist trong dwell ${dwellTime}s -> Đóng quảng cáo`);
+            handleClose();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [currentAd, currentAdIndex, currentPlaylist, currentZone?.dwellTimeSeconds, currentZone?.objectName, handleClose, logImpression, visible]);
+
+  if (!visible || !currentAd) return null;
+
+  const mediaBanner = currentAd.mediaContents?.find(m => m.resourceType === 'IMAGE');
+  const bannerImageUri = mediaBanner?.resourceUrl || currentAd.imageUrl;
+  const sloganText = mediaBanner?.contentText || currentAd.campaignName;
+  const progressPercent = totalDuration > 0 ? ((totalDuration - timeLeft) / totalDuration) * 100 : 0;
 
   return (
     <Modal
       transparent
       visible={visible}
       animationType="none"
-      onRequestClose={handleClose}
+      onRequestClose={() => undefined}
       statusBarTranslucent
     >
-      {/* Backdrop */}
+      {/* Nền làm mờ nhẹ phía sau */}
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, animatedOverlay]}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleClose} />
+        <View style={StyleSheet.absoluteFill} />
       </Animated.View>
 
-      {/* Sheet */}
-      <Animated.View style={[styles.sheet, animatedSheet]}>
-        {/* Handle bar */}
-        <View style={styles.handleBar} />
+      {/* Màn hình Kiosk đẩy lên */}
+      <Animated.View style={[styles.kioskContainer, animatedSheet]}>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.zoneBadge}>
-            <MapPin size={14} color="#00A550" style={{ marginRight: 4 }} />
-            <Text style={styles.zoneBadgeText} numberOfLines={1}>
-              {currentZone?.objectName ?? 'Khu vực'}
+        {/* THANH TIẾN TRÌNH COUNTDOWN CHẠY Ở ĐỈNH MÀN HÌNH */}
+        <View style={styles.progressBarTrack}>
+          <View style={[styles.progressBarFill, { width: `${100 - progressPercent}%` }]} />
+        </View>
+
+        {/* 1. TOP HEADER: THÔNG TIN ĐIỂM DỪNG & ĐẾM NGƯỢC */}
+        <View style={styles.topHeader}>
+          <View style={styles.locationPill}>
+            <MapPin size={16} color="#00A550" />
+            <Text style={styles.locationText} numberOfLines={1}>
+              {currentZone?.objectName ? `Điểm Dừng • ${currentZone.objectName}` : 'Điểm Dừng Quảng Cáo Siêu Thị'}
             </Text>
           </View>
 
-          <View style={styles.headerCenter}>
-            <Zap size={18} color="#EAB308" />
-            <Text style={styles.headerTitle}>Sản phẩm nổi bật tại đây</Text>
-          </View>
+          <View style={styles.headerRight}>
+            <View style={styles.timerPill}>
+              <Clock size={13} color="#DC2626" />
+              <Text style={styles.timerText}>{timeLeft}s {currentPlaylist.length > 1 ? `(${currentAdIndex + 1}/${currentPlaylist.length})` : ''}</Text>
+            </View>
 
-          <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-            <X size={20} color="#64748B" />
-          </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Loading state */}
-        {isLoadingPlaylist ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#00A550" />
-            <Text style={styles.loadingText}>Đang tải gợi ý sản phẩm...</Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* 2. HERO BANNER KHỔNG LỒ (16:9 HD) */}
+          <View style={styles.bannerFrame}>
+            <Image
+              source={{ uri: bannerImageUri }}
+              style={styles.bannerImage}
+              contentFit="cover"
+              transition={300}
+            />
+
+            {/* Nhãn Tài Trợ */}
+            <View style={styles.sponsoredTag}>
+              <Sparkles size={12} color="white" />
+              <Text style={styles.sponsoredTagText}>ƯU ĐÃI NỔI BẬT</Text>
+            </View>
+
+            {/* Điểm Score */}
+            {currentAd.adScore > 0 && (
+              <View style={styles.scoreTag}>
+                <Zap size={11} color="#EAB308" />
+                <Text style={styles.scoreTagText}>Top #{currentAd.priority || 1}</Text>
+              </View>
+            )}
           </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productList}
-          >
-            {currentPlaylist.map((ad, idx) => (
-              <TouchableOpacity
-                key={`zone-ad-${ad.sponsoredId}-${idx}`}
-                style={styles.productCard}
-                activeOpacity={0.85}
-                onPress={() => handleAdClick(ad)}
-              >
-                {/* Product image */}
-                <View style={styles.imageWrapper}>
-                  <Image
-                    source={{ uri: ad.imageUrl }}
-                    style={styles.productImage}
-                    contentFit="cover"
-                  />
-                  {/* Sponsored badge */}
-                  <View style={styles.sponsoredBadge}>
-                    <Tag size={9} color="white" />
-                    <Text style={styles.sponsoredText}>Tài trợ</Text>
-                  </View>
+
+          {/* 3. HỘP SLOGAN / THÔNG ĐIỆP CHIẾN DỊCH */}
+          {sloganText && (
+            <View style={styles.sloganCard}>
+              <Text style={styles.sloganText} numberOfLines={2}>
+                {`“${sloganText}”`}
+              </Text>
+            </View>
+          )}
+
+          {/* 4. CHI TIẾT SẢN PHẨM & GIÁ */}
+          <View style={styles.productCard}>
+            <View style={styles.productMeta}>
+              <Text style={styles.productTitle} numberOfLines={2}>
+                {currentAd.productName}
+              </Text>
+              <Text style={styles.campaignSubtitle} numberOfLines={1}>
+                {currentAd.campaignName}
+              </Text>
+
+              <View style={styles.priceRow}>
+                <Text style={styles.priceHighlight}>
+                  {currentAd.productPrice > 0
+                    ? `${currentAd.productPrice.toLocaleString('vi-VN')} đ`
+                    : 'Giá siêu tốt'}
+                </Text>
+                <View style={styles.hotDealBadge}>
+                  <Tag size={11} color="#DC2626" />
+                  <Text style={styles.hotDealText}>GIẢM GIÁ HÔM NAY</Text>
                 </View>
+              </View>
+            </View>
 
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName} numberOfLines={2}>
-                    {ad.productName}
-                  </Text>
-                  <Text style={styles.campaignName} numberOfLines={1}>
-                    {ad.campaignName}
-                  </Text>
-                  <Text style={styles.productPrice}>
-                    {ad.productPrice.toLocaleString('vi-VN')} đ
-                  </Text>
+            {/* NÚT TƯƠNG TÁC LỚN: XEM SẢN PHẨM / MUA NGAY */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.ctaButton,
+                pressed && styles.ctaButtonPressed
+              ]}
+              onPress={() => handleAdClick(currentAd)}
+            >
+              <ShoppingBag size={20} color="white" />
+              <Text style={styles.ctaButtonText}>Chạm để xem chi tiết</Text>
+              <ArrowRight size={18} color="white" />
+            </Pressable>
+          </View>
 
-                  {/* Score indicator */}
-                  <View style={styles.scoreRow}>
-                    <View style={[styles.scoreBar, { width: `${Math.min(100, ad.adScore)}%` }]} />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
+          {/* 5. MINI ROBOT ASSISTANT & PLAYLIST CAROUSEL */}
+          <View style={styles.footerRow}>
+            {/* Mini Robot Assistant Indicator */}
+            <View style={styles.robotAssistantBadge}>
+              <View style={styles.robotMiniAvatar}>
+                <Image
+                  source={{ uri: "https://media.giphy.com/media/3og0IUzdgwVczU67eg/giphy.gif" }}
+                  style={{ width: 28, height: 28, borderRadius: 14 }}
+                  contentFit="contain"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.assistantTitle}>Robot Kiosk</Text>
+                <Text style={styles.assistantStatus}>
+                  {isSpeaking ? '🎙️ Đang giới thiệu...' : 'Sẵn sàng dẫn đường'}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-        {/* Footer info */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            💡 Chạm vào sản phẩm để xem chi tiết hoặc thêm vào giỏ hàng
-          </Text>
-        </View>
+          {/* 6. PLAYLIST THUMBNAILS (Nếu trạm có nhiều quảng cáo) */}
+          {currentPlaylist.length > 1 && (
+            <View style={styles.playlistSection}>
+              <Text style={styles.playlistLabel}>
+                Các ưu đãi khác tại điểm dừng này ({currentAdIndex + 1}/{currentPlaylist.length}):
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnailList}>
+                {currentPlaylist.map((adItem, idx) => (
+                  <TouchableOpacity
+                    key={`ad-thumb-${adItem.sponsoredId}-${idx}`}
+                    onPress={() => setCurrentAdIndex(idx)}
+                    style={[
+                      styles.thumbItem,
+                      idx === currentAdIndex && styles.thumbItemActive
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: adItem.imageUrl }}
+                      style={styles.thumbImg}
+                      contentFit="cover"
+                    />
+                    <Text
+                      style={[
+                        styles.thumbText,
+                        idx === currentAdIndex && styles.thumbTextActive
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {adItem.productName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+        </ScrollView>
       </Animated.View>
     </Modal>
   );
@@ -224,71 +371,78 @@ export default function ZoneAdOverlay() {
 
 // ─── Styles ────────────────────────────────────────────────────────────────────
 
-const SHEET_HEIGHT = SH * 0.42;
-
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
   },
-  sheet: {
+  kioskContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: SHEET_HEIGHT,
-    backgroundColor: 'white',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingBottom: 16,
+    height: SH * 0.88,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 28,
+    elevation: 30,
+    overflow: 'hidden',
   },
-  handleBar: {
-    alignSelf: 'center',
-    width: 40,
+  progressBarTrack: {
+    width: '100%',
     height: 4,
     backgroundColor: '#E2E8F0',
-    borderRadius: 2,
-    marginTop: 10,
-    marginBottom: 8,
   },
-  header: {
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#00A550',
+  },
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-    gap: 8,
   },
-  zoneBadge: {
+  locationPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#DCFCE7',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
-    maxWidth: SW * 0.3,
+    gap: 6,
+    maxWidth: SW * 0.58,
   },
-  zoneBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#059669',
+  locationText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#007036',
   },
-  headerCenter: {
-    flex: 1,
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    justifyContent: 'center',
+    gap: 8,
   },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1E293B',
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 4,
+  },
+  timerText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#DC2626',
+    fontVariant: ['tabular-nums'],
   },
   closeBtn: {
     width: 34,
@@ -298,102 +452,237 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 28,
   },
-  loadingText: {
-    color: '#64748B',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  productList: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  productCard: {
-    width: 180,
-    backgroundColor: 'white',
-    borderRadius: 20,
+  bannerFrame: {
+    width: '100%',
+    height: 200,
+    borderRadius: 22,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    marginRight: 4,
-  },
-  imageWrapper: {
-    position: 'relative',
-    height: 120,
     backgroundColor: '#F8FAFC',
+    position: 'relative',
+    shadowColor: '#00A550',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 165, 80, 0.2)',
+    marginBottom: 12,
   },
-  productImage: {
+  bannerImage: {
     width: '100%',
     height: '100%',
   },
-  sponsoredBadge: {
+  sponsoredTag: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: 10,
+    left: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EAB308',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 3,
+    backgroundColor: '#00A550',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    gap: 4,
   },
-  sponsoredText: {
+  sponsoredTagText: {
     color: 'white',
-    fontSize: 9,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  scoreTag: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  scoreTagText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  sloganCard: {
+    backgroundColor: '#F0FDF4',
+    borderLeftWidth: 4,
+    borderLeftColor: '#00A550',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  sloganText: {
+    fontSize: 14,
     fontWeight: '700',
+    color: '#0F5132',
+    fontStyle: 'italic',
+    lineHeight: 20,
   },
-  productInfo: {
-    padding: 12,
+  productCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+    marginBottom: 14,
   },
-  productName: {
+  productMeta: {
+    marginBottom: 14,
+  },
+  productTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  campaignSubtitle: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 2,
-    lineHeight: 18,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 10,
   },
-  campaignName: {
-    fontSize: 10,
-    color: '#94A3B8',
-    marginBottom: 6,
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  productPrice: {
-    fontSize: 16,
+  priceHighlight: {
+    fontSize: 24,
     fontWeight: '900',
     color: '#00A550',
+  },
+  hotDealBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  hotDealText: {
+    color: '#DC2626',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  ctaButton: {
+    backgroundColor: '#00A550',
+    borderRadius: 16,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#00A550',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  ctaButtonPressed: {
+    backgroundColor: '#007A3B',
+    transform: [{ scale: 0.98 }],
+  },
+  ctaButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  robotAssistantBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 8,
+    gap: 8,
+    flex: 1,
+  },
+  robotMiniAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#00A550',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assistantTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  assistantStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#00A550',
+  },
+  playlistSection: {
+    marginTop: 4,
+  },
+  playlistLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
     marginBottom: 8,
   },
-  scoreRow: {
-    height: 3,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 2,
-    overflow: 'hidden',
+  thumbnailList: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 4,
   },
-  scoreBar: {
-    height: '100%',
-    backgroundColor: '#00A550',
-    borderRadius: 2,
+  thumbItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 8,
+    gap: 6,
+    maxWidth: 180,
   },
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+  thumbItemActive: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#00A550',
   },
-  footerText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    textAlign: 'center',
-    fontStyle: 'italic',
+  thumbImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
+  thumbText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    flex: 1,
+  },
+  thumbTextActive: {
+    color: '#007036',
+    fontWeight: '800',
   },
 });

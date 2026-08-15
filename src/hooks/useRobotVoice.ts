@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/globals */
 import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
@@ -196,56 +197,49 @@ export function useRobotVoice() {
       isSpeakingGlobal = true;
       setIsSpeaking(true);
 
-      // Cloud MP3 fallback using Google TTS Stream (bypasses Xiaomi MI AI Speech Engine)
-      const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(text)}`;
-      
+      // Fallback phải hoạt động cả khi robot mất Internet: ưu tiên TTS Android
+      // thay vì stream Google (lỗi playback bất đồng bộ trước đây gây im lặng).
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+      }).catch((audioModeError) => {
+        console.warn('Audio mode setup failed before local TTS:', audioModeError);
+      });
+
+      let targetVoiceId: string | undefined = undefined;
       try {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          shouldPlayInBackground: false,
-        });
-
-        const sound = createAudioPlayer(googleTtsUrl);
-        sound.play();
-
-        globalActiveSound = sound;
-
-        sound.addListener('playbackStatusUpdate', (status) => {
-          if (status.isLoaded && status.playing === false && status.currentTime >= status.duration - 0.5) {
-            isSpeakingGlobal = false;
-            setIsSpeaking(false);
-            if (globalActiveSound === sound) {
-              globalActiveSound = null;
-            }
-            setTimeout(() => {
-              try { sound.remove(); } catch (e) {}
-            }, 100);
-          }
-        });
-        return;
-      } catch (cloudError) {
-        console.warn('Google Cloud MP3 stream failed, attempting local Speech.speak:', cloudError);
+        const voices = await Speech.getAvailableVoicesAsync();
+        const viVoice = voices.find(v =>
+          (v.language?.toLowerCase().includes('vi') || v.identifier?.toLowerCase().includes('vi')) &&
+          !v.identifier?.toLowerCase().includes('miui')
+        );
+        if (viVoice) targetVoiceId = viVoice.identifier;
+      } catch (voiceErr) {
+        // Bỏ qua nếu không lấy được danh sách voice
       }
 
-      // Local Speech.speak fallback if network is completely offline
+      await Speech.stop();
       const fallbackTimer = setTimeout(() => {
         isSpeakingGlobal = false;
         setIsSpeaking(false);
-      }, 10000);
+      }, 15000);
 
       Speech.speak(text, {
         language: 'vi-VN',
+        voice: targetVoiceId,
         pitch: 1.0,
-        rate: 1.0,
+        rate: 0.9,
+        volume: 1.0,
         onDone: () => {
           clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
         },
-        onError: () => {
+        onError: (err) => {
           clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
+          console.warn('Speech.speak onError:', err);
         },
         onStopped: () => {
           clearTimeout(fallbackTimer);

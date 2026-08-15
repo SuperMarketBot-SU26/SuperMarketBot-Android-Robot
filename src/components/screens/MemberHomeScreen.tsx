@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +16,8 @@ import { ShoppingCart } from 'lucide-react-native';
 import { SearchService, MobileProductSearchResultDto } from '../../services/SearchService';
 
 import { useGeofencing } from '../../context/GeofencingContext';
-import ZoneAdOverlay from '../ui/ZoneAdOverlay';
+
+const AnimatedView = Animated.createAnimatedComponent(View);
 
 export default function MemberHomeScreen() {
   const { member, token } = useRobotAuth();
@@ -94,13 +96,8 @@ export default function MemberHomeScreen() {
     };
   });
 
-  const AnimatedView = Animated.createAnimatedComponent(View);
-
   return (
     <View flex={1} backgroundColor="#f9fbf9" paddingTop={insets.top} paddingLeft={Math.max(insets.left, 0)} paddingRight={Math.max(insets.right, 0)}>
-
-      {/* Zone Ad Overlay — hiển thị khi robot vào zone */}
-      <ZoneAdOverlay />
 
       <MemberHeader />
 

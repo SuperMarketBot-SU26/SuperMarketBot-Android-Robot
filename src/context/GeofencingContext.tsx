@@ -1,203 +1,161 @@
-/**
- * GeofencingContext.tsx
- *
- * Kết nối SignalR đến RobotHub và lắng nghe sự kiện `zoneEntered`.
- * Khi Robot di chuyển đến gần 1 kệ hàng/zone, tự động tải playlist
- * quảng cáo của khu vực đó để hiển thị trên màn hình Robot.
- */
-
-import React, {
-  createContext, useContext, useEffect, useRef, useState, useCallback,
-} from 'react';
-import * as SignalR from '@microsoft/signalr';
-import { AdService, RobotPlaylistResponseDto, AdPlaylistItemDto } from '../services/AdService';
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AdPlaylistItemDto, AdService } from '../services/AdService';
+import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 
 export interface ZoneEnteredPayload {
   robotCode: string;
   zoneId: number;
-  semanticObjectId: number;
+  semanticObjectId?: number;
   objectName: string;
+  dwellTimeSeconds?: number;
+  missionId: string;
 }
 
 interface GeofencingContextType {
-  /** Hub SignalR đã kết nối chưa */
   isHubConnected: boolean;
-
-  /** Zone hiện tại robot đang đứng */
   currentZone: ZoneEnteredPayload | null;
-
-  /** Playlist quảng cáo của zone đó */
   currentPlaylist: AdPlaylistItemDto[];
-
-  /** Robot đang ở trong 1 zone nào đó */
   isInZone: boolean;
-
-  /** Đang tải playlist */
   isLoadingPlaylist: boolean;
-
-  /** Xóa zone hiện tại (khi overlay đóng) */
   clearZone: () => void;
-
-  /** Hàm test trigger quảng cáo giả lập */
-  triggerDebugAd: () => void;
 }
 
 const GeofencingContext = createContext<GeofencingContextType | null>(null);
-
-const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
-const HUB_URL  = `${API_BASE}/hubs/robot`;
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+const field = <T,>(value: any, camel: string, pascal: string): T | undefined =>
+  value?.[camel] ?? value?.[pascal];
+
+function normalizePlaylist(raw: any[]): AdPlaylistItemDto[] {
+  return raw.map((item, index) => ({
+    sponsoredId: Number(field(item, 'sponsoredId', 'SponsoredId') ?? field(item, 'id', 'Id') ?? 0),
+    // `id` trong payload ROS là SponsoredId, tuyệt đối không dùng thay AdCampaignId.
+    adCampaignId: Number(field(item, 'adCampaignId', 'AdCampaignId') ?? 0),
+    campaignName: String(field(item, 'campaignName', 'CampaignName') ?? field(item, 'name', 'Name') ?? ''),
+    productId: Number(field(item, 'productId', 'ProductId') ?? 0),
+    productName: String(field(item, 'productName', 'ProductName') ?? field(item, 'name', 'Name') ?? `Quảng cáo ${index + 1}`),
+    productPrice: Number(field(item, 'productPrice', 'ProductPrice') ?? 0),
+    priority: Number(field(item, 'priority', 'Priority') ?? index + 1),
+    adScore: Number(field(item, 'adScore', 'AdScore') ?? 0),
+    endDate: String(field(item, 'endDate', 'EndDate') ?? ''),
+    imageUrl: String(field(item, 'imageUrl', 'ImageUrl') ?? ''),
+    displayDurationSeconds: Number(
+      field(item, 'displayDurationSeconds', 'DisplayDurationSeconds')
+      ?? field(item, 'durationSeconds', 'DurationSeconds')
+      ?? 0,
+    ),
+    mediaContents: (field<any[]>(item, 'mediaContents', 'MediaContents') ?? []).map((media) => {
+      const rawType = String(field(media, 'resourceType', 'ResourceType') ?? '').toUpperCase();
+      const resourceType = rawType === 'BANNER' ? 'IMAGE'
+        : rawType === 'VOICETEXT' ? 'VOICE_TEXT'
+          : rawType;
+      return {
+        resourceType: resourceType as any,
+        resourceUrl: field<string | null>(media, 'resourceUrl', 'ResourceUrl') ?? null,
+        contentText: field<string | null>(media, 'contentText', 'ContentText') ?? null,
+        resolution: field<string | null>(media, 'resolution', 'Resolution') ?? null,
+      };
+    }),
+  }));
+}
 
 export function GeofencingProvider({ children }: { children: React.ReactNode }) {
-  const [isHubConnected, setHubConnected]   = useState(false);
-  const [currentZone, setCurrentZone]       = useState<ZoneEnteredPayload | null>(null);
+  const { isConnected, subscribeMissionAssigned, subscribeNavigationStatus } = useRobotRealtime();
+  const [currentZone, setCurrentZone] = useState<ZoneEnteredPayload | null>(null);
   const [currentPlaylist, setCurrentPlaylist] = useState<AdPlaylistItemDto[]>([]);
   const [isLoadingPlaylist, setLoadingPlaylist] = useState(false);
-
-  const hubRef = useRef<SignalR.HubConnection | null>(null);
-  const mountedRef = useRef(true);
-
-  // ── Tải playlist khi vào zone ──────────────────────────────────────────────
-  const fetchPlaylistForZone = useCallback(async (payload: ZoneEnteredPayload) => {
-    if (!mountedRef.current) return;
-    setLoadingPlaylist(true);
-    try {
-      console.log(`[Geofencing] Tải playlist cho zone "${payload.objectName}" (objectId=${payload.semanticObjectId})`);
-      const data: RobotPlaylistResponseDto = await AdService.getRobotPlaylist(
-        ROBOT_ID,
-        payload.semanticObjectId,
-      );
-      if (mountedRef.current) {
-        setCurrentPlaylist(data.playlist ?? []);
-        console.log(`[Geofencing] Playlist loaded: ${data.playlist?.length ?? 0} ads`);
-      }
-    } catch (e) {
-      console.warn('[Geofencing] Không thể tải playlist:', e);
-      if (mountedRef.current) setCurrentPlaylist([]);
-    } finally {
-      if (mountedRef.current) setLoadingPlaylist(false);
-    }
-  }, []);
-
-  // ── Xây dựng & kết nối SignalR Hub ────────────────────────────────────────
-  useEffect(() => {
-    mountedRef.current = true;
-
-    const connection = new SignalR.HubConnectionBuilder()
-      .withUrl(HUB_URL, {
-        skipNegotiation: true,
-        transport: SignalR.HttpTransportType.WebSockets,
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      })
-      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
-      .configureLogging(SignalR.LogLevel.Warning)
-      .build();
-
-    hubRef.current = connection;
-
-    // ── Handlers ──
-    connection.onreconnecting(() => {
-      console.log('[Geofencing] SignalR đang kết nối lại...');
-      if (mountedRef.current) setHubConnected(false);
-    });
-
-    connection.onreconnected(() => {
-      console.log('[Geofencing] SignalR đã kết nối lại.');
-      if (mountedRef.current) setHubConnected(true);
-    });
-
-    connection.onclose(() => {
-      console.warn('[Geofencing] SignalR bị đóng.');
-      if (mountedRef.current) setHubConnected(false);
-    });
-
-    // ── Lắng nghe sự kiện zoneEntered ──
-    connection.on('zoneEntered', (payload: ZoneEnteredPayload) => {
-      if (!mountedRef.current) return;
-      console.log(`[Geofencing] zoneEntered: ${payload.objectName} (zone=${payload.zoneId})`);
-      setCurrentZone(payload);
-      fetchPlaylistForZone(payload);
-    });
-
-    // ── Bắt đầu kết nối ──
-    const startConnection = async () => {
-      try {
-        await connection.start();
-        if (mountedRef.current) {
-          setHubConnected(true);
-          console.log(`[Geofencing] SignalR đã kết nối đến ${HUB_URL}`);
-        }
-      } catch (e) {
-        console.warn('[Geofencing] Không thể kết nối SignalR:', e);
-        if (mountedRef.current) setHubConnected(false);
-      }
-    };
-
-    startConnection();
-
-    return () => {
-      mountedRef.current = false;
-      connection.off('zoneEntered');
-      connection.stop().catch(() => {});
-      hubRef.current = null;
-    };
-  }, [fetchPlaylistForZone]);
+  const handledArrivalRef = useRef<string | null>(null);
+  const activeMissionRef = useRef<any | null>(null);
 
   const clearZone = useCallback(() => {
     setCurrentZone(null);
     setCurrentPlaylist([]);
   }, []);
 
-  const triggerDebugAd = useCallback(() => {
-    setCurrentZone({
-      robotCode: 'ROBOT-01',
-      zoneId: 999,
-      semanticObjectId: 999,
-      objectName: 'Kệ Trái Cây (Test)',
+  useEffect(() => {
+    return subscribeMissionAssigned((mission) => {
+      activeMissionRef.current = mission;
     });
-    setCurrentPlaylist([
-      {
-        adCampaignId: 1,
-        campaignName: 'Khuyến mãi Táo',
-        priority: 1,
-        adScore: 100,
-        endDate: '2027-01-01',
-        imageUrl: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6faa6?auto=format&fit=crop&w=800&q=80',
-        mediaContents: [],
-        displayDurationSeconds: 8,
-        sponsoredId: 1,
-        productId: 101,
-        productName: 'Táo Mỹ Nhập Khẩu',
-        productPrice: 59000,
+  }, [subscribeMissionAssigned]);
+
+  useEffect(() => {
+    return subscribeNavigationStatus((payload) => {
+    const incomingRobot = String(field(payload, 'robotCode', 'RobotCode') ?? '');
+    const incomingMissionId = String(field(payload, 'missionId', 'MissionId') ?? '');
+    const activeMissionId = String(field(activeMissionRef.current, 'missionId', 'MissionId') ?? '');
+    const activeFlow = String(field(activeMissionRef.current, 'flowType', 'FlowType') ?? '').toLowerCase();
+    const status = String(field(payload, 'navStatus', 'NavStatus') ?? '').toUpperCase();
+    const role = String(field(payload, 'role', 'Role') ?? '').toLowerCase();
+
+    if (incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase()
+      || !incomingMissionId || incomingMissionId !== activeMissionId
+      || activeFlow !== 'ad') return;
+
+    if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
+      clearZone();
+      return;
+    }
+    if (status !== 'ARRIVED' || role !== 'ad') return;
+
+    const waypointIndex = Number(field(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
+    const nodeId = Number(field(payload, 'nodeId', 'NodeId') ?? 0);
+    const arrivalKey = `${incomingMissionId}|${waypointIndex}|${nodeId}`;
+    if (handledArrivalRef.current === arrivalKey) return;
+    handledArrivalRef.current = arrivalKey;
+
+    const zoneId = Number(field(payload, 'zoneId', 'ZoneId') ?? 0);
+    const objectName = String(field(payload, 'currentWaypoint', 'CurrentWaypoint') ?? `Node ${nodeId}`);
+    const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0);
+    const directPlaylist = field<any[]>(payload, 'playlist', 'Playlist') ?? [];
+
+    setCurrentZone({
+      robotCode: incomingRobot,
+      zoneId,
+      semanticObjectId: nodeId || undefined,
+      objectName,
+      dwellTimeSeconds,
+      missionId: incomingMissionId,
+    });
+
+    const loadPlaylist = async () => {
+      setLoadingPlaylist(true);
+      try {
+        let playlist = normalizePlaylist(directPlaylist);
+        const directPlaylistHasIdentity = playlist.length > 0
+          && playlist.every(item => item.adCampaignId > 0 && item.sponsoredId > 0 && item.productId > 0);
+        if (!directPlaylistHasIdentity && nodeId > 0)
+          playlist = normalizePlaylist((await AdService.getPlaylistForNode(ROBOT_ID, nodeId)).playlist ?? []);
+        if (playlist.length === 0 && zoneId > 0)
+          playlist = normalizePlaylist((await AdService.getZonePlaylist(ROBOT_ID, zoneId)).playlist ?? []);
+        if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist(playlist);
+        if (playlist.length === 0) console.warn(`[Geofencing] Node ${nodeId} không có playlist thật; không phát quảng cáo.`);
+      } catch (error) {
+        console.warn('[Geofencing] Không tải được playlist thật:', error);
+        if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist([]);
+      } finally {
+        if (handledArrivalRef.current === arrivalKey) setLoadingPlaylist(false);
       }
-    ]);
-  }, []);
+    };
+    void loadPlaylist();
+    });
+  }, [clearZone, subscribeNavigationStatus]);
 
   return (
     <GeofencingContext.Provider value={{
-      isHubConnected,
+      isHubConnected: isConnected,
       currentZone,
       currentPlaylist,
-      isInZone: currentZone !== null && currentPlaylist.length > 0,
+      isInZone: currentZone !== null,
       isLoadingPlaylist,
       clearZone,
-      triggerDebugAd,
     }}>
       {children}
     </GeofencingContext.Provider>
   );
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export function useGeofencing() {
-  const ctx = useContext(GeofencingContext);
-  if (!ctx) throw new Error('useGeofencing must be used within GeofencingProvider');
-  return ctx;
+  const value = useContext(GeofencingContext);
+  if (!value) throw new Error('useGeofencing must be used inside GeofencingProvider');
+  return value;
 }

@@ -259,11 +259,14 @@ export default function WelcomeScreen() {
               {/* 2. TOP HEADER */}
               <YStack width="100%" paddingHorizontal={24} zIndex={10} marginTop={0}>
                 {/* Brand Name */}
-                <XStack alignItems="center" gap={8} alignSelf="flex-start">
-                  <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
-                  <Text color="#0F5132" fontSize={18} fontWeight="900" fontFamily="$heading" letterSpacing={1} style={styles.brandTitle}>
-                    SmartMarketBot
-                  </Text>
+                <XStack alignItems="center" justifyContent="space-between" width="100%">
+                  <XStack alignItems="center" gap={8}>
+                    <View width={8} height={8} borderRadius={4} backgroundColor="#00A550" style={styles.greenDot} />
+                    <Text color="#0F5132" fontSize={18} fontWeight="900" fontFamily="$heading" letterSpacing={1} style={styles.brandTitle}>
+                      SmartMarketBot
+                    </Text>
+                  </XStack>
+
                 </XStack>
 
                 {/* BIG TIME DISPLAY */}

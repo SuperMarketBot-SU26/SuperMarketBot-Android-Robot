@@ -113,7 +113,7 @@ export default function MotorLayoutScreen() {
           <Text style={styles.infoText}>
             Cấu hình sơ đồ động cơ cho bánh xe Mecanum 4 bánh.
             Mỗi bánh chọn slot driver tương ứng trên mạch ESP32-S3.
-            Nhấn giữ nút "Test" để chạy thử bánh ở 40%.
+            Nhấn giữ nút “Test” để chạy thử bánh ở 40%.
           </Text>
         </View>
 

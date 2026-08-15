@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 
-export default function RobotKioskSimulationScreen() {
+export default function RobotKioskScreen() {
   const router = useRouter();
   const { speak } = useRobotVoice();
   const { status, productName, destination, error, isBusy, isHubConnected, cancelGuide } = useRobotGuide();

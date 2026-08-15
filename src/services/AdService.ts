@@ -25,6 +25,8 @@ export interface AdPlaylistItemDto {
 export interface RobotPlaylistResponseDto {
   robotId: number;
   currentZoneId?: number;
+  zoneId?: number;
+  zoneName?: string | null;
   semanticObjectId?: number;
   generatedAt: string;
   playlist: AdPlaylistItemDto[];
@@ -53,6 +55,44 @@ export interface LogInteractionRequestDto {
 }
 
 export const AdService = {
+  /**
+   * Lấy danh sách quảng cáo cho Zone (theo Navigation Zone)
+   */
+  async getZonePlaylist(robotId: number, zoneId: number): Promise<RobotPlaylistResponseDto> {
+    const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/robot-playlist/${robotId}/zone/${zoneId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch zone playlist: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Lấy danh sách quảng cáo cho Navigation Node
+   */
+  async getPlaylistForNode(robotId: number, nodeId: number): Promise<RobotPlaylistResponseDto> {
+    const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/robot-playlist/${robotId}/node/${nodeId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch node playlist: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
   /**
    * Lấy danh sách quảng cáo cần phát trên Robot dựa theo vị trí hiện tại
    */

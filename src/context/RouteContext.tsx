@@ -2,7 +2,7 @@
  * RouteContext.tsx
  *
  * Cung cấp state cho Fixed Routes + lộ trình đang chọn trên Tablet.
- * Auto-load map 1 khi mount. Nếu BE fail/rỗng → fallback mock JSON.
+ * Auto-load map 1 khi mount. Không dùng route mock để điều khiển robot thật.
  *
  * UI consumer: MapViewerScreen, RoutePickerSheet.
  */
@@ -14,7 +14,6 @@ import {
   fetchRoutesByMap,
   RobotRoute,
 } from '../services/RouteService';
-import mockData from '../mocks/routes.mock.json';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,7 +23,6 @@ interface RouteContextType {
   selectedRouteId: number | null;
   isLoading: boolean;
   error: string | null;
-  isMock: boolean;
   selectRoute: (id: number | null) => void;
   refresh: () => Promise<void>;
 }
@@ -33,10 +31,6 @@ const RouteContext = createContext<RouteContextType | null>(null);
 
 const DEFAULT_MAP_ID = 1;
 
-interface MockPayload {
-  routes: RobotRoute[];
-}
-
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function RouteProvider({ children }: { children: React.ReactNode }) {
@@ -44,7 +38,6 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
   const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMock, setMock] = useState(false);
 
   // Guard tránh double-load (React 18 StrictMode mount/unmount)
   const loadingRef = useRef(false);
@@ -59,22 +52,15 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
       const fromBE = await fetchRoutesByMap(mapId);
       if (fromBE.length > 0) {
         setRoutes(fromBE);
-        setMock(false);
         console.log(`[RouteContext] Loaded ${fromBE.length} routes từ BE`);
       } else {
-        // Fallback mock
-        const mock = (mockData as MockPayload).routes ?? [];
-        setRoutes(mock);
-        setMock(true);
-        console.warn(`[RouteContext] Fallback MOCK — ${mock.length} routes`);
+        setRoutes([]);
+        setError('Backend không trả route thật cho active map.');
       }
     } catch (e: any) {
-      // Defensive: RouteService không throw, nhưng cẩn thận vẫn fallback
-      const mock = (mockData as MockPayload).routes ?? [];
-      setRoutes(mock);
-      setMock(true);
+      setRoutes([]);
       setError(e?.message ?? 'Unknown error');
-      console.warn('[RouteContext] Exception, fallback MOCK');
+      console.warn('[RouteContext] Không tải được route thật:', e);
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -82,7 +68,8 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadRoutes(DEFAULT_MAP_ID);
+    const timer = setTimeout(() => void loadRoutes(DEFAULT_MAP_ID), 0);
+    return () => clearTimeout(timer);
   }, [loadRoutes]);
 
   const refresh = useCallback(async () => {
@@ -106,7 +93,6 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
         selectedRouteId,
         isLoading,
         error,
-        isMock,
         selectRoute,
         refresh,
       }}

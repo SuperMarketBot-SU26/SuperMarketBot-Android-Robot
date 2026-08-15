@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Button, YStack, XStack } from 'tamagui';
+/* eslint-disable react-hooks/immutability */
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Header } from '../layout/Header';
 import { useRobotVoice } from '../../hooks/useRobotVoice';

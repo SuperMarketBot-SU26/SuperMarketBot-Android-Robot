@@ -1,2 +1,2 @@
-import RobotKioskSimulationScreen from '../components/screens/RobotKioskSimulationScreen';
-export default RobotKioskSimulationScreen;
+import RobotKioskScreen from '../components/screens/RobotKioskScreen';
+export default RobotKioskScreen;
