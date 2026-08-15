@@ -44,6 +44,8 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!API_BASE) return;
     let mounted = true;
+    let initialRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let isStarting = false;
     const connection = new SignalR.HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/robot`, {
         headers: { 'ngrok-skip-browser-warning': 'true' },
@@ -84,27 +86,67 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       telemetryHandlers.current.forEach((handler) => handler(payload));
     });
+    // BE vẫn phát event legacy này cho một số dashboard. Đăng ký handler để
+    // SignalR không spam "No client method zoneentered"; quảng cáo hiện dùng
+    // navigationStatus làm nguồn sự thật.
+    connection.on('zoneEntered', () => undefined);
+    connection.on('robotLog', () => undefined);
     connection.onreconnecting(() => mounted && setConnected(false));
     connection.onreconnected(async () => {
       if (!mounted) return;
-      setConnected(true);
-      await joinAndRecover().catch((error) => console.warn('[RobotRealtime] Rejoin/recover failed:', error));
-    });
-    connection.onclose(() => mounted && setConnected(false));
-
-    connection.start()
-      .then(async () => {
-        if (!mounted) return;
-        setConnected(true);
+      try {
         await joinAndRecover();
-      })
-      .catch((error) => console.warn('[RobotRealtime] SignalR connection failed:', error));
+        if (mounted) setConnected(true);
+      } catch (error) {
+        if (mounted) setConnected(false);
+        console.warn('[RobotRealtime] Rejoin/recover failed:', error);
+      }
+    });
+    const scheduleInitialReconnect = () => {
+      if (!mounted || initialRetryTimer) return;
+      initialRetryTimer = setTimeout(() => {
+        initialRetryTimer = null;
+        void startConnection();
+      }, 3_000);
+    };
+
+    const startConnection = async () => {
+      if (!mounted || isStarting || connection.state !== SignalR.HubConnectionState.Disconnected) return;
+      isStarting = true;
+      try {
+        await connection.start();
+        if (!mounted) return;
+        await joinAndRecover();
+        if (mounted) setConnected(true);
+      } catch (error) {
+        if (mounted) {
+          setConnected(false);
+          console.warn('[RobotRealtime] SignalR initial connection failed; retrying:', error);
+          scheduleInitialReconnect();
+        }
+      } finally {
+        isStarting = false;
+      }
+    };
+
+    connection.onclose(() => {
+      if (!mounted) return;
+      setConnected(false);
+      // withAutomaticReconnect does not retry when the very first start() fails,
+      // and eventually reaches onclose after exhausting reconnect attempts.
+      scheduleInitialReconnect();
+    });
+
+    void startConnection();
 
     return () => {
       mounted = false;
+      if (initialRetryTimer) clearTimeout(initialRetryTimer);
       connection.off('navigationStatus');
       connection.off('missionAssigned');
       connection.off('telemetry');
+      connection.off('zoneEntered');
+      connection.off('robotLog');
       connection.stop().catch(() => undefined);
     };
   }, []);

@@ -55,13 +55,9 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
     const onConn = (c: boolean) => connRef.current?.(c);
     RobotControlService.onConnection(onConn);
 
-    // Auto-connect on mount
-    RobotControlService.connect();
-
     return () => {
       isMounted = false;
       RobotControlService.offConnection(onConn);
-      RobotControlService.disconnect();
     };
   }, []);
 

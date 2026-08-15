@@ -49,9 +49,11 @@ interface RobotGuideContextValue {
   currentWaypointIndex: number;
   robotPose: GuideRobotPose | null;
   error: string | null;
+  awaitingPickup: boolean;
   isBusy: boolean;
   isHubConnected: boolean;
   dispatchCart: (items: { productId: number; productName: string }[]) => Promise<any>;
+  confirmPickup: () => Promise<void>;
   cancelGuide: () => Promise<void>;
 }
 
@@ -70,11 +72,13 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const [robotPose, setRobotPose] = useState<GuideRobotPose | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [awaitingPickup, setAwaitingPickup] = useState(false);
   const missionRef = useRef<string | null>(null);
   const acknowledgedMissionRef = useRef<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const destinationRef = useRef<GuideDestination | null>(null);
   const destinationsRef = useRef<GuideDestination[]>([]);
+  const awaitingPickupRef = useRef(false);
 
   const normalizeDestinations = useCallback((raw: any[]): GuideDestination[] => raw
     .map((item) => ({
@@ -97,21 +101,64 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    return subscribeMissionAssigned((assignedMission: any) => {
+    let active = true;
+    const recoverMission = async () => {
+      if (!API_BASE) return;
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        });
+        if (response.ok && active) {
+          const assignedMission = await response.json();
+          const flowType = String(assignedMission?.flowType ?? assignedMission?.FlowType ?? '').toLowerCase();
+          const incomingRobot = String(assignedMission?.robotCode ?? assignedMission?.RobotCode ?? '');
+          const incomingMission = String(assignedMission?.missionId ?? assignedMission?.MissionId ?? '');
+          if (flowType === 'guide' && incomingRobot.toUpperCase() === ROBOT_CODE.toUpperCase() && incomingMission) {
+            const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
+            const recoveredStatus = String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus;
+            missionRef.current = incomingMission;
+            setMissionId(incomingMission);
+            setStatus(recoveredStatus);
+            const recoveredPickupWait = recoveredStatus === 'ARRIVED' || recoveredStatus === 'PAUSED';
+            awaitingPickupRef.current = recoveredPickupWait;
+            setAwaitingPickup(recoveredPickupWait);
+            destinationsRef.current = recoveredDestinations;
+            destinationRef.current = recoveredDestinations[0] ?? null;
+            setDestinations(recoveredDestinations);
+            setDestination(recoveredDestinations[0] ?? null);
+            setCurrentWaypointIndex(0);
+          }
+        }
+      } catch (err) {
+        console.warn('[RobotGuide] Recover active mission failed:', err);
+      }
+    };
+    void recoverMission();
+
+    const unsubscribe = subscribeMissionAssigned((assignedMission: any) => {
       const flowType = String(assignedMission?.flowType ?? assignedMission?.FlowType ?? '').toLowerCase();
       const incomingRobot = String(assignedMission?.robotCode ?? assignedMission?.RobotCode ?? '');
       const incomingMission = String(assignedMission?.missionId ?? assignedMission?.MissionId ?? '');
       if (flowType !== 'guide' || incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase() || !incomingMission) return;
       const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
+      const recoveredStatus = String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus;
       missionRef.current = incomingMission;
       setMissionId(incomingMission);
-      setStatus(String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus);
+      setStatus(recoveredStatus);
+      const recoveredPickupWait = recoveredStatus === 'ARRIVED' || recoveredStatus === 'PAUSED';
+      awaitingPickupRef.current = recoveredPickupWait;
+      setAwaitingPickup(recoveredPickupWait);
       destinationsRef.current = recoveredDestinations;
       destinationRef.current = recoveredDestinations[0] ?? null;
       setDestinations(recoveredDestinations);
       setDestination(recoveredDestinations[0] ?? null);
       setCurrentWaypointIndex(0);
     });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [normalizeDestinations, subscribeMissionAssigned]);
 
   useEffect(() => subscribeTelemetry((payload: any) => {
@@ -140,6 +187,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       const next = String(payload.navStatus ?? (payload as any).NavStatus ?? '').toUpperCase() as GuideStatus;
       const accepted: GuideStatus[] = ['NAVIGATING', 'MOVING', 'ARRIVED', 'PAUSED', 'RESUMED', 'WAYPOINT_COMPLETED', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'];
       if (!accepted.includes(next)) return;
+      if (next === 'PAUSED' && !awaitingPickupRef.current) return;
       clearTimeoutGuard();
       setStatus(next);
       setError(payload.error ?? (payload as any).Error ?? null);
@@ -159,6 +207,8 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         if (matchedIndex >= 0) setCurrentWaypointIndex(matchedIndex);
       }
       if (next === 'ARRIVED') {
+        awaitingPickupRef.current = true;
+        setAwaitingPickup(true);
         const target = currentTarget;
         const location = [target?.zoneName, target?.aisleName, target?.shelfName].filter(Boolean).join(', ');
         const products = target?.productNames?.length ? ` Các sản phẩm tại đây: ${target.productNames.join(', ')}.` : '';
@@ -168,6 +218,10 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
             : 'Đã đến nơi. Xin mời quý khách lấy sản phẩm.',
           { language: 'vi-VN', rate: 0.9 },
         );
+      }
+      if (['MOVING', 'RESUMED', 'WAYPOINT_COMPLETED', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(next)) {
+        awaitingPickupRef.current = false;
+        setAwaitingPickup(false);
       }
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(next)) {
         missionRef.current = null;
@@ -196,6 +250,8 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     destinationRef.current = null;
     destinationsRef.current = [];
     setError(null);
+    awaitingPickupRef.current = false;
+    setAwaitingPickup(false);
     setStatus('DISPATCHING');
 
     const result = await RobotControlService.dispatchAutonomous({
@@ -248,6 +304,12 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     if (acknowledgedMissionRef.current !== confirmedMissionId) {
       timeoutRef.current = setTimeout(() => {
         if (missionRef.current !== confirmedMissionId) return;
+        // Nếu robot không ACK, giải phóng cả registry BE và gửi STOP phòng khi
+        // lệnh MQTT đến trễ. Không để một mission DISPATCHED treo chặn lần sau.
+        fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Robot did not acknowledge guide mission')}`, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        }).catch(() => undefined);
         missionRef.current = null;
         setMissionId(null);
         setStatus('TIMEOUT');
@@ -257,20 +319,62 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     return result.data;
   }, [clearTimeoutGuard, isHubConnected, normalizeDestinations]);
 
-  const cancelGuide = useCallback(async () => {
-    if (!missionRef.current) return;
-    const response = await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=Customer%20cancelled%20guide`, {
-      method: 'POST',
-      headers: { 'ngrok-skip-browser-warning': 'true' },
-    });
-    if (!response.ok) throw new Error(`Không thể hủy nhiệm vụ (${response.status})`);
+  const confirmPickup = useCallback(async () => {
+    const activeMissionId = missionRef.current;
+    if (!activeMissionId || !awaitingPickupRef.current)
+      throw new Error('Robot hiện không chờ xác nhận lấy hàng.');
+
+    // Khóa nút ngay để tránh khách bấm hai lần phát hai RESUME_NAV.
+    awaitingPickupRef.current = false;
+    setAwaitingPickup(false);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/resume?reason=${encodeURIComponent('Customer confirmed product pickup')}`,
+        { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } },
+      );
+      if (!response.ok) throw new Error(`Không thể cho robot đi tiếp (${response.status})`);
+      setStatus('RESUMED');
+      Speech.speak('Đã xác nhận. Xin mời quý khách tiếp tục đi theo tôi.', {
+        language: 'vi-VN', rate: 0.9,
+      });
+    } catch (error) {
+      awaitingPickupRef.current = true;
+      setAwaitingPickup(true);
+      throw error;
+    }
   }, []);
+
+  const cancelGuide = useCallback(async () => {
+    try {
+      if (API_BASE) {
+        await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=Customer%20cancelled%20guide`, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        });
+      }
+    } catch (err) {
+      console.warn('[RobotGuide] Cancel request warning:', err);
+    } finally {
+      clearTimeoutGuard();
+      missionRef.current = null;
+      acknowledgedMissionRef.current = null;
+      destinationRef.current = null;
+      destinationsRef.current = [];
+      setMissionId(null);
+      setError(null);
+      setDestination(null);
+      setDestinations([]);
+      awaitingPickupRef.current = false;
+      setAwaitingPickup(false);
+      setStatus('CANCELLED');
+    }
+  }, [clearTimeoutGuard]);
 
   const isBusy = missionId !== null || ['DISPATCHING', 'NAVIGATING', 'MOVING', 'ARRIVED'].includes(status);
   return (
     <RobotGuideContext.Provider value={{
-      status, missionId, productName, destination, destinations, currentWaypointIndex, robotPose, error, isBusy, isHubConnected,
-      dispatchCart, cancelGuide,
+      status, missionId, productName, destination, destinations, currentWaypointIndex, robotPose, error, awaitingPickup, isBusy, isHubConnected,
+      dispatchCart, confirmPickup, cancelGuide,
     }}>
       {children}
     </RobotGuideContext.Provider>

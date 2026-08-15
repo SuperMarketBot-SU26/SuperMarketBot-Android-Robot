@@ -14,7 +14,7 @@
  */
 
 /* eslint-disable react-hooks/refs */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Dimensions, Platform, PanResponder,
@@ -61,6 +61,11 @@ export default function RobotControlScreen() {
 
   const [speed, setSpeed] = useState(60);
   const [activeDir, setActiveDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    RobotControlService.connect();
+    return () => RobotControlService.disconnect();
+  }, []);
 
   const sendDir = useCallback((dir: Dir8) => {
     RobotControlService.sendMove(dir.x, dir.y, dir.s);

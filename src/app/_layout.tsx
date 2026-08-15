@@ -9,7 +9,7 @@ import { RobotControlProvider } from '../context/RobotControlContext';
 import { RouteProvider } from '../context/RouteContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { GeofencingProvider } from '../context/GeofencingContext';
-import { RobotGuideProvider } from '../context/RobotGuideContext';
+import { RobotGuideProvider, useRobotGuide } from '../context/RobotGuideContext';
 import { RobotMissionRuntimeProvider } from '../context/RobotMissionRuntimeContext';
 import { RobotRealtimeProvider } from '../context/RobotRealtimeContext';
 import ZoneAdOverlay from '../components/ui/ZoneAdOverlay';
@@ -17,7 +17,9 @@ import { useKeepAwake } from 'expo-keep-awake';
 
 function RootLayoutContent() {
   useKeepAwake();
-  const { resetTimer } = useIdleTimeout(60000); // 60 seconds
+  const { isBusy: isGuideMissionActive } = useRobotGuide();
+  // Không logout khách giữa lúc robot đang lập tuyến, di chuyển hoặc chờ lấy hàng.
+  const { resetTimer } = useIdleTimeout(60000, !isGuideMissionActive);
 
   return (
     <View

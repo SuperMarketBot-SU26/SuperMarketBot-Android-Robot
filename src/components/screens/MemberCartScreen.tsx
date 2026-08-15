@@ -23,6 +23,9 @@ export default function MemberCartScreen() {
     destination: guideDestination,
     destinations: guideDestinations,
     error: guideError,
+    awaitingPickup,
+    confirmPickup,
+    cancelGuide,
   } = useRobotGuide();
 
   const [cart, setCart] = useState<CartDto | null>(null);
@@ -100,13 +103,13 @@ export default function MemberCartScreen() {
           <XStack backgroundColor="#fff1f2" padding="$4" alignItems="center" gap="$3" borderBottomWidth={1} borderBottomColor="#ffe4e6">
             <Info size={20} color="#e11d48" />
             <Text color="#e11d48" fontSize={14} flex={1} fontWeight="600">
-              Cảnh báo: Bạn đã vượt quá ngân sách mua sắm dự kiến ({(currentSpending - budget).toLocaleString('vi-VN')}đ).
+              Cảnh báo: Bạn đã vượt quá ngân sách mua sắm dự kiến ({(Math.max(0, currentSpending - budget)).toLocaleString('vi-VN')}đ).
             </Text>
           </XStack>
         </Animated.View>
       )}
 
-      {(isRobotBusy || ['ARRIVED', 'COMPLETED', 'FAILED', 'TIMEOUT'].includes(guideStatus)) && (
+      {(isRobotBusy || guideError != null || ['ARRIVED', 'COMPLETED', 'FAILED', 'TIMEOUT'].includes(guideStatus)) && (
         <YStack
           marginHorizontal="$4"
           marginTop="$3"
@@ -127,6 +130,46 @@ export default function MemberCartScreen() {
             <Text marginTop="$1" fontSize={12} color="#64748b">
               {guideDestinations.length} điểm kệ trong lộ trình
             </Text>
+          )}
+          {awaitingPickup && (
+            <Button
+              marginTop="$3"
+              backgroundColor="#00A550"
+              color="white"
+              fontWeight="900"
+              onPress={async () => {
+                try {
+                  await confirmPickup();
+                } catch (error: any) {
+                  Alert.alert('Chưa thể đi tiếp', error?.message || 'Không gửi được xác nhận lấy hàng.');
+                }
+              }}
+            >
+              Tôi đã lấy sản phẩm — Đi tiếp
+            </Button>
+          )}
+          {(isRobotBusy || guideError != null || ['FAILED', 'TIMEOUT'].includes(guideStatus)) && (
+            <Button
+              marginTop="$2"
+              backgroundColor="#dc2626"
+              color="white"
+              fontWeight="900"
+              onPress={() => Alert.alert(
+                'Dừng / Hủy nhiệm vụ?',
+                'Robot sẽ dừng nhiệm vụ hiện tại và giải phóng lộ trình.',
+                [
+                  { text: 'Không', style: 'cancel' },
+                  {
+                    text: 'Dừng nhiệm vụ',
+                    style: 'destructive',
+                    onPress: () => cancelGuide().catch((error: any) =>
+                      Alert.alert('Không thể dừng', error?.message || 'Không gửi được lệnh dừng.')),
+                  },
+                ],
+              )}
+            >
+              {guideError ? 'Giải phóng robot / Hủy nhiệm vụ kẹt' : 'Dừng dẫn đường'}
+            </Button>
           )}
         </YStack>
       )}
@@ -165,7 +208,7 @@ export default function MemberCartScreen() {
                         {item.productName}
                       </Text>
                       <Text fontSize={13} color="$textSecondary">
-                        Đơn giá: {item.unitPrice.toLocaleString('vi-VN')}đ
+                        Đơn giá: {(item?.unitPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>
                       <XStack alignItems="center" gap="$3" marginTop="$1">
                         <Button
@@ -194,7 +237,7 @@ export default function MemberCartScreen() {
                         onPress={(e) => { e.stopPropagation(); handleUpdateQuantity(item.productId, 0); }}
                       />
                       <Text fontSize={16} fontWeight="900" color="#00A550">
-                        {item.totalPrice.toLocaleString('vi-VN')}đ
+                        {(item?.totalPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>
                     </YStack>
                   </XStack>
@@ -227,18 +270,25 @@ export default function MemberCartScreen() {
             <YStack>
               <Text fontSize={13} color="$textSecondary">Tổng cộng</Text>
               <Text fontSize={22} fontWeight="900" color="#00A550">
-                {currentSpending.toLocaleString('vi-VN')}đ
+                {(currentSpending ?? 0).toLocaleString('vi-VN')}đ
               </Text>
             </YStack>
             <Button
               size="$4"
               backgroundColor="#00A550"
               borderRadius={30}
-              disabled={navigating || isRobotBusy || !isHubConnected}
-              opacity={navigating || isRobotBusy || !isHubConnected ? 0.5 : 1}
+              disabled={navigating || isRobotBusy}
+              opacity={navigating || isRobotBusy ? 0.5 : 1}
               iconAfter={navigating ? <Spinner color="white" /> : <MapPin size={18} color="white" />}
               onPress={async () => {
                 if (!cart || cart.items.length === 0) return;
+                if (!isHubConnected) {
+                  Alert.alert(
+                    'Đang kết nối với robot',
+                    'Kênh trạng thái thời gian thực đang kết nối lại. Vui lòng chờ vài giây rồi thử lại.',
+                  );
+                  return;
+                }
                 Alert.alert(
                   'Robot dẫn theo giỏ hàng',
                   `RB001 sẽ lập một lộ trình qua các kệ chứa ${cart.items.length} loại sản phẩm. Bắt đầu ngay?`,
@@ -268,7 +318,9 @@ export default function MemberCartScreen() {
                 );
               }}
             >
-              <Text color="white" fontWeight="bold">Robot dẫn theo giỏ hàng</Text>
+              <Text color="white" fontWeight="bold">
+                {isHubConnected ? 'Robot dẫn theo giỏ hàng' : 'Đang kết nối robot...'}
+              </Text>
             </Button>
           </XStack>
         </View>

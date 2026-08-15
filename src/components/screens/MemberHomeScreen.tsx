@@ -340,7 +340,7 @@ export default function MemberHomeScreen() {
                   </YStack>
                 </XStack>
                 <XStack alignItems="center" gap="$2">
-                  <Text fontSize={16} fontWeight="900" color="#16a34a">{cart.totalPrice.toLocaleString('vi-VN')}đ</Text>
+                  <Text fontSize={16} fontWeight="900" color="#16a34a">{(cart?.totalPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                   <ArrowRight size={18} color="#16a34a" />
                 </XStack>
               </XStack>
@@ -351,17 +351,17 @@ export default function MemberHomeScreen() {
         <YStack gap="$4">
           {/* Personalized Products */}
           {personalizedProducts.slice(0, 2).map((p, index) => (
-            <Pressable key={`personal-${index}`} onPress={() => router.push(`/product/${p.productId}?isRecipe=false`)}>
+            <Pressable key={`personal-${p?.productId ?? index}`} onPress={() => router.push(`/product/${p?.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                  <Image src={p.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <Image src={p?.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
                   <YStack flex={1} gap="$2" justifyContent="space-between">
                     <YStack gap="$1">
                       <XStack alignItems="center" gap="$1">
                         <Sparkles size={12} color="#00A550" />
                         <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">PHÙ HỢP VỚI BẠN</Text>
                       </XStack>
-                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{p.productName}</Text>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{p?.productName || 'Sản phẩm gợi ý'}</Text>
                     </YStack>
                     <Button
                       size="$3"
@@ -375,10 +375,10 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push(`/product/${p.productId}?isRecipe=false`);
+                        router.push(`/product/${p?.productId}?isRecipe=false`);
                       }}
                     >
-                      {p.unitPrice.toLocaleString('vi-VN')}đ
+                      {(p?.unitPrice ?? 0).toLocaleString('vi-VN')}đ
                     </Button>
                   </YStack>
                 </XStack>
@@ -388,21 +388,21 @@ export default function MemberHomeScreen() {
 
           {/* Personalized Meals */}
           {personalizedMeals.slice(0, 2).map((meal, index) => (
-            <Pressable key={`meal-${index}`} onPress={() => router.push(`/product/${meal.recipeId}?isRecipe=true`)}>
+            <Pressable key={`meal-${meal?.recipeId ?? index}`} onPress={() => router.push(`/product/${meal?.recipeId}?isRecipe=true`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                  <Image src={meal.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <Image src={meal?.imageUrl || "https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400"} width={100} height={100} borderRadius={12} />
                   <YStack flex={1} gap="$2" justifyContent="space-between">
                     <YStack gap="$1">
                       <XStack alignItems="center" gap="$1">
                         <Utensils size={12} color="#f97316" />
                         <Text fontSize={10} fontWeight="bold" color="#f97316" textTransform="uppercase">MÓN NGON GỢI Ý</Text>
                       </XStack>
-                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{meal.recipeName}</Text>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{meal?.recipeName || 'Món ngon'}</Text>
                     </YStack>
                     <XStack gap="$2" alignItems="center">
                       <Clock size={12} color="#888" />
-                      <Text fontSize={12} color="#888">{meal.yieldPortions} khẩu phần</Text>
+                      <Text fontSize={12} color="#888">{meal?.yieldPortions ?? 2} khẩu phần</Text>
                     </XStack>
                     <Button
                       size="$3"
@@ -416,7 +416,7 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push(`/product/${meal.recipeId}?isRecipe=true`);
+                        router.push(`/product/${meal?.recipeId}?isRecipe=true`);
                       }}
                     >
                       Xem công thức
@@ -429,19 +429,19 @@ export default function MemberHomeScreen() {
 
           {/* Member Deals */}
           {deals.slice(0, 2).map((deal, index) => (
-            <Pressable key={`deal-${index}`} onPress={() => router.push(`/product/${deal.productId}?isRecipe=false`)}>
+            <Pressable key={`deal-${deal?.productId ?? index}`} onPress={() => router.push(`/product/${deal?.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                  <Image src={deal.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <Image src={deal?.imageUrl || "https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400"} width={100} height={100} borderRadius={12} />
                   <YStack flex={1} gap="$2" justifyContent="space-between">
                     <YStack gap="$1">
                       <XStack alignItems="center" gap="$1">
                         <TrendingDown size={12} color="#00A550" />
-                        <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">{deal.dealType || 'GIÁ TỐT'}</Text>
+                        <Text fontSize={10} fontWeight="bold" color="#00A550" textTransform="uppercase">{deal?.dealType || 'GIÁ TỐT'}</Text>
                       </XStack>
-                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{deal.productName}</Text>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{deal?.productName || 'Ưu đãi'}</Text>
                     </YStack>
-                    {deal.reason ? <Text fontSize={12} color="#d97706">{deal.reason}</Text> : null}
+                    {deal?.reason ? <Text fontSize={12} color="#d97706">{deal.reason}</Text> : null}
                     <Button
                       size="$3"
                       borderRadius={12}
@@ -454,10 +454,10 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push(`/product/${deal.productId}?isRecipe=false`);
+                        router.push(`/product/${deal?.productId}?isRecipe=false`);
                       }}
                     >
-                      Chỉ {deal.discountedPrice.toLocaleString()}đ
+                      Chỉ {(deal?.discountedPrice ?? 0).toLocaleString('vi-VN')}đ
                     </Button>
                   </YStack>
                 </XStack>
@@ -467,17 +467,17 @@ export default function MemberHomeScreen() {
 
           {/* Sponsored Recommendations */}
           {sponsoredRecs.slice(0, 2).map((rec, index) => (
-            <Pressable key={`rec-${index}`} onPress={() => router.push(`/product/${rec.productId}?isRecipe=false`)}>
+            <Pressable key={`rec-${rec?.productId ?? index}`} onPress={() => router.push(`/product/${rec?.productId}?isRecipe=false`)}>
               <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3">
                 <XStack gap="$3">
-                  <Image src={rec.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
+                  <Image src={rec?.imageUrl || "https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400"} width={100} height={100} borderRadius={12} />
                   <YStack flex={1} gap="$2" justifyContent="space-between">
                     <YStack gap="$1">
                       <XStack alignItems="center" gap="$1">
                         <Sparkles size={12} color="#d97706" />
-                        <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý TỪ {rec.brandName?.toUpperCase()}</Text>
+                        <Text fontSize={10} fontWeight="bold" color="#d97706">GỢI Ý TỪ {(rec?.brandName || 'ĐỐI TÁC').toUpperCase()}</Text>
                       </XStack>
-                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{rec.productName}</Text>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={2}>{rec?.productName || 'Sản phẩm gợi ý'}</Text>
                     </YStack>
                     <Button
                       size="$3"
@@ -491,10 +491,10 @@ export default function MemberHomeScreen() {
                       alignSelf="flex-start"
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push(`/product/${rec.productId}?isRecipe=false`);
+                        router.push(`/product/${rec?.productId}?isRecipe=false`);
                       }}
                     >
-                      {rec.promotionPrice ? `Chỉ ${rec.promotionPrice.toLocaleString()}đ` : `Giá ${rec.unitPrice.toLocaleString()}đ`}
+                      {rec?.promotionPrice ? `Chỉ ${(rec.promotionPrice ?? 0).toLocaleString('vi-VN')}đ` : `Giá ${(rec?.unitPrice ?? 0).toLocaleString('vi-VN')}đ`}
                     </Button>
                   </YStack>
                 </XStack>
@@ -508,28 +508,28 @@ export default function MemberHomeScreen() {
               <Text fontSize={16} fontWeight="bold" color="$textPrimary">Khuyến mãi Hệ thống</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <XStack gap="$4">
-                  {systemDeals.map((product) => (
-                    <Pressable key={product.productId} onPress={() => router.push(`/product/${product.productId}?isRecipe=false`)}>
+                  {systemDeals.map((product, index) => (
+                    <Pressable key={`sys-deal-${product?.productId ?? index}`} onPress={() => product?.productId && router.push(`/product/${product.productId}?isRecipe=false`)}>
                       <Card width={180} borderRadius={16} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={10} shadowOpacity={0.05} style={{ elevation: 2 }}>
                         <View position="relative" height={120} backgroundColor="#f5f5f5">
-                          <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
-                          {product.discountPercent ? (
+                          <Image src={product?.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
+                          {product?.discountPercent ? (
                             <View position="absolute" top={8} left={8} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={8}>
                               <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
                             </View>
                           ) : null}
                         </View>
                         <YStack padding="$3" gap="$2">
-                          <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
+                          <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product?.productName || 'Sản phẩm khuyến mãi'}</Text>
                           <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$1">
                             <YStack>
-                              {product.promotionPrice ? (
+                              {product?.promotionPrice ? (
                                 <>
-                                  <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
-                                  <Text fontSize={14} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
+                                  <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
+                                  <Text fontSize={14} fontWeight="900" color="#00A550">{(product.promotionPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                                 </>
                               ) : (
-                                <Text fontSize={14} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                                <Text fontSize={14} fontWeight="900" color="#00A550">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                               )}
                             </YStack>
                           </XStack>

@@ -323,17 +323,17 @@ export default function GuestHomeScreen() {
 
                     {/* Product Info */}
                     <YStack padding="$3" gap="$2">
-                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName}</Text>
+                      <Text fontSize={14} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product?.productName || 'Sản phẩm ưu đãi'}</Text>
 
                       <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$2">
                         <YStack>
-                          {product.promotionPrice ? (
+                          {product?.promotionPrice ? (
                             <>
-                              <Text fontSize={11} color="$textSecondary" textDecorationLine="line-through">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
-                              <Text fontSize={15} fontWeight="900" color="#00A550">{product.promotionPrice.toLocaleString('vi-VN')}đ</Text>
+                              <Text fontSize={11} color="$textSecondary" textDecorationLine="line-through">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
+                              <Text fontSize={15} fontWeight="900" color="#00A550">{(product.promotionPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                             </>
                           ) : (
-                            <Text fontSize={15} fontWeight="900" color="#00A550">{product.unitPrice.toLocaleString('vi-VN')}đ</Text>
+                            <Text fontSize={15} fontWeight="900" color="#00A550">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                           )}
                         </YStack>
 

@@ -103,8 +103,17 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
     if (handledArrivalRef.current === arrivalKey) return;
     handledArrivalRef.current = arrivalKey;
 
-    const zoneId = Number(field(payload, 'zoneId', 'ZoneId') ?? 0);
-    const objectName = String(field(payload, 'currentWaypoint', 'CurrentWaypoint') ?? `Node ${nodeId}`);
+    const payloadZoneId = Number(field(payload, 'zoneId', 'ZoneId') ?? 0);
+    const missionWaypoints = field<any[]>(activeMissionRef.current, 'waypoints', 'Waypoints') ?? [];
+    const missionWaypoint = missionWaypoints.find((item, index) =>
+      Number(field(item, 'nodeId', 'NodeId') ?? 0) === nodeId
+      || (nodeId <= 0 && index === waypointIndex));
+    const zoneId = payloadZoneId || Number(field(missionWaypoint, 'zoneId', 'ZoneId') ?? 0);
+    const shelfName = field<string>(missionWaypoint, 'shelfName', 'ShelfName');
+    const waypointName = field<string>(missionWaypoint, 'nodeName', 'NodeName')
+      ?? field<string>(payload, 'currentWaypoint', 'CurrentWaypoint');
+    // Điểm đến nghiệp vụ là kệ; "Waypoint" chỉ là tên kỹ thuật của tọa độ ROS.
+    const objectName = String(shelfName ?? waypointName ?? `Kệ tại node ${nodeId}`);
     const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0);
     const directPlaylist = field<any[]>(payload, 'playlist', 'Playlist') ?? [];
 

@@ -46,7 +46,12 @@ export async function loginFace(imageBase64: string): Promise<FaceLoginResult> {
   }
 
   const data = await response.json();
-  console.log(`[AuthService.loginFace] Phản hồi thành công:`, JSON.stringify(data, null, 2));
+  console.log('[AuthService.loginFace] Phản hồi thành công', {
+    success: data?.success,
+    userId: data?.token?.userId,
+    roles: data?.token?.roles,
+    memberId: data?.member?.memberId,
+  });
   return data;
 }
 

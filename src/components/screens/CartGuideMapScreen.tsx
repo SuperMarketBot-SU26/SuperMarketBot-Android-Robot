@@ -1,7 +1,7 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, MapPin, Navigation, OctagonX, Radio } from 'lucide-react-native';
+import { CheckCircle2, ChevronLeft, MapPin, Navigation, OctagonX, PackageCheck, Radio } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import CartGuideMap from '../guide/CartGuideMap';
 import { useRobotGuide } from '../../context/RobotGuideContext';
@@ -14,6 +14,7 @@ const STATUS_LABELS: Record<string, string> = {
   ARRIVED: 'Đã đến kệ — vui lòng lấy hàng',
   PAUSED: 'Nhiệm vụ đang tạm dừng',
   RESUMED: 'Đang tiếp tục',
+  WAYPOINT_COMPLETED: 'Đã qua điểm — đang đi tiếp',
   COMPLETED: 'Đã đi hết các kệ trong giỏ',
   FAILED: 'Không thể hoàn thành',
   CANCELLED: 'Đã dừng nhiệm vụ',
@@ -26,9 +27,18 @@ export default function CartGuideMapScreen() {
   const { width } = useWindowDimensions();
   const {
     status, missionId, destinations, destination, currentWaypointIndex,
-    robotPose, error, isBusy, isHubConnected, cancelGuide,
+    robotPose, error, isBusy, isHubConnected,
+    awaitingPickup, confirmPickup, cancelGuide,
   } = useRobotGuide();
   const isWide = width >= 860;
+
+  const handleConfirmPickup = async () => {
+    try {
+      await confirmPickup();
+    } catch (err: any) {
+      Alert.alert('Chưa thể đi tiếp', err?.message || 'Không gửi được xác nhận lấy hàng.');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -51,7 +61,7 @@ export default function CartGuideMapScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
+      <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]} style={{ marginBottom: awaitingPickup ? 80 : 0 }}>
         <View style={[styles.mapColumn, isWide && styles.mapColumnWide]}>
           <CartGuideMap
             destinations={destinations}
@@ -70,14 +80,20 @@ export default function CartGuideMapScreen() {
         </View>
 
         <View style={[styles.detailColumn, isWide && styles.detailColumnWide]}>
-          <View style={[styles.statusCard, error ? styles.errorCard : undefined]}>
+          <View style={[styles.statusCard, error ? styles.errorCard : awaitingPickup ? styles.arrivedCard : undefined]}>
             <Text style={styles.statusEyebrow}>TRẠNG THÁI NHIỆM VỤ</Text>
             <Text style={styles.statusTitle}>{error || STATUS_LABELS[status] || status}</Text>
             <Text style={styles.missionText}>Mission: {missionId ?? (status === 'COMPLETED' ? 'đã hoàn tất' : 'chưa có')}</Text>
             {destination && (
               <Text style={styles.currentTarget}>
-                Đang tới: {destination.shelfName || destination.nodeName}
+                {awaitingPickup ? 'Đã đến:' : 'Đang tới:'} {destination.shelfName || destination.nodeName}
               </Text>
+            )}
+            {awaitingPickup && (
+              <TouchableOpacity style={styles.pickupButtonInCard} onPress={handleConfirmPickup}>
+                <CheckCircle2 size={18} color="#fff" />
+                <Text style={styles.pickupButtonText}>Đã lấy sản phẩm — Đi tiếp ➜</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -85,14 +101,15 @@ export default function CartGuideMapScreen() {
           {destinations.length === 0 ? (
             <View style={styles.emptyCard}>
               <MapPin size={24} color="#94a3b8" />
-              <Text style={styles.emptyText}>Hãy mở giỏ hàng và bấm “Robot dẫn theo giỏ hàng”.</Text>
+              <Text style={styles.emptyText}>Hãy mở giỏ hàng và bấm "Robot dẫn theo giỏ hàng".</Text>
             </View>
           ) : destinations.map((item, index) => {
             const active = index === currentWaypointIndex && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(status);
             const completed = index < currentWaypointIndex || status === 'COMPLETED';
+            const isArrivedHere = active && awaitingPickup;
             return (
-              <View key={`${item.nodeId}-${index}`} style={[styles.stopCard, active && styles.activeStopCard]}>
-                <View style={[styles.orderBadge, completed && styles.doneBadge, active && styles.activeBadge]}>
+              <View key={`${item.nodeId}-${index}`} style={[styles.stopCard, active && styles.activeStopCard, isArrivedHere && styles.arrivedStopCard]}>
+                <View style={[styles.orderBadge, completed && styles.doneBadge, active && styles.activeBadge, isArrivedHere && styles.arrivedBadge]}>
                   <Text style={styles.orderText}>{completed ? '✓' : index + 1}</Text>
                 </View>
                 <View style={styles.stopInfo}>
@@ -104,6 +121,12 @@ export default function CartGuideMapScreen() {
                     <Text style={styles.products}>{item.productNames.join(', ')}</Text>
                   )}
                   <Text style={styles.coordinates}>Node {item.nodeId} · X {item.xCoord.toFixed(2)} · Y {item.yCoord.toFixed(2)}</Text>
+                  {isArrivedHere && (
+                    <View style={styles.arrivedHint}>
+                      <PackageCheck size={14} color="#15803d" />
+                      <Text style={styles.arrivedHintText}>Robot đang chờ bạn lấy sản phẩm tại kệ này</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             );
@@ -117,6 +140,16 @@ export default function CartGuideMapScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Fixed bottom CTA khi robot đã đến kệ và chờ xác nhận lấy hàng */}
+      {awaitingPickup && (
+        <View style={styles.pickupBottomBar}>
+          <TouchableOpacity style={styles.pickupBottomButton} onPress={handleConfirmPickup} activeOpacity={0.8}>
+            <CheckCircle2 size={22} color="#fff" />
+            <Text style={styles.pickupBottomText}>Tôi đã lấy sản phẩm — Đi điểm tiếp theo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -140,6 +173,7 @@ const styles = StyleSheet.create({
   mapNote: { color: '#64748b', fontSize: 11, marginTop: 8, lineHeight: 16 },
   statusCard: { padding: 16, borderRadius: 18, backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#86efac' },
   errorCard: { backgroundColor: '#fff1f2', borderColor: '#fda4af' },
+  arrivedCard: { backgroundColor: '#f0fdf4', borderColor: '#22c55e', borderWidth: 2 },
   statusEyebrow: { color: '#64748b', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   statusTitle: { color: '#0f172a', fontSize: 18, fontWeight: '900', marginTop: 5 },
   missionText: { color: '#64748b', fontSize: 11, marginTop: 5 },
@@ -149,8 +183,10 @@ const styles = StyleSheet.create({
   emptyText: { color: '#64748b', textAlign: 'center', fontSize: 13 },
   stopCard: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 15, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
   activeStopCard: { borderColor: '#fb923c', backgroundColor: '#fff7ed' },
+  arrivedStopCard: { borderColor: '#22c55e', backgroundColor: '#f0fdf4', borderWidth: 2 },
   orderBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563eb' },
   activeBadge: { backgroundColor: '#f97316' },
+  arrivedBadge: { backgroundColor: '#22c55e' },
   doneBadge: { backgroundColor: '#16a34a' },
   orderText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   stopInfo: { flex: 1 },
@@ -158,6 +194,13 @@ const styles = StyleSheet.create({
   stopMeta: { color: '#64748b', fontSize: 12, marginTop: 2 },
   products: { color: '#166534', fontSize: 12, fontWeight: '700', marginTop: 4 },
   coordinates: { color: '#94a3b8', fontSize: 10, marginTop: 4 },
+  arrivedHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#dcfce7', borderRadius: 8 },
+  arrivedHintText: { color: '#15803d', fontSize: 11, fontWeight: '700', flex: 1 },
+  pickupButtonInCard: { marginTop: 12, minHeight: 44, borderRadius: 12, backgroundColor: '#16a34a', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  pickupButtonText: { color: '#fff', fontWeight: '900', fontSize: 14 },
   cancelButton: { marginTop: 8, minHeight: 48, borderRadius: 15, backgroundColor: '#dc2626', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   cancelText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  pickupBottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 12 },
+  pickupBottomButton: { minHeight: 54, borderRadius: 16, backgroundColor: '#16a34a', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  pickupBottomText: { color: '#fff', fontWeight: '900', fontSize: 16 },
 });

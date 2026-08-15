@@ -21,7 +21,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS, FadeIn, FadeInDown
 } from 'react-native-reanimated';
 import {
-  MapPin, Zap, Tag, Clock, Volume2, ShoppingBag, ArrowRight, Sparkles, Store
+  MapPin, Zap, Tag, Clock, Volume2, ShoppingBag, ArrowRight, Sparkles
 } from 'lucide-react-native';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { useGeofencing } from '../../context/GeofencingContext';
@@ -30,20 +30,41 @@ import { useRobotVoice } from '../../hooks/useRobotVoice';
 const { width: SW, height: SH } = Dimensions.get('window');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
+function mediaForProduct(ad: AdPlaylistItemDto, type: 'VOICE_TEXT' | 'IMAGE') {
+  const resources = ad.mediaContents?.filter(item => item.resourceType === type) ?? [];
+  const productName = ad.productName.trim().toLocaleLowerCase('vi-VN');
+  return resources.find(item => item.contentText?.toLocaleLowerCase('vi-VN').includes(productName))
+    ?? resources[0];
+}
+
+function buildSpeech(ad: AdPlaylistItemDto, index: number, total: number, location?: string) {
+  const voiceText = mediaForProduct(ad, 'VOICE_TEXT')?.contentText;
+  const introductions = ['Ưu đãi nổi bật', 'Gợi ý tiếp theo', 'Đừng bỏ lỡ sản phẩm cuối'];
+  const intro = introductions[index % introductions.length];
+  const position = total > 1 ? `, quảng cáo ${index + 1} trên ${total}` : '';
+  const zone = location ? ` tại ${location}` : '';
+  const price = ad.productPrice > 0
+    ? ` Giá hôm nay chỉ ${ad.productPrice.toLocaleString('vi-VN')} đồng.`
+    : '';
+  const core = voiceText || `${ad.productName} đang có ưu đãi hấp dẫn${zone}.`;
+  return `${intro}${position}. ${core}${price} Chạm màn hình để xem chi tiết.`;
+}
+
 export default function ZoneAdOverlay() {
   const { isInZone, currentZone, currentPlaylist, clearZone } = useGeofencing();
-  const { speak } = useRobotVoice();
+  const { speak, stop, isSpeaking } = useRobotVoice();
   const speakRef = useRef(speak);
+  const stopRef = useRef(stop);
 
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState(12);
   const [totalDuration, setTotalDuration] = useState(12);
-  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     speakRef.current = speak;
-  }, [speak]);
+    stopRef.current = stop;
+  }, [speak, stop]);
 
   // Animations
   const translateY = useSharedValue(SH);
@@ -82,6 +103,7 @@ export default function ZoneAdOverlay() {
   }, [currentZone]);
 
   const handleClose = useCallback(() => {
+    void stopRef.current();
     translateY.value = withTiming(SH, { duration: 300 }, () => {
       runOnJS(setVisible)(false);
       runOnJS(clearZone)();
@@ -118,6 +140,7 @@ export default function ZoneAdOverlay() {
       translateY.value = 0;
       overlayOpacity.value = 1;
     } else if (!isInZone) {
+      void stopRef.current();
       setVisible(false);
     }
   }, [isInZone, currentPlaylist]);
@@ -132,17 +155,14 @@ export default function ZoneAdOverlay() {
 
     const currentKey = `${currentAd.sponsoredId}-${currentAdIndex}`;
 
-    // Phân bổ đúng tổng dwell time của waypoint, có tính trọng số duration từ BE.
-    const weights = currentPlaylist.map((item) => Math.max(1, item.displayDurationSeconds || 1));
-    const totalWeight = weights.reduce((sum, value) => sum + value, 0);
-    const requestedTotal = weights.reduce((sum, value) => sum + value, 0);
-    const dwellTime = Math.max(1, currentZone?.dwellTimeSeconds || requestedTotal || 30);
-    const allocatedBefore = weights
-      .slice(0, currentAdIndex)
-      .reduce((sum, weight) => sum + Math.max(1, Math.floor((dwellTime * weight) / totalWeight)), 0);
-    const duration = currentAdIndex === currentPlaylist.length - 1
-      ? Math.max(1, dwellTime - allocatedBefore)
-      : Math.max(1, Math.floor((dwellTime * weights[currentAdIndex]) / totalWeight));
+    // Dwell là tổng ngân sách của waypoint và được chia đều cho mọi quảng cáo.
+    // Một số ROS bridge cũ không echo dwell trong ARRIVED. Khi đó phải dùng
+    // mặc định 30 giây của mission, không cộng duration gốc trong DB (3 x 30 = 90).
+    const eventDwell = Number(currentZone?.dwellTimeSeconds ?? 0);
+    const dwellTime = eventDwell > 0 ? eventDwell : 30;
+    const baseDuration = Math.floor(dwellTime / currentPlaylist.length);
+    const remainder = dwellTime % currentPlaylist.length;
+    const duration = Math.max(1, baseDuration + (currentAdIndex < remainder ? 1 : 0));
 
     setTotalDuration(duration);
     setTimeLeft(duration);
@@ -153,15 +173,8 @@ export default function ZoneAdOverlay() {
       logImpression(currentAd);
 
       // Phát âm thanh TTS tiếng Việt
-      const voiceResource = currentAd.mediaContents?.find(m => m.resourceType === 'VOICE_TEXT');
-      const imageResource = currentAd.mediaContents?.find(m => m.resourceType === 'IMAGE');
-      const speechText = voiceResource?.contentText || imageResource?.contentText || currentAd.productName;
-      const zoneLabel = currentZone?.objectName ? `Tại ${currentZone.objectName}: ` : '';
-      const priceText = currentAd.productPrice > 0 ? `, giá khuyến mãi ${currentAd.productPrice.toLocaleString('vi-VN')} đồng` : '';
-
-      setIsSpeaking(true);
-      void speakRef.current(`${zoneLabel}${speechText}${priceText}.`);
-      setTimeout(() => setIsSpeaking(false), 5000);
+      void speakRef.current(buildSpeech(
+        currentAd, currentAdIndex, currentPlaylist.length, currentZone?.objectName));
     }
 
     // Đếm ngược từng giây và tự động nhảy sản phẩm
@@ -189,7 +202,7 @@ export default function ZoneAdOverlay() {
 
   if (!visible || !currentAd) return null;
 
-  const mediaBanner = currentAd.mediaContents?.find(m => m.resourceType === 'IMAGE');
+  const mediaBanner = mediaForProduct(currentAd, 'IMAGE');
   const bannerImageUri = mediaBanner?.resourceUrl || currentAd.imageUrl;
   const sloganText = mediaBanner?.contentText || currentAd.campaignName;
   const progressPercent = totalDuration > 0 ? ((totalDuration - timeLeft) / totalDuration) * 100 : 0;
@@ -220,11 +233,20 @@ export default function ZoneAdOverlay() {
           <View style={styles.locationPill}>
             <MapPin size={16} color="#00A550" />
             <Text style={styles.locationText} numberOfLines={1}>
-              {currentZone?.objectName ? `Điểm Dừng • ${currentZone.objectName}` : 'Điểm Dừng Quảng Cáo Siêu Thị'}
+              {currentZone?.objectName ? `Điểm dừng tại kệ • ${currentZone.objectName}` : 'Điểm dừng tại kệ quảng cáo'}
             </Text>
           </View>
 
           <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.voiceReplayButton}
+              onPress={() => void speakRef.current(buildSpeech(
+                currentAd, currentAdIndex, currentPlaylist.length, currentZone?.objectName))}
+              accessibilityLabel="Nghe lại quảng cáo"
+            >
+              <Volume2 size={15} color="#0369A1" />
+              <Text style={styles.voiceReplayText}>Nghe lại</Text>
+            </TouchableOpacity>
             <View style={styles.timerPill}>
               <Clock size={13} color="#DC2626" />
               <Text style={styles.timerText}>{timeLeft}s {currentPlaylist.length > 1 ? `(${currentAdIndex + 1}/${currentPlaylist.length})` : ''}</Text>
@@ -429,6 +451,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  voiceReplayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  voiceReplayText: { color: '#0369A1', fontSize: 11, fontWeight: '900' },
   timerPill: {
     flexDirection: 'row',
     alignItems: 'center',

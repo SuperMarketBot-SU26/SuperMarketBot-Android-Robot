@@ -217,7 +217,11 @@ class RobotControlServiceClass {
       return { ok, status: res.status, data };
     } catch (e) {
       console.warn('[RobotControl.dispatchAutonomous] Lỗi:', e);
-      return { ok: false, status: 0, data: null };
+      return {
+        ok: false,
+        status: 0,
+        data: { detail: 'Không kết nối được Backend để gửi nhiệm vụ.' },
+      };
     }
   }
 }

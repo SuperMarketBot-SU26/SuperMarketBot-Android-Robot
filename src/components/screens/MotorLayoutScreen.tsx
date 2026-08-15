@@ -11,7 +11,7 @@
  * Nhả ra → dừng.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert,
 } from 'react-native';
@@ -33,6 +33,11 @@ const SLOT_OPTIONS = [0, 1, 2, 3];
 export default function MotorLayoutScreen() {
   const router = useRouter();
   const { isConnected, motorLayout, setMotorLayout } = useRobotControl();
+
+  useEffect(() => {
+    RobotControlService.connect();
+    return () => RobotControlService.disconnect();
+  }, []);
 
   // Local copy for editing before saving
   const [localLayout, setLocalLayout] = useState({
