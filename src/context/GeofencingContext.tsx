@@ -9,6 +9,7 @@ export interface ZoneEnteredPayload {
   objectName: string;
   dwellTimeSeconds?: number;
   missionId: string;
+  isRouteAd?: boolean;
 }
 
 interface GeofencingContextType {
@@ -75,79 +76,126 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     return subscribeMissionAssigned((mission) => {
       activeMissionRef.current = mission;
+      const flow = String(field(mission, 'flowType', 'FlowType') ?? '').toLowerCase();
+      const isRoute = Boolean(field(mission, 'robotRouteId', 'RobotRouteId'));
+      if (flow === 'ad' && isRoute) {
+        const waypoints = field<any[]>(mission, 'waypoints', 'Waypoints') ?? [];
+        const firstWp = waypoints[0];
+        const directPlaylist = field<any[]>(firstWp, 'playlist', 'Playlist') ?? [];
+        const playlist = normalizePlaylist(directPlaylist);
+        if (playlist.length > 0) {
+          setCurrentZone({
+            robotCode: String(field(mission, 'robotCode', 'RobotCode') ?? ROBOT_CODE),
+            zoneId: 0,
+            semanticObjectId: undefined,
+            objectName: 'Lộ trình quảng cáo ưu tiên',
+            dwellTimeSeconds: 0,
+            missionId: String(field(mission, 'missionId', 'MissionId') ?? ''),
+            isRouteAd: true,
+          });
+          setCurrentPlaylist(playlist);
+        }
+      }
     });
   }, [subscribeMissionAssigned]);
 
   useEffect(() => {
     return subscribeNavigationStatus((payload) => {
-    const incomingRobot = String(field(payload, 'robotCode', 'RobotCode') ?? '');
-    const incomingMissionId = String(field(payload, 'missionId', 'MissionId') ?? '');
-    const activeMissionId = String(field(activeMissionRef.current, 'missionId', 'MissionId') ?? '');
-    const activeFlow = String(field(activeMissionRef.current, 'flowType', 'FlowType') ?? '').toLowerCase();
-    const status = String(field(payload, 'navStatus', 'NavStatus') ?? '').toUpperCase();
-    const role = String(field(payload, 'role', 'Role') ?? '').toLowerCase();
+      const incomingRobot = String(field(payload, 'robotCode', 'RobotCode') ?? '');
+      const incomingMissionId = String(field(payload, 'missionId', 'MissionId') ?? '');
+      const activeMissionId = String(field(activeMissionRef.current, 'missionId', 'MissionId') ?? '');
+      const activeFlow = String(field(activeMissionRef.current, 'flowType', 'FlowType') ?? '').toLowerCase();
+      const status = String(field(payload, 'navStatus', 'NavStatus') ?? '').toUpperCase();
+      const role = String(field(payload, 'role', 'Role') ?? '').toLowerCase();
+      const isRouteAd = Boolean(field(activeMissionRef.current, 'robotRouteId', 'RobotRouteId'));
 
-    if (incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase()
-      || !incomingMissionId || incomingMissionId !== activeMissionId
-      || activeFlow !== 'ad') return;
+      if (incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase()
+        || !incomingMissionId || incomingMissionId !== activeMissionId
+        || activeFlow !== 'ad') return;
 
-    if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
-      clearZone();
-      return;
-    }
-    if (status !== 'ARRIVED' || role !== 'ad') return;
-
-    const waypointIndex = Number(field(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
-    const nodeId = Number(field(payload, 'nodeId', 'NodeId') ?? 0);
-    const arrivalKey = `${incomingMissionId}|${waypointIndex}|${nodeId}`;
-    if (handledArrivalRef.current === arrivalKey) return;
-    handledArrivalRef.current = arrivalKey;
-
-    const payloadZoneId = Number(field(payload, 'zoneId', 'ZoneId') ?? 0);
-    const missionWaypoints = field<any[]>(activeMissionRef.current, 'waypoints', 'Waypoints') ?? [];
-    const missionWaypoint = missionWaypoints.find((item, index) =>
-      Number(field(item, 'nodeId', 'NodeId') ?? 0) === nodeId
-      || (nodeId <= 0 && index === waypointIndex));
-    const zoneId = payloadZoneId || Number(field(missionWaypoint, 'zoneId', 'ZoneId') ?? 0);
-    const shelfName = field<string>(missionWaypoint, 'shelfName', 'ShelfName');
-    const waypointName = field<string>(missionWaypoint, 'nodeName', 'NodeName')
-      ?? field<string>(payload, 'currentWaypoint', 'CurrentWaypoint');
-    // Điểm đến nghiệp vụ là kệ; "Waypoint" chỉ là tên kỹ thuật của tọa độ ROS.
-    const objectName = String(shelfName ?? waypointName ?? `Kệ tại node ${nodeId}`);
-    const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0);
-    const directPlaylist = field<any[]>(payload, 'playlist', 'Playlist') ?? [];
-
-    setCurrentZone({
-      robotCode: incomingRobot,
-      zoneId,
-      semanticObjectId: nodeId || undefined,
-      objectName,
-      dwellTimeSeconds,
-      missionId: incomingMissionId,
-    });
-
-    const loadPlaylist = async () => {
-      setLoadingPlaylist(true);
-      try {
-        let playlist = normalizePlaylist(directPlaylist);
-        const directPlaylistHasIdentity = playlist.length > 0
-          && playlist.every(item => item.adCampaignId > 0 && item.sponsoredId > 0 && item.productId > 0);
-        if (!directPlaylistHasIdentity && nodeId > 0)
-          playlist = normalizePlaylist((await AdService.getPlaylistForNode(ROBOT_ID, nodeId)).playlist ?? []);
-        if (playlist.length === 0 && zoneId > 0)
-          playlist = normalizePlaylist((await AdService.getZonePlaylist(ROBOT_ID, zoneId)).playlist ?? []);
-        if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist(playlist);
-        if (playlist.length === 0) console.warn(`[Geofencing] Node ${nodeId} không có playlist thật; không phát quảng cáo.`);
-      } catch (error) {
-        console.warn('[Geofencing] Không tải được playlist thật:', error);
-        if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist([]);
-      } finally {
-        if (handledArrivalRef.current === arrivalKey) setLoadingPlaylist(false);
+      if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
+        clearZone();
+        return;
       }
-    };
-    void loadPlaylist();
+
+      if (!isRouteAd && ['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(status)) {
+        clearZone();
+        return;
+      }
+
+      if (isRouteAd && ['MOVING', 'NAVIGATING'].includes(status) && !currentZone) {
+        const waypoints = field<any[]>(activeMissionRef.current, 'waypoints', 'Waypoints') ?? [];
+        const firstWp = waypoints[0];
+        const directPlaylist = field<any[]>(firstWp, 'playlist', 'Playlist') ?? field<any[]>(payload, 'playlist', 'Playlist') ?? [];
+        const playlist = normalizePlaylist(directPlaylist);
+        if (playlist.length > 0) {
+          setCurrentZone({
+            robotCode: incomingRobot,
+            zoneId: 0,
+            semanticObjectId: undefined,
+            objectName: 'Lộ trình quảng cáo ưu tiên',
+            dwellTimeSeconds: 0,
+            missionId: incomingMissionId,
+            isRouteAd: true,
+          });
+          setCurrentPlaylist(playlist);
+        }
+      }
+
+      if (status !== 'ARRIVED' || role !== 'ad') return;
+
+      const waypointIndex = Number(field(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
+      const nodeId = Number(field(payload, 'nodeId', 'NodeId') ?? 0);
+      const arrivalKey = `${incomingMissionId}|${waypointIndex}|${nodeId}`;
+      if (handledArrivalRef.current === arrivalKey) return;
+      handledArrivalRef.current = arrivalKey;
+
+      const payloadZoneId = Number(field(payload, 'zoneId', 'ZoneId') ?? 0);
+      const missionWaypoints = field<any[]>(activeMissionRef.current, 'waypoints', 'Waypoints') ?? [];
+      const missionWaypoint = missionWaypoints.find((item, index) =>
+        Number(field(item, 'nodeId', 'NodeId') ?? 0) === nodeId
+        || (nodeId <= 0 && index === waypointIndex));
+      const zoneId = payloadZoneId || Number(field(missionWaypoint, 'zoneId', 'ZoneId') ?? 0);
+      const shelfName = field<string>(missionWaypoint, 'shelfName', 'ShelfName');
+      const waypointName = field<string>(missionWaypoint, 'nodeName', 'NodeName')
+        ?? field<string>(payload, 'currentWaypoint', 'CurrentWaypoint');
+      // Điểm đến nghiệp vụ là kệ; "Waypoint" chỉ là tên kỹ thuật của tọa độ ROS.
+      const objectName = String(shelfName ?? waypointName ?? `Kệ tại node ${nodeId}`);
+      const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0);
+      const directPlaylist = field<any[]>(payload, 'playlist', 'Playlist') ?? [];
+
+      setCurrentZone({
+        robotCode: incomingRobot,
+        zoneId,
+        semanticObjectId: nodeId || undefined,
+        objectName,
+        dwellTimeSeconds,
+        missionId: incomingMissionId,
+        isRouteAd,
+      });
+
+      const loadPlaylist = async () => {
+        setLoadingPlaylist(true);
+        try {
+          let playlist = normalizePlaylist(directPlaylist);
+          const directPlaylistHasIdentity = playlist.length > 0
+            && playlist.every(item => item.adCampaignId > 0 && item.sponsoredId > 0 && item.productId > 0);
+          if (!directPlaylistHasIdentity && nodeId > 0)
+            playlist = normalizePlaylist((await AdService.getPlaylistForNode(ROBOT_ID, nodeId)).playlist ?? []);
+          if (playlist.length === 0 && zoneId > 0)
+            playlist = normalizePlaylist((await AdService.getZonePlaylist(ROBOT_ID, zoneId)).playlist ?? []);
+          if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist(playlist);
+          if (playlist.length === 0) console.warn(`[Geofencing] Node ${nodeId} không có playlist thật; không phát quảng cáo.`);
+        } catch (error) {
+          console.warn('[Geofencing] Không tải được playlist thật:', error);
+          if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist([]);
+        } finally {
+          if (handledArrivalRef.current === arrivalKey) setLoadingPlaylist(false);
+        }
+      };
+      void loadPlaylist();
     });
-  }, [clearZone, subscribeNavigationStatus]);
+  }, [clearZone, currentZone, subscribeNavigationStatus]);
 
   return (
     <GeofencingContext.Provider value={{

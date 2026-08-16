@@ -385,20 +385,32 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
 
     try {
       if (isLastWaypoint) {
-        // Waypoint cuối: kết thúc mission, không cần robot đi tiếp.
-        console.log(`[RobotGuide] Last waypoint confirmed — completing mission, sending CANCEL to stop robot.`);
+        // Waypoint cuối: kết thúc mission giỏ hàng và điều hướng quay về Waypoint 7 (Điểm bắt đầu)
+        console.log(`[RobotGuide] Last waypoint confirmed — completing mission, navigating back to Start Point (Node 10023).`);
         await fetch(
-          `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Guide mission completed - all products picked up')}`,
+          `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Guide mission completed - returning to start base')}`,
           { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } },
         ).catch(() => undefined);
+
         missionRef.current = null;
         acknowledgedMissionRef.current = null;
         setMissionId(null);
         setStatus('COMPLETED');
         setError(null);
-        Speech.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Chúc quý khách mua sắm vui vẻ!', {
+        Speech.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Robot đang quay về vị trí chờ. Chúc quý khách mua sắm vui vẻ!', {
           language: 'vi-VN', rate: 0.9,
         });
+
+        try {
+          await RobotControlService.dispatchAutonomous({
+            robotCode: ROBOT_CODE,
+            flowType: 'guide',
+            nodeIds: [10023],
+            floorId: 1,
+          });
+        } catch (err) {
+          console.warn('[RobotGuide] Return to base dispatch warning:', err);
+        }
       } else {
         // Waypoint trung gian: cho robot đi tiếp đến kệ tiếp theo.
         console.log(`[RobotGuide] Intermediate waypoint confirmed — sending RESUME to continue to next shelf.`);

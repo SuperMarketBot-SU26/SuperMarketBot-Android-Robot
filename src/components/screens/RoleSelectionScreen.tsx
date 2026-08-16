@@ -291,7 +291,7 @@ export default function RoleSelectionScreen() {
                     width="100%"
                     pressStyle={{ scale: 0.96, opacity: 0.9 }}
                     iconAfter={<ArrowRight size={18} color="#00A550" strokeWidth={3} />}
-                    onPress={() => router.push('/login' as any)}
+                    onPress={() => router.push('/face-scan' as any)}
                     zIndex={2}
                     shadowColor="rgba(0,0,0,0.1)"
                     shadowOffset={{ width: 0, height: 4 }}
@@ -299,7 +299,7 @@ export default function RoleSelectionScreen() {
                     shadowRadius={10}
                   >
                     <Text color="#00A550" fontWeight="900" fontSize={14} letterSpacing={0.5}>
-                      ĐĂNG NHẬP / ĐĂNG KÝ
+                      QUÉT FACE ID ĐĂNG NHẬP
                     </Text>
                   </Button>
                 </YStack>

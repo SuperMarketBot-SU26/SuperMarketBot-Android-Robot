@@ -1,24 +1,39 @@
 import React from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CheckCircle2, ChevronLeft, MapPin, Navigation, OctagonX, PackageCheck, Radio } from 'lucide-react-native';
+import {
+  ArrowRight,
+  Bot,
+  CheckCircle2,
+  ChevronLeft,
+  CircleDot,
+  CornerDownRight,
+  Flame,
+  Home,
+  MapPin,
+  Navigation,
+  OctagonX,
+  Package,
+  PackageCheck,
+  Radio,
+  Sparkles,
+} from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import CartGuideMap from '../guide/CartGuideMap';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 
 const STATUS_LABELS: Record<string, string> = {
-  IDLE: 'Đang chờ',
-  DISPATCHING: 'Đang gửi nhiệm vụ',
-  NAVIGATING: 'Đang tính đường',
-  MOVING: 'Robot đang di chuyển',
-  ARRIVED: 'Đã đến kệ — vui lòng lấy hàng',
-  PAUSED: 'Nhiệm vụ đang tạm dừng',
-  RESUMED: 'Đang tiếp tục',
-  WAYPOINT_COMPLETED: 'Đã qua điểm — đang đi tiếp',
-  COMPLETED: 'Đã đi hết các kệ trong giỏ',
-  FAILED: 'Không thể hoàn thành',
-  CANCELLED: 'Đã dừng nhiệm vụ',
-  ESTOP: 'Robot đã dừng khẩn cấp',
+  IDLE: 'Đang ở trạm chờ',
+  DISPATCHING: 'Đang khởi động lộ trình...',
+  NAVIGATING: 'Đang tính toán tuyến đường tối ưu...',
+  MOVING: 'Robot đang di chuyển dẫn đường...',
+  ARRIVED: 'Đã đến kệ hàng — Vui lòng lấy sản phẩm',
+  PAUSED: 'Robot đang tạm dừng chờ bạn',
+  RESUMED: 'Đang tiếp tục di chuyển...',
+  WAYPOINT_COMPLETED: 'Đã lấy xong — Đang đến kệ tiếp theo',
+  COMPLETED: 'Đã hoàn thành toàn bộ giỏ hàng 🎉',
+  FAILED: 'Không thể hoàn thành lộ trình',
+  CANCELLED: 'Đã dừng dẫn đường',
+  ESTOP: 'Robot dừng khẩn cấp',
   TIMEOUT: 'Robot không phản hồi',
 };
 
@@ -26,11 +41,22 @@ export default function CartGuideMapScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const {
-    status, missionId, destinations, destination, currentWaypointIndex,
-    robotPose, error, isBusy, isHubConnected,
-    awaitingPickup, confirmPickup, cancelGuide,
+    status,
+    missionId,
+    destinations,
+    destination,
+    currentWaypointIndex,
+    error,
+    isBusy,
+    isHubConnected,
+    awaitingPickup,
+    confirmPickup,
+    cancelGuide,
   } = useRobotGuide();
+
   const isWide = width >= 860;
+  const totalStops = destinations.length;
+  const isFinalStop = totalStops > 0 && currentWaypointIndex >= totalStops - 1;
 
   const handleConfirmPickup = async () => {
     try {
@@ -40,120 +66,324 @@ export default function CartGuideMapScreen() {
     }
   };
 
+  const handleCancelGuide = () => {
+    Alert.alert(
+      'Dừng dẫn đường?',
+      'Bạn có chắc chắn muốn hủy phiên dẫn đường mua sắm hiện tại không?',
+      [
+        { text: 'Tiếp tục đi', style: 'cancel' },
+        {
+          text: 'Dừng dẫn đường',
+          style: 'destructive',
+          onPress: () => cancelGuide().catch(() => undefined),
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ChevronLeft size={25} color="#0f172a" />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
+          <ChevronLeft size={24} color="#0f172a" />
         </TouchableOpacity>
+
         <View style={styles.headerTitleWrap}>
-          <Navigation size={22} color="#16a34a" />
+          <View style={styles.iconCircle}>
+            <Bot size={22} color="#16a34a" />
+          </View>
           <View>
-            <Text style={styles.headerTitle}>Hãy đi theo tôi</Text>
-            <Text style={styles.headerSub}>Lộ trình lấy sản phẩm trong giỏ hàng</Text>
+            <Text style={styles.headerTitle}>Robot Dẫn Đường Mua Sắm</Text>
+            <Text style={styles.headerSub}>
+              {totalStops > 0
+                ? `Lộ trình ${totalStops} kệ hàng · Chặng ${Math.min(currentWaypointIndex + 1, totalStops)}/${totalStops}`
+                : 'Lộ trình lấy sản phẩm trong giỏ hàng'}
+            </Text>
           </View>
         </View>
+
         <View style={[styles.connection, { backgroundColor: isHubConnected ? '#dcfce7' : '#fee2e2' }]}>
           <Radio size={14} color={isHubConnected ? '#15803d' : '#dc2626'} />
-          <Text style={{ color: isHubConnected ? '#15803d' : '#dc2626', fontWeight: '800', fontSize: 12 }}>
-            {isHubConnected ? 'RB001 online' : 'Mất kết nối'}
+          <Text style={[styles.connectionText, { color: isHubConnected ? '#15803d' : '#dc2626' }]}>
+            {isHubConnected ? 'RB001 Sẵn sàng' : 'Mất kết nối'}
           </Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]} style={{ marginBottom: awaitingPickup ? 80 : 0 }}>
-        <View style={[styles.mapColumn, isWide && styles.mapColumnWide]}>
-          <CartGuideMap
-            destinations={destinations}
-            currentWaypointIndex={currentWaypointIndex}
-            robotPose={robotPose}
-          />
-          <View style={styles.legendRow}>
-            <Text style={styles.legend}>🤖 Robot thật</Text>
-            <Text style={styles.legend}>🔵 Điểm cần ghé</Text>
-            <Text style={styles.legend}>🟠 Điểm hiện tại</Text>
-            <Text style={styles.legend}>🟢 Đã ghé</Text>
+      <ScrollView
+        contentContainerStyle={[styles.content, isWide && styles.contentWide]}
+        style={{ marginBottom: awaitingPickup ? 90 : 0 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* HERO INTERACTION CARD */}
+        <View
+          style={[
+            styles.heroCard,
+            error
+              ? styles.heroError
+              : awaitingPickup
+                ? styles.heroArrived
+                : status === 'COMPLETED'
+                  ? styles.heroCompleted
+                  : styles.heroMoving,
+          ]}
+        >
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroBadge}>
+              {awaitingPickup ? (
+                <Sparkles size={16} color="#15803d" />
+              ) : status === 'COMPLETED' ? (
+                <CheckCircle2 size={16} color="#059669" />
+              ) : (
+                <Navigation size={16} color="#2563eb" />
+              )}
+              <Text
+                style={[
+                  styles.heroBadgeText,
+                  awaitingPickup && { color: '#15803d' },
+                  status === 'COMPLETED' && { color: '#059669' },
+                ]}
+              >
+                {awaitingPickup
+                  ? 'ĐÃ ĐẾN ĐIỂM HẸN'
+                  : status === 'COMPLETED'
+                    ? 'HOÀN TẤT DẪN ĐƯỜNG'
+                    : 'ĐANG DẪN ĐƯỜNG'}
+              </Text>
+            </View>
+            <Text style={styles.missionTag}>
+              {missionId ? `Mission: ${missionId.slice(0, 18)}...` : status === 'COMPLETED' ? 'Đã hoàn thành' : 'Sẵn sàng'}
+            </Text>
           </View>
-          <Text style={styles.mapNote}>
-            Sơ đồ KV2/KV3/KV4. Tuyến và vị trí robot lấy từ waypoint/telemetry thật; tọa độ ROS được co giãn để vừa sơ đồ.
+
+          <Text style={styles.heroTitle}>{error || STATUS_LABELS[status] || status}</Text>
+
+          {destination && status !== 'COMPLETED' && (
+            <View style={styles.heroTargetBox}>
+              <Text style={styles.heroTargetLabel}>
+                {awaitingPickup ? '📍 Vị trí hiện tại:' : '🚀 Điểm đến tiếp theo:'}
+              </Text>
+              <Text style={styles.heroTargetName}>
+                {destination.shelfName || destination.nodeName}
+              </Text>
+              {!!destination.productNames?.length && (
+                <View style={styles.heroProductsList}>
+                  <Text style={styles.heroProductsHeader}>Sản phẩm cần lấy tại kệ này:</Text>
+                  {destination.productNames.map((pName, pIdx) => (
+                    <View key={pIdx} style={styles.heroProductItem}>
+                      <Package size={14} color="#15803d" />
+                      <Text style={styles.heroProductItemText}>{pName}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {status === 'COMPLETED' && (
+            <View style={styles.completedBox}>
+              <Sparkles size={20} color="#059669" />
+              <Text style={styles.completedBoxText}>
+                Robot đang tự động quay về trạm chờ (Waypoint 7). Cảm ơn quý khách đã mua sắm!
+              </Text>
+            </View>
+          )}
+
+          {awaitingPickup && (
+            <TouchableOpacity
+              style={styles.heroPickupButton}
+              onPress={handleConfirmPickup}
+              activeOpacity={0.85}
+            >
+              <CheckCircle2 size={20} color="#fff" />
+              <Text style={styles.heroPickupButtonText}>
+                {isFinalStop
+                  ? 'Tôi đã lấy xong — Hoàn tất mua sắm ✓'
+                  : 'Tôi đã lấy sản phẩm — Đi kệ tiếp theo ➜'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* SCRIPT TIMELINE / CHECKLIST */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Kịch Bản Lộ Trình Mua Sắm</Text>
+          <Text style={styles.sectionSub}>
+            Robot sẽ lần lượt dừng lại ở từng kệ để bạn lấy sản phẩm
           </Text>
         </View>
 
-        <View style={[styles.detailColumn, isWide && styles.detailColumnWide]}>
-          <View style={[styles.statusCard, error ? styles.errorCard : awaitingPickup ? styles.arrivedCard : undefined]}>
-            <Text style={styles.statusEyebrow}>TRẠNG THÁI NHIỆM VỤ</Text>
-            <Text style={styles.statusTitle}>{error || STATUS_LABELS[status] || status}</Text>
-            <Text style={styles.missionText}>Mission: {missionId ?? (status === 'COMPLETED' ? 'đã hoàn tất' : 'chưa có')}</Text>
-            {destination && (
-              <Text style={styles.currentTarget}>
-                {awaitingPickup ? 'Đã đến:' : 'Đang tới:'} {destination.shelfName || destination.nodeName}
-              </Text>
-            )}
-            {awaitingPickup && (
-              <TouchableOpacity style={styles.pickupButtonInCard} onPress={handleConfirmPickup}>
-                <CheckCircle2 size={18} color="#fff" />
-                <Text style={styles.pickupButtonText}>
-                  {destinations.length > 0 && currentWaypointIndex >= destinations.length - 1
-                    ? 'Đã lấy sản phẩm — Kết thúc dẫn đường ✓'
-                    : 'Đã lấy sản phẩm — Đi tiếp ➜'}
-                </Text>
-              </TouchableOpacity>
-            )}
+        {/* Điểm xuất phát: Waypoint 7 */}
+        <View style={styles.startStopCard}>
+          <View style={styles.startIconWrap}>
+            <Home size={18} color="#2563eb" />
           </View>
+          <View style={styles.startInfo}>
+            <Text style={styles.startTitle}>Điểm Xuất Phát (Waypoint 7 - Trạm Robot)</Text>
+            <Text style={styles.startSub}>Robot bắt đầu hành trình từ điểm chờ trung tâm</Text>
+          </View>
+          <View style={styles.startDoneBadge}>
+            <CheckCircle2 size={16} color="#16a34a" />
+          </View>
+        </View>
 
-          <Text style={styles.sectionTitle}>Các vị trí cần đi ({destinations.length})</Text>
-          {destinations.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <MapPin size={24} color="#94a3b8" />
-              <Text style={styles.emptyText}>Hãy mở giỏ hàng và bấm "Robot dẫn theo giỏ hàng".</Text>
-            </View>
-          ) : destinations.map((item, index) => {
-            const active = index === currentWaypointIndex && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(status);
-            const completed = index < currentWaypointIndex || status === 'COMPLETED';
-            const isArrivedHere = active && awaitingPickup;
+        {/* Danh sách các Kệ Hàng */}
+        {destinations.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <MapPin size={28} color="#94a3b8" />
+            <Text style={styles.emptyTitle}>Chưa có lộ trình dẫn đường</Text>
+            <Text style={styles.emptyText}>
+              Hãy thêm sản phẩm vào giỏ hàng và nhấn "Robot dẫn theo giỏ hàng".
+            </Text>
+          </View>
+        ) : (
+          destinations.map((item, index) => {
+            const isCompleted = index < currentWaypointIndex || status === 'COMPLETED';
+            const isActive = index === currentWaypointIndex && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(status);
+            const isArrivedHere = isActive && awaitingPickup;
+
             return (
-              <View key={`${item.nodeId}-${index}`} style={[styles.stopCard, active && styles.activeStopCard, isArrivedHere && styles.arrivedStopCard]}>
-                <View style={[styles.orderBadge, completed && styles.doneBadge, active && styles.activeBadge, isArrivedHere && styles.arrivedBadge]}>
-                  <Text style={styles.orderText}>{completed ? '✓' : index + 1}</Text>
-                </View>
-                <View style={styles.stopInfo}>
-                  <Text style={styles.stopTitle}>{item.shelfName || item.nodeName}</Text>
-                  <Text style={styles.stopMeta}>
-                    {[item.zoneName, item.aisleName].filter(Boolean).join(' • ') || item.nodeName}
-                  </Text>
-                  {!!item.productNames?.length && (
-                    <Text style={styles.products}>{item.productNames.join(', ')}</Text>
+              <View
+                key={`${item.nodeId}-${index}`}
+                style={[
+                  styles.stopCard,
+                  isCompleted && styles.stopCardCompleted,
+                  isActive && styles.stopCardActive,
+                  isArrivedHere && styles.stopCardArrived,
+                ]}
+              >
+                {/* Badge số chặng */}
+                <View
+                  style={[
+                    styles.stopBadge,
+                    isCompleted && styles.stopBadgeDone,
+                    isActive && styles.stopBadgeActive,
+                    isArrivedHere && styles.stopBadgeArrived,
+                  ]}
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 size={18} color="#fff" />
+                  ) : (
+                    <Text style={styles.stopBadgeText}>{index + 1}</Text>
                   )}
-                  <Text style={styles.coordinates}>Node {item.nodeId} · X {item.xCoord.toFixed(2)} · Y {item.yCoord.toFixed(2)}</Text>
-                  {isArrivedHere && (
-                    <View style={styles.arrivedHint}>
-                      <PackageCheck size={14} color="#15803d" />
-                      <Text style={styles.arrivedHintText}>Robot đang chờ bạn lấy sản phẩm tại kệ này</Text>
+                </View>
+
+                {/* Thông tin kệ */}
+                <View style={styles.stopMain}>
+                  <View style={styles.stopHeaderRow}>
+                    <Text style={[styles.stopShelfName, isActive && styles.stopShelfNameActive]}>
+                      {item.shelfName || item.nodeName}
+                    </Text>
+                    {isCompleted && (
+                      <View style={styles.completedPill}>
+                        <Text style={styles.completedPillText}>Đã lấy xong ✓</Text>
+                      </View>
+                    )}
+                    {isArrivedHere && (
+                      <View style={styles.waitingPill}>
+                        <Flame size={12} color="#15803d" />
+                        <Text style={styles.waitingPillText}>Đang chờ lấy hàng</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={styles.stopMeta}>
+                    {[item.zoneName, item.aisleName].filter(Boolean).join(' • ') || `Node ${item.nodeId}`}
+                  </Text>
+
+                  {/* Danh sách sản phẩm dạng tags */}
+                  {!!item.productNames?.length && (
+                    <View style={styles.productTagsWrap}>
+                      {item.productNames.map((pName, pIdx) => (
+                        <View
+                          key={pIdx}
+                          style={[
+                            styles.productTag,
+                            isCompleted && styles.productTagCompleted,
+                            isArrivedHere && styles.productTagArrived,
+                          ]}
+                        >
+                          <PackageCheck size={13} color={isCompleted ? '#16a34a' : isArrivedHere ? '#15803d' : '#2563eb'} />
+                          <Text
+                            style={[
+                              styles.productTagText,
+                              isCompleted && styles.productTagTextCompleted,
+                              isArrivedHere && styles.productTagTextArrived,
+                            ]}
+                          >
+                            {pName}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
+                  )}
+
+                  {/* Khi robot đã đến kệ này: Nút tương tác nhanh */}
+                  {isArrivedHere && (
+                    <TouchableOpacity
+                      style={styles.stopInlineConfirmButton}
+                      onPress={handleConfirmPickup}
+                      activeOpacity={0.8}
+                    >
+                      <CheckCircle2 size={16} color="#fff" />
+                      <Text style={styles.stopInlineConfirmText}>
+                        {isFinalStop
+                          ? 'Xác nhận đã lấy — Hoàn thành mua sắm'
+                          : 'Xác nhận đã lấy sản phẩm tại kệ này ➜'}
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
             );
-          })}
+          })
+        )}
 
-          {isBusy && (
-            <TouchableOpacity style={styles.cancelButton} onPress={() => cancelGuide().catch(() => undefined)}>
-              <OctagonX size={18} color="#fff" />
-              <Text style={styles.cancelText}>Dừng dẫn đường</Text>
-            </TouchableOpacity>
+        {/* Điểm kết thúc: Quay về Waypoint 7 */}
+        <View style={styles.endStopCard}>
+          <View style={styles.endIconWrap}>
+            <Home size={18} color="#059669" />
+          </View>
+          <View style={styles.endInfo}>
+            <Text style={styles.endTitle}>Kết Thúc & Hồi Vị (Waypoint 7)</Text>
+            <Text style={styles.endSub}>
+              Sau khi lấy xong tất cả món hàng, robot sẽ tự động quay về trạm chờ
+            </Text>
+          </View>
+          {status === 'COMPLETED' && (
+            <View style={styles.startDoneBadge}>
+              <CheckCircle2 size={16} color="#16a34a" />
+            </View>
           )}
         </View>
+
+        {/* Nút hủy dẫn đường */}
+        {isBusy && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={handleCancelGuide}
+            activeOpacity={0.8}
+          >
+            <OctagonX size={18} color="#dc2626" />
+            <Text style={styles.cancelButtonText}>Dừng phiên dẫn đường</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      {/* Fixed bottom CTA khi robot đã đến kệ và chờ xác nhận lấy hàng */}
+      {/* Fixed Bottom CTA Bar khi Robot đã đến kệ và chờ khách lấy hàng */}
       {awaitingPickup && (
-        <View style={styles.pickupBottomBar}>
-          <TouchableOpacity style={styles.pickupBottomButton} onPress={handleConfirmPickup} activeOpacity={0.8}>
-            <CheckCircle2 size={22} color="#fff" />
-            <Text style={styles.pickupBottomText}>
-              {destinations.length > 0 && currentWaypointIndex >= destinations.length - 1
-                ? 'Tôi đã lấy sản phẩm — Hoàn thành dẫn đường'
-                : 'Tôi đã lấy sản phẩm — Đi điểm tiếp theo'}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={styles.bottomButton}
+            onPress={handleConfirmPickup}
+            activeOpacity={0.88}
+          >
+            <CheckCircle2 size={24} color="#fff" />
+            <Text style={styles.bottomButtonText}>
+              {isFinalStop
+                ? 'Tôi đã lấy xong tất cả — Hoàn tất dẫn đường ✓'
+                : 'Tôi đã lấy sản phẩm tại kệ này — Đi tiếp ➜'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -163,52 +393,355 @@ export default function CartGuideMapScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f3f7fb' },
-  header: { minHeight: 76, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', alignItems: 'center' },
-  backButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  headerTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerTitle: { color: '#0f172a', fontSize: 21, fontWeight: '900' },
+  safe: { flex: 1, backgroundColor: '#f1f5f9' },
+  header: {
+    minHeight: 76,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle: { color: '#0f172a', fontSize: 19, fontWeight: '900' },
   headerSub: { color: '#64748b', fontSize: 12, marginTop: 2 },
-  connection: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
-  content: { padding: 16, gap: 16, paddingBottom: 32 },
-  contentWide: { flexDirection: 'row', alignItems: 'flex-start', padding: 22 },
-  mapColumn: { width: '100%' },
-  mapColumnWide: { width: '58%' },
-  detailColumn: { gap: 10 },
-  detailColumnWide: { flex: 1 },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  legend: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#fff', color: '#475569', fontSize: 11, fontWeight: '700' },
-  mapNote: { color: '#64748b', fontSize: 11, marginTop: 8, lineHeight: 16 },
-  statusCard: { padding: 16, borderRadius: 18, backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#86efac' },
-  errorCard: { backgroundColor: '#fff1f2', borderColor: '#fda4af' },
-  arrivedCard: { backgroundColor: '#f0fdf4', borderColor: '#22c55e', borderWidth: 2 },
-  statusEyebrow: { color: '#64748b', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  statusTitle: { color: '#0f172a', fontSize: 18, fontWeight: '900', marginTop: 5 },
-  missionText: { color: '#64748b', fontSize: 11, marginTop: 5 },
-  currentTarget: { color: '#15803d', fontSize: 14, fontWeight: '800', marginTop: 8 },
-  sectionTitle: { color: '#0f172a', fontSize: 17, fontWeight: '900', marginTop: 5 },
-  emptyCard: { minHeight: 110, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
-  emptyText: { color: '#64748b', textAlign: 'center', fontSize: 13 },
-  stopCard: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 15, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
-  activeStopCard: { borderColor: '#fb923c', backgroundColor: '#fff7ed' },
-  arrivedStopCard: { borderColor: '#22c55e', backgroundColor: '#f0fdf4', borderWidth: 2 },
-  orderBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563eb' },
-  activeBadge: { backgroundColor: '#f97316' },
-  arrivedBadge: { backgroundColor: '#22c55e' },
-  doneBadge: { backgroundColor: '#16a34a' },
-  orderText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  stopInfo: { flex: 1 },
-  stopTitle: { color: '#0f172a', fontSize: 14, fontWeight: '900' },
-  stopMeta: { color: '#64748b', fontSize: 12, marginTop: 2 },
-  products: { color: '#166534', fontSize: 12, fontWeight: '700', marginTop: 4 },
-  coordinates: { color: '#94a3b8', fontSize: 10, marginTop: 4 },
-  arrivedHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#dcfce7', borderRadius: 8 },
-  arrivedHintText: { color: '#15803d', fontSize: 11, fontWeight: '700', flex: 1 },
-  pickupButtonInCard: { marginTop: 12, minHeight: 44, borderRadius: 12, backgroundColor: '#16a34a', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  pickupButtonText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-  cancelButton: { marginTop: 8, minHeight: 48, borderRadius: 15, backgroundColor: '#dc2626', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-  pickupBottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 12 },
-  pickupBottomButton: { minHeight: 54, borderRadius: 16, backgroundColor: '#16a34a', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  pickupBottomText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  connection: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  connectionText: { fontWeight: '800', fontSize: 12 },
+  content: { padding: 18, gap: 14, paddingBottom: 40 },
+  contentWide: { maxWidth: 900, alignSelf: 'center', width: '100%' },
+
+  /* Hero Card */
+  heroCard: {
+    borderRadius: 22,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroMoving: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#93c5fd',
+  },
+  heroArrived: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 2,
+    borderColor: '#22c55e',
+  },
+  heroCompleted: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1.5,
+    borderColor: '#6ee7b7',
+  },
+  heroError: {
+    backgroundColor: '#fff1f2',
+    borderWidth: 1.5,
+    borderColor: '#fda4af',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+  },
+  heroBadgeText: { fontSize: 11, fontWeight: '900', color: '#2563eb' },
+  missionTag: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+  heroTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
+  heroTargetBox: {
+    backgroundColor: '#fff',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 6,
+  },
+  heroTargetLabel: { fontSize: 12, color: '#64748b', fontWeight: '700' },
+  heroTargetName: { fontSize: 17, color: '#0f172a', fontWeight: '900' },
+  heroProductsList: { marginTop: 6, gap: 4 },
+  heroProductsHeader: { fontSize: 12, fontWeight: '800', color: '#15803d' },
+  heroProductItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroProductItemText: { fontSize: 14, fontWeight: '700', color: '#166534' },
+  completedBox: {
+    backgroundColor: '#fff',
+    padding: 14,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  completedBoxText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#065f46' },
+  heroPickupButton: {
+    backgroundColor: '#16a34a',
+    borderRadius: 16,
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginTop: 4,
+  },
+  heroPickupButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+
+  /* Section Header */
+  sectionHeader: { marginTop: 8, marginBottom: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  sectionSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
+  /* Start & End Base Cards */
+  startStopCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  startIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startInfo: { flex: 1 },
+  startTitle: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
+  startSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  startDoneBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  endStopCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  endIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#d1fae5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endInfo: { flex: 1 },
+  endTitle: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
+  endSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
+
+  /* Shelf Stops */
+  stopCard: {
+    flexDirection: 'row',
+    gap: 14,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  stopCardCompleted: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#cbd5e1',
+    opacity: 0.9,
+  },
+  stopCardActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+    borderWidth: 1.5,
+  },
+  stopCardArrived: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#22c55e',
+    borderWidth: 2,
+  },
+  stopBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#64748b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopBadgeDone: { backgroundColor: '#16a34a' },
+  stopBadgeActive: { backgroundColor: '#f97316' },
+  stopBadgeArrived: { backgroundColor: '#22c55e' },
+  stopBadgeText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  stopMain: { flex: 1, gap: 6 },
+  stopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  stopShelfName: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
+  stopShelfNameActive: { color: '#c2410c' },
+  stopMeta: { fontSize: 12, color: '#64748b' },
+  completedPill: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  completedPillText: { fontSize: 11, fontWeight: '800', color: '#15803d' },
+  waitingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  waitingPillText: { fontSize: 11, fontWeight: '800', color: '#15803d' },
+  productTagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  productTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  productTagCompleted: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  productTagArrived: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#86efac',
+  },
+  productTagText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  productTagTextCompleted: { color: '#16a34a' },
+  productTagTextArrived: { color: '#15803d' },
+  stopInlineConfirmButton: {
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    marginTop: 8,
+  },
+  stopInlineConfirmText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+
+  /* Empty state */
+  emptyCard: {
+    padding: 30,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#475569' },
+  emptyText: { fontSize: 13, color: '#94a3b8', textAlign: 'center' },
+
+  /* Cancel Button */
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    marginTop: 8,
+  },
+  cancelButtonText: { color: '#dc2626', fontSize: 14, fontWeight: '900' },
+
+  /* Fixed Bottom Bar */
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: 24,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 16,
+  },
+  bottomButton: {
+    minHeight: 56,
+    borderRadius: 18,
+    backgroundColor: '#16a34a',
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  bottomButtonText: { color: '#fff', fontWeight: '900', fontSize: 16 },
 });

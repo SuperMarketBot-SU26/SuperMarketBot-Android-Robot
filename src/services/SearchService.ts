@@ -89,14 +89,29 @@ export const SearchService = {
 
   classifyIntent(query: string): 'recipe' | 'product' {
     if (!query) return 'product';
-    const lowerQuery = query.toLowerCase();
-    const recipeKeywords = [
-      'nấu', 'món', 'cách làm', 'công thức', 'hướng dẫn', 
-      'canh', 'kho', 'chiên', 'xào', 'luộc', 'gỏi', 'lẩu', 'chuẩn bị', 'nguyên liệu'
+    const lower = query.toLowerCase().trim();
+
+    // Các cụm từ chỉ rõ ý định nấu ăn / thực đơn / công thức (AI Gemini)
+    const cookingPhrases = [
+      'tôi muốn nấu', 'muốn nấu', 'nấu món', 'cách nấu', 'hướng dẫn nấu',
+      'làm món', 'cách làm', 'công thức', 'chuẩn bị món', 'nguyên liệu cho',
+      'nguyên liệu làm', 'gợi ý món', 'gợi ý bữa', 'bữa tối', 'bữa trưa',
+      'ăn gì', 'nấu lẩu', 'nấu canh', 'món kho', 'món xào', 'món canh',
+      'món hầm', 'món chiên', 'món nướng', 'lẩu thái', 'lẩu gà', 'lẩu bò',
+      'canh chua', 'canh rau', 'thịt kho tàu', 'bò kho'
     ];
-    if (recipeKeywords.some(kw => lowerQuery.includes(kw))) {
+
+    if (cookingPhrases.some(phrase => lower.includes(phrase))) {
       return 'recipe';
     }
+
+    // Từ khóa đơn lẻ thể hiện ý định nấu nướng
+    const singleActionKeywords = ['nấu', 'kho', 'hầm', 'xào', 'chiên', 'nướng'];
+    const words = lower.split(/\s+/);
+    if (words.length >= 2 && singleActionKeywords.some(kw => words.includes(kw))) {
+      return 'recipe';
+    }
+
     return 'product';
   },
 

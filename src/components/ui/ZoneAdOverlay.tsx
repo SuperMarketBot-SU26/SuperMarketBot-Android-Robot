@@ -155,14 +155,14 @@ export default function ZoneAdOverlay() {
 
     const currentKey = `${currentAd.sponsoredId}-${currentAdIndex}`;
 
-    // Dwell là tổng ngân sách của waypoint và được chia đều cho mọi quảng cáo.
-    // Một số ROS bridge cũ không echo dwell trong ARRIVED. Khi đó phải dùng
-    // mặc định 30 giây của mission, không cộng duration gốc trong DB (3 x 30 = 90).
+    const isRouteContinuous = Boolean(currentZone?.isRouteAd || Number(currentZone?.dwellTimeSeconds) === 0);
     const eventDwell = Number(currentZone?.dwellTimeSeconds ?? 0);
     const dwellTime = eventDwell > 0 ? eventDwell : 30;
     const baseDuration = Math.floor(dwellTime / currentPlaylist.length);
     const remainder = dwellTime % currentPlaylist.length;
-    const duration = Math.max(1, baseDuration + (currentAdIndex < remainder ? 1 : 0));
+    const duration = isRouteContinuous
+      ? Math.max(8, Number(currentAd.displayDurationSeconds) || 12)
+      : Math.max(1, baseDuration + (currentAdIndex < remainder ? 1 : 0));
 
     setTotalDuration(duration);
     setTimeLeft(duration);
@@ -186,8 +186,13 @@ export default function ZoneAdOverlay() {
             console.log(`[ZoneAdOverlay] Hết ${duration}s -> Tự động chuyển sang sản phẩm tiếp theo (${currentAdIndex + 2}/${currentPlaylist.length})`);
             setCurrentAdIndex(idx => idx + 1);
           } else {
-            console.log(`[ZoneAdOverlay] Đã phát xong playlist trong dwell ${dwellTime}s -> Đóng quảng cáo`);
-            handleClose();
+            if (isRouteContinuous) {
+              console.log('[ZoneAdOverlay] Lộ trình quảng cáo: xoay vòng lại từ đầu playlist');
+              setCurrentAdIndex(0);
+            } else {
+              console.log(`[ZoneAdOverlay] Đã phát xong playlist trong dwell ${dwellTime}s -> Đóng quảng cáo`);
+              handleClose();
+            }
           }
           return 0;
         }
@@ -198,7 +203,7 @@ export default function ZoneAdOverlay() {
     return () => {
       clearInterval(timer);
     };
-  }, [currentAd, currentAdIndex, currentPlaylist, currentZone?.dwellTimeSeconds, currentZone?.objectName, handleClose, logImpression, visible]);
+  }, [currentAd, currentAdIndex, currentPlaylist, currentZone?.dwellTimeSeconds, currentZone?.isRouteAd, currentZone?.objectName, handleClose, logImpression, visible]);
 
   if (!visible || !currentAd) return null;
 
