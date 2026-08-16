@@ -1,5 +1,8 @@
 # SmartMarketBot Android Robot
-
+curl.exe -i -X POST "https://interiorly-pinnatisect-adalyn.ngrok-free.dev/api/v1/navigation/dispatch-autonomous" `
+  -H "Content-Type: application/json" `
+  -H "ngrok-skip-browser-warning: true" `
+  -d '{"robotCode":"RB001","flowType":"ad","fullZoneMap":true}'
 Ứng dụng production nhận mission `patrol`/`ad` trực tiếp từ Backend qua RobotHub. Patrol tự bật camera sau tại waypoint `photo`, chống chụp trùng và gửi ảnh tới `/api/v1/shelf-patrol/analyze-node`; quảng cáo hiển thị playlist tại waypoint `ad`.
 
 > [`robot_simulator.html`](./robot_simulator.html) chỉ là công cụ debug tích hợp. Admin Web và ứng dụng Android Robot trong `src/` mới là luồng vận hành production.

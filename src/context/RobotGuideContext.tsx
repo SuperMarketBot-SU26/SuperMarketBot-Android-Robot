@@ -79,6 +79,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   const destinationRef = useRef<GuideDestination | null>(null);
   const destinationsRef = useRef<GuideDestination[]>([]);
   const awaitingPickupRef = useRef(false);
+  const currentWaypointIndexRef = useRef(0);
 
   const normalizeDestinations = useCallback((raw: any[]): GuideDestination[] => raw
     .map((item) => ({
@@ -126,6 +127,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
             destinationRef.current = recoveredDestinations[0] ?? null;
             setDestinations(recoveredDestinations);
             setDestination(recoveredDestinations[0] ?? null);
+            currentWaypointIndexRef.current = 0;
             setCurrentWaypointIndex(0);
           }
         }
@@ -152,6 +154,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       destinationRef.current = recoveredDestinations[0] ?? null;
       setDestinations(recoveredDestinations);
       setDestination(recoveredDestinations[0] ?? null);
+      currentWaypointIndexRef.current = 0;
       setCurrentWaypointIndex(0);
     });
 
@@ -180,19 +183,45 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     return subscribeNavigationStatus((payload: NavigationStatusPayload) => {
       const incomingRobot = payload.robotCode ?? (payload as any).RobotCode;
       const incomingMission = payload.missionId ?? (payload as any).MissionId;
+      const rawStatus = payload.navStatus ?? (payload as any).NavStatus ?? '';
+      const incomingNodeId = payload.nodeId ?? (payload as any).NodeId;
+      const incomingIndex = payload.waypointIndex ?? (payload as any).WaypointIndex;
+      console.log(`[RobotGuide] NAV_STATUS: status=${rawStatus} robot=${incomingRobot} mission=${incomingMission} nodeId=${incomingNodeId} wpIndex=${incomingIndex} awaitingPickup=${awaitingPickupRef.current} currentMission=${missionRef.current} totalDest=${destinationsRef.current.length}`);
+
       if (incomingRobot?.toUpperCase() !== ROBOT_CODE.toUpperCase()) return;
       if (!incomingMission || incomingMission !== missionRef.current) return;
       acknowledgedMissionRef.current = incomingMission;
 
-      const next = String(payload.navStatus ?? (payload as any).NavStatus ?? '').toUpperCase() as GuideStatus;
+      const next = String(rawStatus).toUpperCase() as GuideStatus;
       const accepted: GuideStatus[] = ['NAVIGATING', 'MOVING', 'ARRIVED', 'PAUSED', 'RESUMED', 'WAYPOINT_COMPLETED', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'];
-      if (!accepted.includes(next)) return;
-      if (next === 'PAUSED' && !awaitingPickupRef.current) return;
+      if (!accepted.includes(next)) {
+        console.log(`[RobotGuide] Ignoring unrecognized status: ${next}`);
+        return;
+      }
+
+      // ── Khi đang chờ khách lấy sản phẩm ──
+      // Chặn mọi trạng thái mà ROS2 gửi tự động (MOVING, NAVIGATING,
+      // RESUMED, WAYPOINT_COMPLETED) — chỉ cho phép:
+      //   • ARRIVED / PAUSED  → cập nhật UI nhưng giữ nguyên awaitingPickup
+      //   • COMPLETED ở waypoint cuối → hoãn lại, chờ confirmPickup
+      //   • Terminal lỗi (FAILED/CANCELLED/ESTOP) → luôn xử lý
+      if (awaitingPickupRef.current) {
+        if (['MOVING', 'NAVIGATING', 'RESUMED', 'WAYPOINT_COMPLETED'].includes(next)) {
+          console.log(`[RobotGuide] BLOCKED status=${next} — awaitingPickup=true, customer must confirm first.`);
+          return;
+        }
+        if (next === 'COMPLETED') {
+          // Waypoint cuối cùng: robot đã xong route nhưng khách chưa lấy sản phẩm.
+          // Giữ awaitingPickup, chỉ cập nhật UI label.
+          console.log(`[RobotGuide] DEFERRED COMPLETED — awaitingPickup=true at final waypoint, waiting for customer confirm.`);
+          // Không thay đổi status, giữ nút confirm hiển thị
+          return;
+        }
+      }
+
       clearTimeoutGuard();
-      setStatus(next);
-      setError(payload.error ?? (payload as any).Error ?? null);
-      const incomingNodeId = payload.nodeId ?? (payload as any).NodeId;
-      const incomingIndex = payload.waypointIndex ?? (payload as any).WaypointIndex;
+
+      // ── Resolve destination hiện tại ──
       const currentTarget = destinationsRef.current.find(item => item.nodeId === incomingNodeId)
         ?? (typeof incomingIndex === 'number' ? destinationsRef.current[incomingIndex] : undefined)
         ?? destinationRef.current;
@@ -201,29 +230,47 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         setDestination(currentTarget);
       }
       if (typeof incomingIndex === 'number' && incomingIndex >= 0) {
-        setCurrentWaypointIndex(Math.min(incomingIndex, Math.max(destinationsRef.current.length - 1, 0)));
+        const resolvedIdx = Math.min(incomingIndex, Math.max(destinationsRef.current.length - 1, 0));
+        currentWaypointIndexRef.current = resolvedIdx;
+        setCurrentWaypointIndex(resolvedIdx);
       } else if (currentTarget) {
         const matchedIndex = destinationsRef.current.findIndex(item => item.nodeId === currentTarget.nodeId);
-        if (matchedIndex >= 0) setCurrentWaypointIndex(matchedIndex);
+        if (matchedIndex >= 0) {
+          currentWaypointIndexRef.current = matchedIndex;
+          setCurrentWaypointIndex(matchedIndex);
+        }
       }
-      if (next === 'ARRIVED') {
-        awaitingPickupRef.current = true;
-        setAwaitingPickup(true);
-        const target = currentTarget;
-        const location = [target?.zoneName, target?.aisleName, target?.shelfName].filter(Boolean).join(', ');
-        const products = target?.productNames?.length ? ` Các sản phẩm tại đây: ${target.productNames.join(', ')}.` : '';
-        Speech.speak(
-          location
-            ? `Đã đến điểm lấy hàng tại ${location}.${products} Xin mời quý khách lấy sản phẩm.`
-            : 'Đã đến nơi. Xin mời quý khách lấy sản phẩm.',
-          { language: 'vi-VN', rate: 0.9 },
-        );
+
+      // ── Cập nhật status ──
+      setStatus(next);
+      setError(payload.error ?? (payload as any).Error ?? null);
+
+      // ── ARRIVED hoặc PAUSED trong guide → chờ khách lấy hàng ──
+      if (next === 'ARRIVED' || next === 'PAUSED') {
+        if (!awaitingPickupRef.current) {
+          console.log(`[RobotGuide] ${next} at nodeId=${incomingNodeId} wpIndex=${incomingIndex} — setting awaitingPickup=true`);
+          awaitingPickupRef.current = true;
+          setAwaitingPickup(true);
+          const target = currentTarget;
+          const location = [target?.zoneName, target?.aisleName, target?.shelfName].filter(Boolean).join(', ');
+          const products = target?.productNames?.length ? ` Các sản phẩm tại đây: ${target.productNames.join(', ')}.` : '';
+          Speech.speak(
+            location
+              ? `Đã đến điểm lấy hàng tại ${location}.${products} Xin mời quý khách lấy sản phẩm.`
+              : 'Đã đến nơi. Xin mời quý khách lấy sản phẩm.',
+            { language: 'vi-VN', rate: 0.9 },
+          );
+        } else {
+          console.log(`[RobotGuide] ${next} received but awaitingPickup already true — UI unchanged.`);
+        }
+        return; // Không xử lý thêm, chờ confirmPickup
       }
-      if (['MOVING', 'RESUMED', 'WAYPOINT_COMPLETED', 'COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(next)) {
+
+      // ── Terminal states → dọn dẹp mission ──
+      if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(next)) {
+        console.log(`[RobotGuide] Terminal status=${next} — clearing mission state.`);
         awaitingPickupRef.current = false;
         setAwaitingPickup(false);
-      }
-      if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(next)) {
         missionRef.current = null;
         setMissionId(null);
       }
@@ -246,6 +293,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     setProductName(`${uniqueItems.length} sản phẩm trong giỏ`);
     setDestination(null);
     setDestinations([]);
+    currentWaypointIndexRef.current = 0;
     setCurrentWaypointIndex(0);
     destinationRef.current = null;
     destinationsRef.current = [];
@@ -321,23 +369,52 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
 
   const confirmPickup = useCallback(async () => {
     const activeMissionId = missionRef.current;
+    const totalStops = destinationsRef.current.length;
+    const currentIdx = currentWaypointIndexRef.current >= 0
+      ? currentWaypointIndexRef.current
+      : (destinationRef.current ? destinationsRef.current.findIndex(d => d.nodeId === destinationRef.current?.nodeId) : -1);
+    const isLastWaypoint = totalStops > 0 && currentIdx >= totalStops - 1;
+    console.log(`[RobotGuide] confirmPickup called: mission=${activeMissionId} awaitingPickup=${awaitingPickupRef.current} currentIdx=${currentIdx} totalStops=${totalStops} isLastWaypoint=${isLastWaypoint}`);
+
     if (!activeMissionId || !awaitingPickupRef.current)
       throw new Error('Robot hiện không chờ xác nhận lấy hàng.');
 
-    // Khóa nút ngay để tránh khách bấm hai lần phát hai RESUME_NAV.
+    // Khóa nút ngay để tránh khách bấm hai lần.
     awaitingPickupRef.current = false;
     setAwaitingPickup(false);
+
     try {
-      const response = await fetch(
-        `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/resume?reason=${encodeURIComponent('Customer confirmed product pickup')}`,
-        { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } },
-      );
-      if (!response.ok) throw new Error(`Không thể cho robot đi tiếp (${response.status})`);
-      setStatus('RESUMED');
-      Speech.speak('Đã xác nhận. Xin mời quý khách tiếp tục đi theo tôi.', {
-        language: 'vi-VN', rate: 0.9,
-      });
+      if (isLastWaypoint) {
+        // Waypoint cuối: kết thúc mission, không cần robot đi tiếp.
+        console.log(`[RobotGuide] Last waypoint confirmed — completing mission, sending CANCEL to stop robot.`);
+        await fetch(
+          `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Guide mission completed - all products picked up')}`,
+          { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } },
+        ).catch(() => undefined);
+        missionRef.current = null;
+        acknowledgedMissionRef.current = null;
+        setMissionId(null);
+        setStatus('COMPLETED');
+        setError(null);
+        Speech.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Chúc quý khách mua sắm vui vẻ!', {
+          language: 'vi-VN', rate: 0.9,
+        });
+      } else {
+        // Waypoint trung gian: cho robot đi tiếp đến kệ tiếp theo.
+        console.log(`[RobotGuide] Intermediate waypoint confirmed — sending RESUME to continue to next shelf.`);
+        const response = await fetch(
+          `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/resume?reason=${encodeURIComponent('Customer confirmed product pickup')}`,
+          { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } },
+        );
+        console.log(`[RobotGuide] RESUME response: ${response.status}`);
+        if (!response.ok) throw new Error(`Không thể cho robot đi tiếp (${response.status})`);
+        setStatus('RESUMED');
+        Speech.speak('Đã xác nhận. Xin mời quý khách tiếp tục đi theo tôi.', {
+          language: 'vi-VN', rate: 0.9,
+        });
+      }
     } catch (error) {
+      console.error('[RobotGuide] confirmPickup FAILED, restoring awaitingPickup=true:', error);
       awaitingPickupRef.current = true;
       setAwaitingPickup(true);
       throw error;

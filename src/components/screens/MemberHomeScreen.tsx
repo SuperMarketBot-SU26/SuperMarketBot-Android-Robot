@@ -43,7 +43,13 @@ export default function MemberHomeScreen() {
         MemberService.getMemberAlerts(id).then(res => { if (mounted) setAlerts(res?.alerts || []) });
         MemberService.getPersonalizedProducts(token || '').then(res => { if (mounted) setPersonalizedProducts(res || []) });
         MemberService.getPersonalizedMeals(token || '').then(res => { if (mounted) setPersonalizedMeals(res || []) });
-        SearchService.getDeals(id).then(res => { if (mounted) setSystemDeals(res || []) }).catch(console.error);
+        SearchService.getDeals(id).then(res => {
+          console.log('[MemberHome] getDeals raw response type:', typeof res, 'isArray:', Array.isArray(res), 'length:', res?.length, 'sample:', JSON.stringify(res?.[0])?.substring(0, 200));
+          if (mounted) setSystemDeals(Array.isArray(res) ? res : []);
+        }).catch(err => {
+          console.error('[MemberHome] getDeals FAILED:', err);
+          if (mounted) setSystemDeals([]);
+        });
       }
 
       // Auto sync cart
@@ -503,33 +509,33 @@ export default function MemberHomeScreen() {
           ))}
 
           {/* System Deals */}
-          {systemDeals.length > 0 && (
+          {Array.isArray(systemDeals) && systemDeals.length > 0 && (
             <YStack gap="$2" marginTop="$4">
               <Text fontSize={16} fontWeight="bold" color="$textPrimary">Khuyến mãi Hệ thống</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <XStack gap="$4">
-                  {systemDeals.map((product, index) => (
-                    <Pressable key={`sys-deal-${product?.productId ?? index}`} onPress={() => product?.productId && router.push(`/product/${product.productId}?isRecipe=false`)}>
+                  {systemDeals.filter(p => p != null && typeof p === 'object').map((product, index) => (
+                    <Pressable key={`sys-deal-${product.productId ?? 'nil'}-${index}`} onPress={() => product.productId && router.push(`/product/${product.productId}?isRecipe=false`)}>
                       <Card width={180} borderRadius={16} backgroundColor="white" overflow="hidden" shadowColor="black" shadowRadius={10} shadowOpacity={0.05} style={{ elevation: 2 }}>
                         <View position="relative" height={120} backgroundColor="#f5f5f5">
-                          <Image src={product?.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width="100%" height="100%" resizeMode="cover" />
-                          {product?.discountPercent ? (
+                          <Image src={product.imageUrl || 'https://via.placeholder.com/400x400.png?text=No+Image'} width={180} height={120} resizeMode="cover" />
+                          {product.discountPercent ? (
                             <View position="absolute" top={8} left={8} backgroundColor="#eab308" paddingHorizontal="$2" paddingVertical="$1" borderRadius={8}>
                               <Text color="white" fontSize={10} fontWeight="bold">-{product.discountPercent}%</Text>
                             </View>
                           ) : null}
                         </View>
                         <YStack padding="$3" gap="$2">
-                          <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product?.productName || 'Sản phẩm khuyến mãi'}</Text>
+                          <Text fontSize={13} fontWeight="bold" color="$textPrimary" numberOfLines={1}>{product.productName || 'Sản phẩm khuyến mãi'}</Text>
                           <XStack justifyContent="space-between" alignItems="flex-end" marginTop="$1">
                             <YStack>
-                              {product?.promotionPrice ? (
+                              {product.promotionPrice ? (
                                 <>
-                                  <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
+                                  <Text fontSize={10} color="$textSecondary" textDecorationLine="line-through">{(product.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                                   <Text fontSize={14} fontWeight="900" color="#00A550">{(product.promotionPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                                 </>
                               ) : (
-                                <Text fontSize={14} fontWeight="900" color="#00A550">{(product?.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
+                                <Text fontSize={14} fontWeight="900" color="#00A550">{(product.unitPrice ?? 0).toLocaleString('vi-VN')}đ</Text>
                               )}
                             </YStack>
                           </XStack>

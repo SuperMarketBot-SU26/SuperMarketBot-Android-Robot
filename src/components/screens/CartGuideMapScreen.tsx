@@ -92,7 +92,11 @@ export default function CartGuideMapScreen() {
             {awaitingPickup && (
               <TouchableOpacity style={styles.pickupButtonInCard} onPress={handleConfirmPickup}>
                 <CheckCircle2 size={18} color="#fff" />
-                <Text style={styles.pickupButtonText}>Đã lấy sản phẩm — Đi tiếp ➜</Text>
+                <Text style={styles.pickupButtonText}>
+                  {destinations.length > 0 && currentWaypointIndex >= destinations.length - 1
+                    ? 'Đã lấy sản phẩm — Kết thúc dẫn đường ✓'
+                    : 'Đã lấy sản phẩm — Đi tiếp ➜'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -146,7 +150,11 @@ export default function CartGuideMapScreen() {
         <View style={styles.pickupBottomBar}>
           <TouchableOpacity style={styles.pickupBottomButton} onPress={handleConfirmPickup} activeOpacity={0.8}>
             <CheckCircle2 size={22} color="#fff" />
-            <Text style={styles.pickupBottomText}>Tôi đã lấy sản phẩm — Đi điểm tiếp theo</Text>
+            <Text style={styles.pickupBottomText}>
+              {destinations.length > 0 && currentWaypointIndex >= destinations.length - 1
+                ? 'Tôi đã lấy sản phẩm — Hoàn thành dẫn đường'
+                : 'Tôi đã lấy sản phẩm — Đi điểm tiếp theo'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}

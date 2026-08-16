@@ -22,6 +22,7 @@ export default function MemberCartScreen() {
     status: guideStatus,
     destination: guideDestination,
     destinations: guideDestinations,
+    currentWaypointIndex,
     error: guideError,
     awaitingPickup,
     confirmPickup,
@@ -145,7 +146,9 @@ export default function MemberCartScreen() {
                 }
               }}
             >
-              Tôi đã lấy sản phẩm — Đi tiếp
+              {guideDestinations.length > 0 && currentWaypointIndex >= guideDestinations.length - 1
+                ? 'Tôi đã lấy sản phẩm — Hoàn thành'
+                : 'Tôi đã lấy sản phẩm — Đi tiếp'}
             </Button>
           )}
           {(isRobotBusy || guideError != null || ['FAILED', 'TIMEOUT'].includes(guideStatus)) && (
