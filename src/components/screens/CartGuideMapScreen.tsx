@@ -58,6 +58,15 @@ export default function CartGuideMapScreen() {
   const totalStops = destinations.length;
   const isFinalStop = totalStops > 0 && currentWaypointIndex >= totalStops - 1;
 
+  React.useEffect(() => {
+    if (status === 'COMPLETED') {
+      const timer = setTimeout(() => {
+        router.replace('/kiosk' as any);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [status, router]);
+
   const handleConfirmPickup = async () => {
     try {
       await confirmPickup();
@@ -184,9 +193,23 @@ export default function CartGuideMapScreen() {
           {status === 'COMPLETED' && (
             <View style={styles.completedBox}>
               <Sparkles size={20} color="#059669" />
-              <Text style={styles.completedBoxText}>
-                Robot đang tự động quay về trạm chờ (Waypoint 7). Cảm ơn quý khách đã mua sắm!
-              </Text>
+              <View style={{ flex: 1, gap: 10 }}>
+                <Text style={styles.completedBoxText}>
+                  Robot đang tự động quay về trạm chờ (Waypoint 7). Cảm ơn quý khách đã mua sắm!
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#10b981',
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    alignSelf: 'flex-start',
+                  }}
+                  onPress={() => router.replace('/kiosk' as any)}
+                >
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>Về màn hình chính</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 

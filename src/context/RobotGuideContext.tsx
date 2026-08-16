@@ -222,22 +222,25 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       clearTimeoutGuard();
 
       // ── Resolve destination hiện tại ──
-      const currentTarget = destinationsRef.current.find(item => item.nodeId === incomingNodeId)
-        ?? (typeof incomingIndex === 'number' ? destinationsRef.current[incomingIndex] : undefined)
-        ?? destinationRef.current;
-      if (currentTarget) {
-        destinationRef.current = currentTarget;
-        setDestination(currentTarget);
-      }
-      if (typeof incomingIndex === 'number' && incomingIndex >= 0) {
-        const resolvedIdx = Math.min(incomingIndex, Math.max(destinationsRef.current.length - 1, 0));
-        currentWaypointIndexRef.current = resolvedIdx;
-        setCurrentWaypointIndex(resolvedIdx);
-      } else if (currentTarget) {
-        const matchedIndex = destinationsRef.current.findIndex(item => item.nodeId === currentTarget.nodeId);
-        if (matchedIndex >= 0) {
-          currentWaypointIndexRef.current = matchedIndex;
-          setCurrentWaypointIndex(matchedIndex);
+      // Không cho phép nhảy waypoint trên UI nếu khách chưa bấm xác nhận lấy hàng
+      if (!awaitingPickupRef.current) {
+        const currentTarget = destinationsRef.current.find(item => item.nodeId === incomingNodeId)
+          ?? (typeof incomingIndex === 'number' ? destinationsRef.current[incomingIndex] : undefined)
+          ?? destinationRef.current;
+        if (currentTarget) {
+          destinationRef.current = currentTarget;
+          setDestination(currentTarget);
+        }
+        if (typeof incomingIndex === 'number' && incomingIndex >= 0) {
+          const resolvedIdx = Math.min(incomingIndex, Math.max(destinationsRef.current.length - 1, 0));
+          currentWaypointIndexRef.current = resolvedIdx;
+          setCurrentWaypointIndex(resolvedIdx);
+        } else if (currentTarget) {
+          const matchedIndex = destinationsRef.current.findIndex(item => item.nodeId === currentTarget.nodeId);
+          if (matchedIndex >= 0) {
+            currentWaypointIndexRef.current = matchedIndex;
+            setCurrentWaypointIndex(matchedIndex);
+          }
         }
       }
 
@@ -251,7 +254,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           console.log(`[RobotGuide] ${next} at nodeId=${incomingNodeId} wpIndex=${incomingIndex} — setting awaitingPickup=true`);
           awaitingPickupRef.current = true;
           setAwaitingPickup(true);
-          const target = currentTarget;
+          const target = destinationRef.current;
           const location = [target?.zoneName, target?.aisleName, target?.shelfName].filter(Boolean).join(', ');
           const products = target?.productNames?.length ? ` Các sản phẩm tại đây: ${target.productNames.join(', ')}.` : '';
           Speech.speak(
@@ -404,7 +407,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         try {
           await RobotControlService.dispatchAutonomous({
             robotCode: ROBOT_CODE,
-            flowType: 'guide',
+            flowType: 'return',
             nodeIds: [10023],
             floorId: 1,
           });

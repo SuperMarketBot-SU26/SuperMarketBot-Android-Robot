@@ -7,11 +7,9 @@ import { X, Plus, Scan } from 'lucide-react-native';
 import React, {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
-import {
-  ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View,
-} from 'react-native';
+import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
-
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
@@ -279,8 +277,14 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
       const nextStatus = String(valueOf(payload, 'navStatus', 'NavStatus') ?? '').toUpperCase() as MissionStatus;
       console.log('[RobotMissionRuntime] navigationStatus:', nextStatus, 'role:', valueOf(payload, 'role', 'Role'));
+      
+      const prevStatus = activeMission.status;
+
       setStatus(nextStatus);
-      setMission((current) => current ? { ...current, status: nextStatus } : current);
+      const updatedMission = { ...activeMission, status: nextStatus };
+      setMission((current) => current ? updatedMission : current);
+      missionRef.current = updatedMission;
+
       const waypointIndex = Number(valueOf(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
       const nodeId = Number(valueOf(payload, 'nodeId', 'NodeId') ?? -1);
       const waypoint = activeMission.waypoints[waypointIndex]
@@ -295,8 +299,18 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         }
         if (activeMission.flowType === 'ad' && role === 'ad') {
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
-          setActivePlaylist(statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? []);
+          const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
+          setActivePlaylist(playlist);
+          if (playlist.length > 0) {
+            const productName = playlist[0].productName || playlist[0].name || 'Sản phẩm';
+            Speech.speak(`Xin chào! Tôi đang ở ${waypoint.shelfName || 'Kệ hàng'}. Hôm nay xin giới thiệu với quý khách sản phẩm ${productName} đang có chương trình khuyến mãi!`, { language: 'vi-VN' });
+          }
         }
+      }
+
+      if (['MOVING', 'NAVIGATING'].includes(nextStatus) && prevStatus === 'ARRIVED' && activeMission.flowType === 'ad') {
+        const nextWaypoint = updatedMission.waypoints.find(w => w.nodeId !== waypoint?.nodeId) || { shelfName: 'Kệ tiếp theo' };
+        Speech.speak(`Cảm ơn quý khách. Tôi sẽ tiếp tục di chuyển sang ${nextWaypoint.shelfName || 'Kệ tiếp theo'}.`, { language: 'vi-VN' });
       }
       if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus))
         setActivePlaylist([]);
@@ -349,6 +363,12 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           setMission(null);
           missionRef.current = null;
         }}
+      />
+      <AdMissionOverlay
+        mission={mission}
+        status={status}
+        activeWaypoint={activeWaypoint}
+        activePlaylist={activePlaylist}
       />
     </RuntimeContext.Provider>
   );
