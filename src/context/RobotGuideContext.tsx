@@ -408,7 +408,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           await RobotControlService.dispatchAutonomous({
             robotCode: ROBOT_CODE,
             flowType: 'return',
-            nodeIds: [10023],
+            nodeIds: [10029],
             floorId: 1,
           });
         } catch (err) {

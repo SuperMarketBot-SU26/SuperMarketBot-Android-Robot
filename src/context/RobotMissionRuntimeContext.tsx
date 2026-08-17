@@ -3,7 +3,9 @@ import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Speech from 'expo-speech';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { X, Plus, Scan } from 'lucide-react-native';
+import {
+  X, Plus, Scan, Camera, ArrowRight, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Navigation
+} from 'lucide-react-native';
 import React, {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
@@ -11,6 +13,7 @@ import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, T
 import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { RobotControlService } from '../services/RobotControlService';
+
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
@@ -89,6 +92,7 @@ interface RuntimeContextValue {
   failedScans: number;
   lastScan: ScanResult | null;
   hubConnected: boolean;
+  resumeToNextWaypoint: () => Promise<void>;
 }
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
@@ -196,32 +200,46 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       const resized = await manipulateAsync(
         imageUri,
         [{ resize: { width: 1280 } }],
-        { compress: 0.75, format: SaveFormat.JPEG },
+        { compress: 0.75, format: SaveFormat.JPEG, base64: true },
       );
 
-      const form = new FormData();
-      form.append('image', {
-        uri: resized.uri,
-        name: `${activeMission.missionId}-${waypointIndex}.jpg`,
-        type: 'image/jpeg',
-      } as any);
-      form.append('robotCode', ROBOT_CODE);
-      form.append('robotId', String(ROBOT_ID));
-      form.append('missionId', activeMission.missionId);
-      form.append('waypointIndex', String(waypointIndex));
-      form.append('nodeId', String(waypoint.nodeId));
-      form.append('capturedAt', new Date().toISOString());
+      const payload = {
+        robotCode: ROBOT_CODE,
+        robotId: ROBOT_ID,
+        missionId: activeMission.missionId,
+        waypointIndex,
+        nodeId: waypoint.nodeId,
+        capturedAt: new Date().toISOString(),
+        imageBase64: resized.base64,
+      };
 
-      const response = await fetch(`${API_BASE}/api/v1/shelf-patrol/analyze-node`, {
+      console.log(`[RobotMissionRuntime] Đang gửi ảnh phân tích AI Vision cho node ${waypoint.nodeId}...`);
+      const response = await fetch(`${API_BASE}/api/v1/shelf-patrol/analyze-node-json`, {
         method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true' },
-        body: form,
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(payload),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.errorMessage || result?.detail || `AI Vision HTTP ${response.status}`);
       console.log('[RobotMissionRuntime] AI Vision phân tích thành công:', result);
       setLastScan(result);
       setCompletedScans((count) => count + 1);
+
+      // TTS thông báo kết quả kiểm tra tồn kho
+      if (result.needsRestock || (result.emptySlotCount && result.emptySlotCount > 0)) {
+        Speech.speak(
+          `Phát hiện ${result.emptySlotCount ?? 1} vị trí hết hàng tại ${waypoint.shelfName || 'kệ'}. Tỷ lệ lấp đầy ${result.occupancyRatePct ?? 50}%. Cần bổ sung hàng gấp!`,
+          { language: 'vi-VN', rate: 0.9 }
+        );
+      } else {
+        Speech.speak(
+          `Kệ ${waypoint.shelfName || 'hàng'} đã đủ hàng. Tỷ lệ lấp đầy ${result.occupancyRatePct ?? 100}%.`,
+          { language: 'vi-VN', rate: 0.9 }
+        );
+      }
     } catch (error) {
       console.warn('[RobotMissionRuntime] Upload scan failed:', error);
       setFailedScans((count) => count + 1);
@@ -231,6 +249,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         analysisStatus: 'Failed',
         errorMessage: error instanceof Error ? error.message : 'Không phân tích được ảnh.',
       });
+      Speech.speak('Không thể phân tích ảnh kệ này. Vui lòng kiểm tra lại.', { language: 'vi-VN', rate: 0.9 });
     } finally {
       setPendingScans((count) => Math.max(0, count - 1));
     }
@@ -299,10 +318,10 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       }
     }
     setIsAligning(false);
-    Speech.speak('Góc camera đã chuẩn, bắt đầu chụp', { language: 'vi-VN', rate: 0.9 });
+    Speech.speak('Góc camera đã chuẩn, bắt đầu chụp và gửi AI', { language: 'vi-VN', rate: 0.9 });
 
-    // Đợi 1.5s để camera ổn định, lấy nét và định tâm vào mốc '+'
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Đợi 1s để camera ổn định, lấy nét
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     try {
       const picture = await cameraRef.current.takePictureAsync({ quality: 0.75, skipProcessing: false });
@@ -320,6 +339,21 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       });
     }
   }, [cameraMounted, permission?.granted, uploadScan]);
+
+  const resumeToNextWaypoint = useCallback(async () => {
+    if (!API_BASE) return;
+    try {
+      console.log('[RobotMissionRuntime] Tiếp tục di chuyển sang kệ tiếp theo...');
+      Speech.speak('Đã ghi nhận kết quả. Đang di chuyển sang kệ tiếp theo.', { language: 'vi-VN', rate: 0.9 });
+      await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/resume?reason=Photo%20scan%20completed`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      });
+      setLastScan(null);
+    } catch (err) {
+      console.warn('[RobotMissionRuntime] Resume to next shelf failed:', err);
+    }
+  }, []);
 
   useEffect(() => {
     return subscribeNavigationStatus((payload: NavigationStatusPayload) => {
@@ -350,18 +384,12 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       if (nextStatus === 'ARRIVED' && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
         if (activeMission.flowType === 'patrol' && (role === 'photo' || role === 'scan')) {
-          Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn chụp thủ công khi góc quay đã chuẩn.`, { language: 'vi-VN', rate: 0.9 });
-          // void captureAtWaypoint(activeMission, waypoint, waypointIndex);
+          Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn nút chụp ảnh để kiểm tra tồn kho.`, { language: 'vi-VN', rate: 0.9 });
         }
         if (activeMission.flowType === 'ad' && role === 'ad') {
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
           const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
           setActivePlaylist(playlist);
-          if (playlist.length > 0) {
-            const topProducts = playlist.slice(0, 2).map(p => p.productName || p.name).filter(Boolean);
-            const productNamesStr = topProducts.join(' và ');
-            Speech.speak(`Xin chào quý khách! Tôi đang ở ${waypoint.shelfName || 'Kệ hàng'}. Hôm nay xin giới thiệu sản phẩm ưu đãi đặc biệt: ${productNamesStr}!`, { language: 'vi-VN' });
-          }
         }
       }
 
@@ -369,13 +397,29 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         const nextWaypoint = updatedMission.waypoints.find(w => w.nodeId !== waypoint?.nodeId) || { shelfName: 'Kệ tiếp theo' };
         Speech.speak(`Cảm ơn quý khách. Tôi sẽ tiếp tục di chuyển sang ${nextWaypoint.shelfName || 'Kệ tiếp theo'}.`, { language: 'vi-VN' });
       }
-      if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus))
+      if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus)) {
         setActivePlaylist([]);
+        setLastScan(null);
+      }
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(nextStatus)) {
         setActivePlaylist([]);
-        if (nextStatus === 'COMPLETED' && activeMission.flowType === 'patrol') {
-          Speech.speak('Tuần tra hoàn tất. Robot đang quay về vị trí chờ.', { language: 'vi-VN', rate: 0.9 });
-          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [10023], floorId: 1 });
+        setLastScan(null);
+        if (nextStatus === 'CANCELLED') {
+          Speech.speak('Đã dừng nhiệm vụ.', { language: 'vi-VN', rate: 0.9 });
+          setMission(null);
+          missionRef.current = null;
+        }
+        if (nextStatus === 'ESTOP') {
+          Speech.speak('Dừng khẩn cấp.', { language: 'vi-VN', rate: 0.9 });
+          setMission(null);
+          missionRef.current = null;
+        }
+        if (nextStatus === 'COMPLETED') {
+          const completionMsg = activeMission.flowType === 'patrol' 
+            ? 'Tuần tra toàn bộ siêu thị hoàn tất. Robot đang quay về trạm sạc.'
+            : 'Quảng cáo hoàn tất. Robot đang quay về trạm sạc.';
+          Speech.speak(completionMsg, { language: 'vi-VN', rate: 0.9 });
+          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [10029], floorId: 1 });
         }
         if (nextStatus !== 'COMPLETED' || pendingScansRef.current === 0) {
           missionRef.current = null;
@@ -402,8 +446,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   }, [appState, permission?.granted]);
 
   const value = useMemo<RuntimeContextValue>(() => ({
-    mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected,
-  }), [mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected]);
+    mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected, resumeToNextWaypoint,
+  }), [mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected, resumeToNextWaypoint]);
 
   return (
     <RuntimeContext.Provider value={value}>
@@ -426,6 +470,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
             void captureAtWaypoint(mission, activeWaypoint, activeWaypointIndex);
           }
         }}
+        onResumeNext={resumeToNextWaypoint}
         onDismiss={() => {
           setMission(null);
           missionRef.current = null;
@@ -443,7 +488,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
 function MissionOverlay({
   mission, status, activeWaypoint, activePlaylist, pendingScans, completedScans, failedScans,
-  lastScan, cameraRef, cameraPermission, isAligning, onCameraReady, onDismiss,
+  lastScan, cameraRef, cameraPermission, isAligning, onCameraReady, onDismiss, onCapture, onResumeNext,
 }: {
   mission: RobotMission | null;
   status: MissionStatus;
@@ -459,18 +504,30 @@ function MissionOverlay({
   onCameraReady: () => void;
   onDismiss: () => void;
   onCapture?: () => void;
+  onResumeNext?: () => void;
 }) {
   const [zoom, setZoom] = useState(0); // 0 = 0.6x Ultra-wide / widest view on Redmi Note 13 Pro
+  const [countdownToNext, setCountdownToNext] = useState<number | null>(null);
 
-  // Tự động đóng HUD sau 7s khi có kết quả phân tích
+  // Tự động đếm ngược 6s để chuyển sang kệ tiếp theo khi có kết quả phân tích AI
   useEffect(() => {
-    if (lastScan && pendingScans === 0) {
-      const timer = setTimeout(() => {
-        onDismiss();
-      }, 7000);
-      return () => clearTimeout(timer);
+    if (lastScan && pendingScans === 0 && status === 'ARRIVED') {
+      setCountdownToNext(6);
+      const timer = setInterval(() => {
+        setCountdownToNext((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(timer);
+            onResumeNext?.();
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setCountdownToNext(null);
     }
-  }, [lastScan, pendingScans, onDismiss]);
+  }, [lastScan, pendingScans, status, onResumeNext]);
 
   if (!mission || mission.flowType !== 'patrol') return null;
   const missionEnded = ['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status);
@@ -550,22 +607,80 @@ function MissionOverlay({
             <Metric label="Đang xử lý" value={pendingScans} />
             <Metric label="Lỗi" value={failedScans} danger={failedScans > 0} />
           </View>
-          <Text style={styles.status}>{status === 'ARRIVED' ? 'Đã đến vị trí. Hãy nhấn nút chụp!' : `Robot: ${status}`}</Text>
+
+          <Text style={styles.status}>
+            {pendingScans > 0
+              ? '⏳ Đang gửi ảnh và phân tích AI Vision...'
+              : status === 'ARRIVED'
+                ? (lastScan ? 'Đã có kết quả phân tích kệ!' : 'Đã đến vị trí. Hãy nhấn nút chụp!')
+                : `Robot: ${status}`}
+          </Text>
           
-          {status === 'ARRIVED' && (
+          {/* Nút Chụp Ảnh Thủ Công khi đã đến nơi và chưa có kết quả */}
+          {status === 'ARRIVED' && !lastScan && (
             <TouchableOpacity 
-              style={{ marginTop: 15, backgroundColor: '#00A550', padding: 16, borderRadius: 12, alignItems: 'center' }}
+              style={[styles.captureBtn, pendingScans > 0 && styles.captureBtnDisabled]}
               onPress={onCapture}
+              disabled={pendingScans > 0}
+              activeOpacity={0.8}
             >
-              <Text style={{ color: 'white', fontWeight: '800', fontSize: 16 }}>📸 CHỤP ẢNH KỆ NÀY</Text>
+              {pendingScans > 0 ? (
+                <View style={styles.btnRow}>
+                  <ActivityIndicator color="white" size="small" />
+                  <Text style={styles.captureBtnText}>🔍 ĐANG PHÂN TÍCH BẰNG AI...</Text>
+                </View>
+              ) : (
+                <View style={styles.btnRow}>
+                  <Camera size={20} color="white" />
+                  <Text style={styles.captureBtnText}>📸 CHỤP ẢNH KỆ HÀNG (KIỂM TRA TỒN KHO)</Text>
+                </View>
+              )}
             </TouchableOpacity>
           )}
 
+          {/* Card Kết Quả Phân Tích AI */}
           {lastScan && (
-            <View style={[styles.result, lastScan.needsRestock && styles.resultWarning]}>
-              <Text style={styles.resultTitle}>{lastScan.analysisStatus === 'Failed' ? 'Không phân tích được' : lastScan.needsRestock ? 'Cần nhập hàng' : 'Kệ đạt yêu cầu'}</Text>
-              {lastScan.analysisStatus !== 'Failed' && <Text style={styles.resultText}>Còn {lastScan.occupancyRatePct}% · {lastScan.emptySlotCount} vị trí trống</Text>}
+            <View style={[styles.resultCard, lastScan.needsRestock ? styles.resultWarning : styles.resultSuccess]}>
+              <View style={styles.resultHeader}>
+                {lastScan.needsRestock ? (
+                  <AlertTriangle size={22} color="#FBBF24" />
+                ) : (
+                  <CheckCircle2 size={22} color="#34D399" />
+                )}
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.resultTitle}>
+                    {lastScan.analysisStatus === 'Failed'
+                      ? 'Không phân tích được ảnh'
+                      : lastScan.needsRestock
+                        ? `⚠️ CẦN BỔ SUNG HÀNG (${lastScan.emptySlotCount ?? 0} VỊ TRÍ TRỐNG)`
+                        : `✅ KỆ ĐÃ ĐẦY ĐỦ HÀNG (${lastScan.occupancyRatePct}%)`}
+                  </Text>
+                  {lastScan.analysisStatus !== 'Failed' && (
+                    <Text style={styles.resultSubText}>
+                      {activeWaypoint?.shelfName || 'Kệ hàng'}: Tỷ lệ lấp đầy {lastScan.occupancyRatePct}% · Trống {lastScan.emptySlotCount ?? 0} ô
+                    </Text>
+                  )}
+                </View>
+              </View>
+
               {lastScan.errorMessage && <Text style={styles.error}>{lastScan.errorMessage}</Text>}
+
+              {/* Nút Chuyển Tiếp Sang Kệ Sau */}
+              {status === 'ARRIVED' && (
+                <TouchableOpacity
+                  style={styles.nextShelfBtn}
+                  onPress={() => {
+                    setCountdownToNext(null);
+                    onResumeNext?.();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.nextShelfBtnText}>
+                    🚀 TIẾP TỤC SANG KỆ TIẾP THEO {countdownToNext !== null ? `(${countdownToNext}s)` : ''}
+                  </Text>
+                  <ArrowRight size={18} color="white" />
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -761,19 +876,120 @@ const styles = StyleSheet.create({
     bottom: 30,
     padding: 18,
     borderRadius: 22,
-    backgroundColor: 'rgba(4,14,29,0.92)',
+    backgroundColor: 'rgba(4,14,29,0.94)',
     zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   metrics: { flexDirection: 'row', gap: 10 },
   metric: { flex: 1, padding: 10, borderRadius: 14, backgroundColor: '#122238', alignItems: 'center' },
   metricValue: { color: '#6ee7b7', fontSize: 22, fontWeight: '900' },
   metricLabel: { color: '#94a3b8', fontSize: 11 },
-  status: { color: 'white', fontSize: 15, fontWeight: '700', marginTop: 12 },
-  result: { marginTop: 12, padding: 14, backgroundColor: '#064e3b', borderRadius: 14 },
-  resultWarning: { backgroundColor: '#7c2d12' },
-  resultTitle: { color: 'white', fontWeight: '900', fontSize: 16 },
-  resultText: { color: '#e2e8f0', marginTop: 4, fontSize: 13 },
-  error: { color: '#fca5a5', fontWeight: '700' },
+  status: { color: 'white', fontSize: 14, fontWeight: '700', marginTop: 10, textAlign: 'center' },
+  
+  // Nút chụp ảnh
+  captureBtn: {
+    marginTop: 12,
+    backgroundColor: '#00A550',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#00A550',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  captureBtnDisabled: {
+    backgroundColor: '#374151',
+  },
+  captureBtnText: {
+    color: 'white',
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  // Result card
+  resultCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  resultSuccess: {
+    backgroundColor: 'rgba(6, 78, 59, 0.9)',
+    borderColor: '#059669',
+  },
+  resultWarning: {
+    backgroundColor: 'rgba(124, 45, 18, 0.9)',
+    borderColor: '#DC2626',
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resultTitle: {
+    color: 'white',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  resultSubText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  occupancyBarContainer: {
+    marginTop: 8,
+  },
+  occupancyBarTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  occupancyBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  barSuccess: {
+    backgroundColor: '#10B981',
+  },
+  barWarning: {
+    backgroundColor: '#EF4444',
+  },
+  occupancyText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  // Nút di chuyển tiếp theo
+  nextShelfBtn: {
+    marginTop: 10,
+    backgroundColor: '#1D4ED8',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  nextShelfBtnText: {
+    color: 'white',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
+  error: { color: '#fca5a5', fontWeight: '700', marginTop: 4, fontSize: 12 },
   adRoot: { flex: 1, backgroundColor: '#030712' },
   adWaiting: { color: 'white', fontSize: 22, fontWeight: '700' },
   adBadge: { position: 'absolute', right: 24, top: 36, paddingHorizontal: 16, paddingVertical: 9, backgroundColor: 'rgba(15,23,42,.82)', borderRadius: 999 },

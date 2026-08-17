@@ -116,14 +116,14 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
         clearZone();
         activeMissionRef.current = null;
-        // Khi Ad flow hoàn tất, tự động quay về Trạm sạc (WP7 = Node 10023)
+        // Khi Ad flow hoàn tất, tự động quay về Trạm sạc (WP7 = Node 10029)
         if (status === 'COMPLETED') {
-          console.log('[Geofencing] Ad flow COMPLETED — dispatching return to base (Node 10023).');
+          console.log('[Geofencing] Ad flow COMPLETED — dispatching return to base (Node 10029).');
           import('../services/RobotControlService').then(({ RobotControlService }) => {
             RobotControlService.dispatchAutonomous({
               robotCode: ROBOT_CODE,
               flowType: 'return',
-              nodeIds: [10023],
+              nodeIds: [10029],
               floorId: 1,
             }).catch((err: any) => console.warn('[Geofencing] Return-to-base dispatch failed:', err));
           });
@@ -174,8 +174,12 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
         ?? field<string>(payload, 'currentWaypoint', 'CurrentWaypoint');
       // Điểm đến nghiệp vụ là kệ; "Waypoint" chỉ là tên kỹ thuật của tọa độ ROS.
       const objectName = String(shelfName ?? waypointName ?? `Kệ tại node ${nodeId}`);
-      const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0);
-      const directPlaylist = field<any[]>(payload, 'playlist', 'Playlist') ?? [];
+      const dwellTimeSeconds = Number(field(payload, 'dwellTimeSeconds', 'DwellTimeSeconds')
+        ?? field(missionWaypoint, 'dwellTimeSeconds', 'DwellTimeSeconds')
+        ?? 0);
+      const directPlaylist = field<any[]>(missionWaypoint, 'playlist', 'Playlist')
+        ?? field<any[]>(payload, 'playlist', 'Playlist')
+        ?? [];
 
       setCurrentZone({
         robotCode: incomingRobot,
@@ -191,9 +195,14 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
         setLoadingPlaylist(true);
         try {
           let playlist = normalizePlaylist(directPlaylist);
-          const directPlaylistHasIdentity = playlist.length > 0
-            && playlist.every(item => item.adCampaignId > 0 && item.sponsoredId > 0 && item.productId > 0);
-          if (!directPlaylistHasIdentity && nodeId > 0)
+          // Nếu đã có playlist từ waypoint của nhiệm vụ (Backend đã tính toán chính xác theo Chiến dịch & Kệ)
+          if (playlist.length > 0) {
+            if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist(playlist);
+            return;
+          }
+
+          // Fallback nếu chạy tự do không qua nhiệm vụ điều phối
+          if (nodeId > 0)
             playlist = normalizePlaylist((await AdService.getPlaylistForNode(ROBOT_ID, nodeId)).playlist ?? []);
           if (playlist.length === 0 && zoneId > 0)
             playlist = normalizePlaylist((await AdService.getZonePlaylist(ROBOT_ID, zoneId)).playlist ?? []);
@@ -201,7 +210,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
           if (playlist.length === 0) console.warn(`[Geofencing] Node ${nodeId} không có playlist thật; không phát quảng cáo.`);
         } catch (error) {
           console.warn('[Geofencing] Không tải được playlist thật:', error);
-          if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist([]);
+          if (handledArrivalRef.current === arrivalKey) setCurrentPlaylist(normalizePlaylist(directPlaylist));
         } finally {
           if (handledArrivalRef.current === arrivalKey) setLoadingPlaylist(false);
         }
