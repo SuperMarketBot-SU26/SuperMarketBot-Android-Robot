@@ -10,6 +10,7 @@ import React, {
 import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
+import { RobotControlService } from '../services/RobotControlService';
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
@@ -138,6 +139,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   const [mission, setMission] = useState<RobotMission | null>(null);
   const [status, setStatus] = useState<MissionStatus>('DISPATCHED');
   const [activeWaypoint, setActiveWaypoint] = useState<MissionWaypoint | null>(null);
+  const [activeWaypointIndex, setActiveWaypointIndex] = useState<number>(-1);
   const [activePlaylist, setActivePlaylist] = useState<PlaylistItem[]>([]);
   const [pendingScans, setPendingScans] = useState(0);
   const [completedScans, setCompletedScans] = useState(0);
@@ -145,6 +147,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const [cameraMounted, setCameraMounted] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [isAligning, setIsAligning] = useState(false);
 
   const missionRef = useRef<RobotMission | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
@@ -248,6 +251,56 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       return;
     }
 
+    setIsAligning(true);
+    Speech.speak('Đang căn chỉnh góc camera', { language: 'vi-VN', rate: 0.9 });
+    for (let alignAttempt = 0; alignAttempt < 3; alignAttempt++) {
+      try {
+        const previewPicture = await cameraRef.current.takePictureAsync({ quality: 0.3, skipProcessing: false });
+        if (!previewPicture?.uri) break;
+
+        const previewResized = await manipulateAsync(
+          previewPicture.uri,
+          [{ resize: { width: 640 } }],
+          { compress: 0.5, format: SaveFormat.JPEG },
+        );
+
+        const alignForm = new FormData();
+        alignForm.append('image', {
+          uri: previewResized.uri,
+          name: 'preview.jpg',
+          type: 'image/jpeg',
+        } as any);
+        alignForm.append('nodeId', String(waypoint.nodeId));
+
+        const alignResponse = await fetch(`${API_BASE}/api/v1/shelf-patrol/validate-framing`, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+          body: alignForm,
+        });
+
+        if (alignResponse.ok) {
+          const alignResult = await alignResponse.json();
+          if (alignResult.framingScore < 50 && alignResult.suggestion !== 'GOOD') {
+            const rot = alignResult.suggestion === 'ROTATE_LEFT' ? -0.3 : 0.3;
+            RobotControlService.sendMove(rot, 0, 0);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            RobotControlService.sendMove(0, 0, 0);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      } catch (e) {
+        console.warn('[Alignment] Failed', e);
+        break;
+      }
+    }
+    setIsAligning(false);
+    Speech.speak('Góc camera đã chuẩn, bắt đầu chụp', { language: 'vi-VN', rate: 0.9 });
+
     // Đợi 1.5s để camera ổn định, lấy nét và định tâm vào mốc '+'
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -290,20 +343,24 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       const waypoint = activeMission.waypoints[waypointIndex]
         ?? activeMission.waypoints.find((item) => item.nodeId === nodeId);
 
-      if (waypoint) setActiveWaypoint(waypoint);
+      if (waypoint) {
+        setActiveWaypoint(waypoint);
+        setActiveWaypointIndex(waypointIndex);
+      }
       if (nextStatus === 'ARRIVED' && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
         if (activeMission.flowType === 'patrol' && (role === 'photo' || role === 'scan')) {
-          Speech.speak(`Đang căn chỉnh và quét ${waypoint.shelfName || waypoint.nodeName}.`, { language: 'vi-VN', rate: 0.9 });
-          void captureAtWaypoint(activeMission, waypoint, waypointIndex);
+          Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn chụp thủ công khi góc quay đã chuẩn.`, { language: 'vi-VN', rate: 0.9 });
+          // void captureAtWaypoint(activeMission, waypoint, waypointIndex);
         }
         if (activeMission.flowType === 'ad' && role === 'ad') {
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
           const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
           setActivePlaylist(playlist);
           if (playlist.length > 0) {
-            const productName = playlist[0].productName || playlist[0].name || 'Sản phẩm';
-            Speech.speak(`Xin chào! Tôi đang ở ${waypoint.shelfName || 'Kệ hàng'}. Hôm nay xin giới thiệu với quý khách sản phẩm ${productName} đang có chương trình khuyến mãi!`, { language: 'vi-VN' });
+            const topProducts = playlist.slice(0, 2).map(p => p.productName || p.name).filter(Boolean);
+            const productNamesStr = topProducts.join(' và ');
+            Speech.speak(`Xin chào quý khách! Tôi đang ở ${waypoint.shelfName || 'Kệ hàng'}. Hôm nay xin giới thiệu sản phẩm ưu đãi đặc biệt: ${productNamesStr}!`, { language: 'vi-VN' });
           }
         }
       }
@@ -316,6 +373,10 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         setActivePlaylist([]);
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(nextStatus)) {
         setActivePlaylist([]);
+        if (nextStatus === 'COMPLETED' && activeMission.flowType === 'patrol') {
+          Speech.speak('Tuần tra hoàn tất. Robot đang quay về vị trí chờ.', { language: 'vi-VN', rate: 0.9 });
+          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [10023], floorId: 1 });
+        }
         if (nextStatus !== 'COMPLETED' || pendingScansRef.current === 0) {
           missionRef.current = null;
         }
@@ -358,7 +419,13 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         lastScan={lastScan}
         cameraRef={cameraRef}
         cameraPermission={permission?.granted === true}
+        isAligning={isAligning}
         onCameraReady={() => setCameraMounted(true)}
+        onCapture={() => {
+          if (mission && activeWaypoint && activeWaypointIndex >= 0) {
+            void captureAtWaypoint(mission, activeWaypoint, activeWaypointIndex);
+          }
+        }}
         onDismiss={() => {
           setMission(null);
           missionRef.current = null;
@@ -376,7 +443,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
 function MissionOverlay({
   mission, status, activeWaypoint, activePlaylist, pendingScans, completedScans, failedScans,
-  lastScan, cameraRef, cameraPermission, onCameraReady, onDismiss,
+  lastScan, cameraRef, cameraPermission, isAligning, onCameraReady, onDismiss,
 }: {
   mission: RobotMission | null;
   status: MissionStatus;
@@ -388,8 +455,10 @@ function MissionOverlay({
   lastScan: ScanResult | null;
   cameraRef: React.RefObject<CameraView | null>;
   cameraPermission: boolean;
+  isAligning: boolean;
   onCameraReady: () => void;
   onDismiss: () => void;
+  onCapture?: () => void;
 }) {
   const [zoom, setZoom] = useState(0); // 0 = 0.6x Ultra-wide / widest view on Redmi Note 13 Pro
 
@@ -481,7 +550,17 @@ function MissionOverlay({
             <Metric label="Đang xử lý" value={pendingScans} />
             <Metric label="Lỗi" value={failedScans} danger={failedScans > 0} />
           </View>
-          <Text style={styles.status}>{status === 'ARRIVED' ? 'Đang căn chỉnh và phân tích kệ…' : `Robot: ${status}`}</Text>
+          <Text style={styles.status}>{status === 'ARRIVED' ? 'Đã đến vị trí. Hãy nhấn nút chụp!' : `Robot: ${status}`}</Text>
+          
+          {status === 'ARRIVED' && (
+            <TouchableOpacity 
+              style={{ marginTop: 15, backgroundColor: '#00A550', padding: 16, borderRadius: 12, alignItems: 'center' }}
+              onPress={onCapture}
+            >
+              <Text style={{ color: 'white', fontWeight: '800', fontSize: 16 }}>📸 CHỤP ẢNH KỆ NÀY</Text>
+            </TouchableOpacity>
+          )}
+
           {lastScan && (
             <View style={[styles.result, lastScan.needsRestock && styles.resultWarning]}>
               <Text style={styles.resultTitle}>{lastScan.analysisStatus === 'Failed' ? 'Không phân tích được' : lastScan.needsRestock ? 'Cần nhập hàng' : 'Kệ đạt yêu cầu'}</Text>
