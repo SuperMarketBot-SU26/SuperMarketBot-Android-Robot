@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Speech from 'expo-speech';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useRouter } from 'expo-router';
 import {
   X, Plus, Scan, Camera, ArrowRight, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Navigation
 } from 'lucide-react-native';
@@ -13,6 +14,7 @@ import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, T
 import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { RobotControlService } from '../services/RobotControlService';
+import { AdInterruptionService } from '../services/AdInterruptionService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
@@ -28,18 +30,25 @@ interface AdMedia {
   contentText?: string | null;
 }
 
-interface PlaylistItem {
+export interface PlaylistItem {
   id?: number;
   sponsoredId?: number;
+  adCampaignId?: number;
+  productId?: number;
   name?: string;
   productName?: string;
+  campaignName?: string;
+  productPrice?: number;
+  unitPrice?: number;
+  promotionPrice?: number;
   durationSeconds?: number;
   displayDurationSeconds?: number;
   imageUrl?: string | null;
+  description?: string | null;
   mediaContents?: AdMedia[];
 }
 
-interface MissionWaypoint {
+export interface MissionWaypoint {
   nodeId: number;
   nodeName: string;
   nodeRole?: string | null;
@@ -47,6 +56,7 @@ interface MissionWaypoint {
   aisleName?: string | null;
   shelfName?: string | null;
   playlist?: PlaylistItem[];
+  transitTtsMessage?: string | null;
 }
 
 interface RobotMission {
@@ -87,12 +97,16 @@ interface ScanResult {
 interface RuntimeContextValue {
   mission: RobotMission | null;
   status: MissionStatus;
+  activeWaypoint: MissionWaypoint | null;
+  activeWaypointIndex: number;
+  activePlaylist: PlaylistItem[];
   pendingScans: number;
   completedScans: number;
   failedScans: number;
   lastScan: ScanResult | null;
   hubConnected: boolean;
   resumeToNextWaypoint: () => Promise<void>;
+  interruptAdForGuidance: (productItem: PlaylistItem) => Promise<void>;
 }
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
@@ -114,15 +128,37 @@ function normalizeMission(raw: any): RobotMission | null {
   if (!missionId || !robotCode || !['patrol', 'ad'].includes(flowType)) return null;
 
   const rawWaypoints = valueOf<any[]>(raw, 'waypoints', 'Waypoints') ?? [];
-  const waypoints: MissionWaypoint[] = rawWaypoints.map((item) => ({
-    nodeId: Number(valueOf(item, 'nodeId', 'NodeId') ?? 0),
-    nodeName: String(valueOf(item, 'nodeName', 'NodeName') ?? ''),
-    nodeRole: valueOf<string>(item, 'nodeRole', 'NodeRole'),
-    zoneName: valueOf<string>(item, 'zoneName', 'ZoneName'),
-    aisleName: valueOf<string>(item, 'aisleName', 'AisleName'),
-    shelfName: valueOf<string>(item, 'shelfName', 'ShelfName'),
-    playlist: valueOf<PlaylistItem[]>(item, 'playlist', 'Playlist') ?? [],
-  }));
+  const waypoints: MissionWaypoint[] = rawWaypoints.map((item) => {
+    const rawPlaylist = valueOf<any[]>(item, 'playlist', 'Playlist') ?? [];
+    const playlist: PlaylistItem[] = rawPlaylist.map((p) => ({
+      id: valueOf<number>(p, 'id', 'Id'),
+      sponsoredId: valueOf<number>(p, 'sponsoredId', 'SponsoredId'),
+      adCampaignId: valueOf<number>(p, 'adCampaignId', 'AdCampaignId'),
+      productId: valueOf<number>(p, 'productId', 'ProductId'),
+      name: valueOf<string>(p, 'name', 'Name'),
+      productName: valueOf<string>(p, 'productName', 'ProductName'),
+      campaignName: valueOf<string>(p, 'campaignName', 'CampaignName'),
+      productPrice: valueOf<number>(p, 'productPrice', 'ProductPrice'),
+      unitPrice: valueOf<number>(p, 'unitPrice', 'UnitPrice'),
+      promotionPrice: valueOf<number>(p, 'promotionPrice', 'PromotionPrice'),
+      durationSeconds: valueOf<number>(p, 'durationSeconds', 'DurationSeconds'),
+      displayDurationSeconds: valueOf<number>(p, 'displayDurationSeconds', 'DisplayDurationSeconds'),
+      imageUrl: valueOf<string>(p, 'imageUrl', 'ImageUrl'),
+      description: valueOf<string>(p, 'description', 'Description'),
+      mediaContents: valueOf<AdMedia[]>(p, 'mediaContents', 'MediaContents') ?? [],
+    }));
+
+    return {
+      nodeId: Number(valueOf(item, 'nodeId', 'NodeId') ?? 0),
+      nodeName: String(valueOf(item, 'nodeName', 'NodeName') ?? ''),
+      nodeRole: valueOf<string>(item, 'nodeRole', 'NodeRole'),
+      zoneName: valueOf<string>(item, 'zoneName', 'ZoneName'),
+      aisleName: valueOf<string>(item, 'aisleName', 'AisleName'),
+      shelfName: valueOf<string>(item, 'shelfName', 'ShelfName'),
+      transitTtsMessage: valueOf<string>(item, 'transitTtsMessage', 'TransitTtsMessage'),
+      playlist,
+    };
+  });
 
   return {
     missionId,
@@ -138,6 +174,7 @@ const matchRobot = (incoming?: string | null) => {
 };
 
 export function RobotMissionRuntimeProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const { isConnected: hubConnected, subscribeMissionAssigned, subscribeNavigationStatus } = useRobotRealtime();
   const [permission, requestPermission] = useCameraPermissions();
   const [mission, setMission] = useState<RobotMission | null>(null);
@@ -158,6 +195,76 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   const cameraRef = useRef<CameraView | null>(null);
   const capturedKeys = useRef<Set<string>>(new Set());
   const pendingScansRef = useRef(0);
+
+  const interruptAdForGuidance = useCallback(async (productItem: PlaylistItem) => {
+    const activeMission = missionRef.current;
+    if (!activeMission || activeMission.flowType !== 'ad') return;
+
+    console.log('[RobotMissionRuntime] Khách tương tác yêu cầu dẫn đường từ màn hình quảng cáo:', productItem);
+    const resolvedIndex = activeWaypointIndex >= 0
+      ? activeWaypointIndex
+      : (activeWaypoint ? activeMission.waypoints.findIndex((w) => w.nodeId === activeWaypoint.nodeId) : -1);
+    const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
+    const remainingWaypoints = activeMission.waypoints.slice(currentIdx + 1);
+    const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId);
+
+    // 1. Lưu lộ trình quảng cáo bị tạm dừng vào AdInterruptionService
+    AdInterruptionService.saveInterruptedMission({
+      originalMissionId: activeMission.missionId,
+      robotCode: ROBOT_CODE,
+      remainingNodeIds,
+      floorId: 1,
+      campaignId: (productItem as any).adCampaignId ?? null,
+      interruptedAtWaypointIndex: currentIdx,
+      totalWaypoints: activeMission.waypoints.length,
+      productName: productItem.productName || productItem.name,
+      shelfName: activeWaypoint?.shelfName ?? undefined,
+      savedTimestamp: Date.now(),
+    });
+
+    // 2. Hủy mission ad hiện tại trên Backend để giải phóng trạng thái robot
+    await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Customer requested guidance for advertised product')}`, {
+      method: 'POST',
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    }).catch(() => undefined);
+
+    // 3. Tắt màn hình quảng cáo và dọn dẹp state ad
+    setActivePlaylist([]);
+    setMission(null);
+    missionRef.current = null;
+
+    // 4. Phát giọng nói chào đón và xác nhận dẫn đường
+    const pName = productItem.productName || productItem.name || 'sản phẩm';
+    const shelfLabel = activeWaypoint?.shelfName || 'kệ hàng';
+    Speech.speak(`Dạ vâng! Robot sẽ chuyển sang chế độ dẫn đường đến quầy ${shelfLabel} cho quý khách. Xin mời quý khách đi theo tôi!`, {
+      language: 'vi-VN',
+      rate: 0.9,
+    });
+
+    // 5. Phát lệnh dẫn đường (flowType: 'guide') tới sản phẩm
+    const pId = productItem.productId || productItem.id || 0;
+    if (pId > 0) {
+      try {
+        await RobotControlService.dispatchAutonomous({
+          robotCode: ROBOT_CODE,
+          flowType: 'guide',
+          productId: pId,
+          productIds: [pId],
+          floorId: 1,
+        });
+        console.log(`[RobotMissionRuntime] Đã dispatch autonomous guide cho productId=${pId}`);
+      } catch (err) {
+        console.warn('[RobotMissionRuntime] Dispatch autonomous guide thất bại:', err);
+      }
+    }
+
+    // 6. Điều hướng giao diện sang CartGuideMapScreen
+    try {
+      router.push('/cart-guide-map' as any);
+    } catch (navErr) {
+      console.warn('[RobotMissionRuntime] router.push(/cart-guide-map) warning:', navErr);
+    }
+  }, [activeWaypoint, activeWaypointIndex, router]);
 
   useEffect(() => {
     pendingScansRef.current = pendingScans;
@@ -374,12 +481,14 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
       const waypointIndex = Number(valueOf(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
       const nodeId = Number(valueOf(payload, 'nodeId', 'NodeId') ?? -1);
-      const waypoint = activeMission.waypoints[waypointIndex]
-        ?? activeMission.waypoints.find((item) => item.nodeId === nodeId);
+      const matchedIdx = waypointIndex >= 0
+        ? waypointIndex
+        : activeMission.waypoints.findIndex((item) => item.nodeId === nodeId);
+      const waypoint = activeMission.waypoints[matchedIdx];
 
       if (waypoint) {
         setActiveWaypoint(waypoint);
-        setActiveWaypointIndex(waypointIndex);
+        setActiveWaypointIndex(matchedIdx);
       }
       if (nextStatus === 'ARRIVED' && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
@@ -390,12 +499,34 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
           const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
           setActivePlaylist(playlist);
+
+          // Phát thông báo bằng giọng nói chào khách, giới thiệu sản phẩm khuyến mãi và mời tương tác
+          const firstItem = playlist[0];
+          const shelfLabel = waypoint.shelfName || waypoint.nodeName || 'kệ hàng';
+          if (firstItem) {
+            const pName = firstItem.productName || firstItem.name || 'sản phẩm';
+            const price = firstItem.productPrice ?? firstItem.unitPrice ?? 0;
+            const priceMsg = price > 0 ? ` với giá ưu đãi chỉ ${price.toLocaleString('vi-VN')} đồng.` : '.';
+            Speech.speak(
+              `Xin chào quý khách! Tại quầy ${shelfLabel}, siêu thị đang giới thiệu ${pName}${priceMsg} Quý khách có thể chạm vào màn hình để tôi dẫn đường mua sắm nhé!`,
+              { language: 'vi-VN', rate: 0.9 }
+            );
+          } else {
+            Speech.speak(
+              `Chào mừng quý khách đến quầy ${shelfLabel}! Mời quý khách xem các chương trình ưu đãi hôm nay.`,
+              { language: 'vi-VN', rate: 0.9 }
+            );
+          }
         }
       }
 
-      if (['MOVING', 'NAVIGATING'].includes(nextStatus) && prevStatus === 'ARRIVED' && activeMission.flowType === 'ad') {
-        const nextWaypoint = updatedMission.waypoints.find(w => w.nodeId !== waypoint?.nodeId) || { shelfName: 'Kệ tiếp theo' };
-        Speech.speak(`Cảm ơn quý khách. Tôi sẽ tiếp tục di chuyển sang ${nextWaypoint.shelfName || 'Kệ tiếp theo'}.`, { language: 'vi-VN' });
+      if (['MOVING', 'NAVIGATING'].includes(nextStatus)) {
+        if (prevStatus === 'ARRIVED' && activeMission.flowType === 'ad') {
+          const nextWaypoint = updatedMission.waypoints.find(w => w.nodeId !== waypoint?.nodeId) || { shelfName: 'Kệ tiếp theo' };
+          Speech.speak(`Cảm ơn quý khách. Tôi sẽ tiếp tục di chuyển sang ${nextWaypoint.shelfName || 'Kệ tiếp theo'}.`, { language: 'vi-VN', rate: 0.9 });
+        } else if (waypoint?.transitTtsMessage) {
+          Speech.speak(waypoint.transitTtsMessage, { language: 'vi-VN', rate: 0.9 });
+        }
       }
       if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus)) {
         setActivePlaylist([]);
@@ -405,7 +536,11 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         setActivePlaylist([]);
         setLastScan(null);
         if (nextStatus === 'CANCELLED') {
-          Speech.speak('Đã dừng nhiệm vụ.', { language: 'vi-VN', rate: 0.9 });
+          const cancelReason = String(valueOf(payload, 'error', 'Error') ?? valueOf(payload, 'reason', 'Reason') ?? '');
+          const isInterruptedForGuide = AdInterruptionService.hasInterruptedMission() || cancelReason.toLowerCase().includes('guidance');
+          if (!isInterruptedForGuide) {
+            Speech.speak('Đã dừng nhiệm vụ.', { language: 'vi-VN', rate: 0.9 });
+          }
           setMission(null);
           missionRef.current = null;
         }
@@ -446,8 +581,32 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   }, [appState, permission?.granted]);
 
   const value = useMemo<RuntimeContextValue>(() => ({
-    mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected, resumeToNextWaypoint,
-  }), [mission, status, pendingScans, completedScans, failedScans, lastScan, hubConnected, resumeToNextWaypoint]);
+    mission,
+    status,
+    activeWaypoint,
+    activeWaypointIndex,
+    activePlaylist,
+    pendingScans,
+    completedScans,
+    failedScans,
+    lastScan,
+    hubConnected,
+    resumeToNextWaypoint,
+    interruptAdForGuidance,
+  }), [
+    mission,
+    status,
+    activeWaypoint,
+    activeWaypointIndex,
+    activePlaylist,
+    pendingScans,
+    completedScans,
+    failedScans,
+    lastScan,
+    hubConnected,
+    resumeToNextWaypoint,
+    interruptAdForGuidance,
+  ]);
 
   return (
     <RuntimeContext.Provider value={value}>
@@ -481,6 +640,10 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         status={status}
         activeWaypoint={activeWaypoint}
         activePlaylist={activePlaylist}
+        onStartGuide={interruptAdForGuidance}
+        onDismiss={() => {
+          setActivePlaylist([]);
+        }}
       />
     </RuntimeContext.Provider>
   );

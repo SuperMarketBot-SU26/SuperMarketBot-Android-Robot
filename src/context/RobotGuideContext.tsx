@@ -2,6 +2,7 @@ import React, { createContext, ReactNode, useCallback, useContext, useEffect, us
 import * as Speech from 'expo-speech';
 import { RobotControlService } from '../services/RobotControlService';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
+import { AdInterruptionService } from '../services/AdInterruptionService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const RESPONSE_TIMEOUT_MS = 20_000;
@@ -400,6 +401,33 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         setMissionId(null);
         setStatus('COMPLETED');
         setError(null);
+
+        // Kiểm tra xem trước đó có lộ trình Quảng cáo đang bị tạm dừng hay không
+        if (AdInterruptionService.hasInterruptedMission()) {
+          const interrupted = AdInterruptionService.getInterruptedMission()!;
+          AdInterruptionService.clear();
+          console.log(`[RobotGuide] Phát hiện lộ trình quảng cáo đang chờ! Tiếp tục ${interrupted.remainingNodeIds.length} waypoint còn lại:`, interrupted.remainingNodeIds);
+
+          Speech.speak('Cảm ơn quý khách đã mua sắm! Robot xin phép tiếp tục hành trình quảng cáo.', {
+            language: 'vi-VN',
+            rate: 0.9,
+          });
+
+          try {
+            await RobotControlService.dispatchAutonomous({
+              robotCode: ROBOT_CODE,
+              flowType: 'ad',
+              nodeIds: interrupted.remainingNodeIds,
+              floorId: interrupted.floorId ?? 1,
+              campaignId: interrupted.campaignId,
+            });
+            console.log('[RobotGuide] Đã tự động khôi phục và tiếp tục lộ trình quảng cáo.');
+          } catch (err) {
+            console.warn('[RobotGuide] Khôi phục lộ trình quảng cáo thất bại:', err);
+          }
+          return;
+        }
+
         Speech.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Robot đang quay về vị trí chờ. Chúc quý khách mua sắm vui vẻ!', {
           language: 'vi-VN', rate: 0.9,
         });
@@ -459,6 +487,24 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       awaitingPickupRef.current = false;
       setAwaitingPickup(false);
       setStatus('CANCELLED');
+
+      // Nếu có ad mission bị hoãn, hỏi hoặc tự động resume
+      if (AdInterruptionService.hasInterruptedMission()) {
+        const interrupted = AdInterruptionService.getInterruptedMission()!;
+        AdInterruptionService.clear();
+        Speech.speak('Dẫn đường đã hủy. Robot xin phép tiếp tục hành trình quảng cáo.', { language: 'vi-VN', rate: 0.9 });
+        try {
+          await RobotControlService.dispatchAutonomous({
+            robotCode: ROBOT_CODE,
+            flowType: 'ad',
+            nodeIds: interrupted.remainingNodeIds,
+            floorId: interrupted.floorId ?? 1,
+            campaignId: interrupted.campaignId,
+          });
+        } catch (err) {
+          console.warn('[RobotGuide] Resume ad mission on cancel warning:', err);
+        }
+      }
     }
   }, [clearTimeoutGuard]);
 

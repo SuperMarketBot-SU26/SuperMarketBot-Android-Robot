@@ -59,10 +59,11 @@ export default function CartGuideMapScreen() {
   const isFinalStop = totalStops > 0 && currentWaypointIndex >= totalStops - 1;
 
   React.useEffect(() => {
-    if (status === 'COMPLETED') {
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      const timeout = status === 'CANCELLED' ? 1500 : 3500;
       const timer = setTimeout(() => {
         router.replace('/kiosk' as any);
-      }, 5000);
+      }, timeout);
       return () => clearTimeout(timer);
     }
   }, [status, router]);
@@ -84,7 +85,10 @@ export default function CartGuideMapScreen() {
         {
           text: 'Dừng dẫn đường',
           style: 'destructive',
-          onPress: () => cancelGuide().catch(() => undefined),
+          onPress: async () => {
+            await cancelGuide().catch(() => undefined);
+            router.replace('/kiosk' as any);
+          },
         },
       ],
     );
@@ -195,7 +199,7 @@ export default function CartGuideMapScreen() {
               <Sparkles size={20} color="#059669" />
               <View style={{ flex: 1, gap: 10 }}>
                 <Text style={styles.completedBoxText}>
-                  Robot đang tự động quay về trạm chờ (Waypoint 7). Cảm ơn quý khách đã mua sắm!
+                  Robot đã hoàn thành dẫn đường và đang tiếp tục lộ trình hoạt động. Cảm ơn quý khách đã mua sắm!
                 </Text>
                 <TouchableOpacity
                   style={{

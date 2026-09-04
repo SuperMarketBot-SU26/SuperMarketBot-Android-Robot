@@ -178,6 +178,7 @@ class RobotControlServiceClass {
     zoneId?: number;
     nodeIds?: number[];
     robotRouteId?: number;
+    campaignId?: number | null;
     fullZoneMap?: boolean;
     floorId?: number;
     startNodeId?: number;
@@ -204,6 +205,7 @@ class RobotControlServiceClass {
           zoneId: payload.zoneId,
           nodeIds: payload.nodeIds,
           robotRouteId: payload.robotRouteId,
+          campaignId: payload.campaignId,
           fullZoneMap: payload.fullZoneMap,
           floorId: payload.floorId,
           startNodeId: payload.startNodeId,
