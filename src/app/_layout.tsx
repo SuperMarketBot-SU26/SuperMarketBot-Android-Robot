@@ -10,10 +10,23 @@ import { RouteProvider } from '../context/RouteContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { GeofencingProvider } from '../context/GeofencingContext';
 import { RobotGuideProvider, useRobotGuide } from '../context/RobotGuideContext';
-import { RobotMissionRuntimeProvider } from '../context/RobotMissionRuntimeContext';
+import { RobotMissionRuntimeProvider, useRobotMissionRuntime } from '../context/RobotMissionRuntimeContext';
 import { RobotRealtimeProvider } from '../context/RobotRealtimeContext';
 import ZoneAdOverlay from '../components/ui/ZoneAdOverlay';
 import { useKeepAwake } from 'expo-keep-awake';
+
+/**
+ * AdAwareZoneOverlay — Wrapper bọc ZoneAdOverlay để tránh hiển thị đồng thời
+ * với AdMissionOverlay khi robot đang chạy mission flowType='ad'.
+ * Khi RobotMissionRuntimeContext có mission ad đang active → ẩn ZoneAdOverlay
+ * (AdMissionOverlay đã đảm nhận việc hiển thị quảng cáo và tương tác khách hàng).
+ */
+function AdAwareZoneOverlay() {
+  const { mission } = useRobotMissionRuntime();
+  // Nếu robot đang chạy ad mission thật → nhường cho AdMissionOverlay hiển thị
+  if (mission?.flowType === 'ad') return null;
+  return <ZoneAdOverlay />;
+}
 
 function RootLayoutContent() {
   useKeepAwake();
@@ -28,7 +41,7 @@ function RootLayoutContent() {
       onTouchMove={resetTimer}
     >
       <Stack screenOptions={{ headerShown: false }} />
-      <ZoneAdOverlay />
+      <AdAwareZoneOverlay />
     </View>
   );
 }

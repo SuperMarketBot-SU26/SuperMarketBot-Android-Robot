@@ -60,9 +60,10 @@ export default function CartGuideMapScreen() {
 
   React.useEffect(() => {
     if (status === 'COMPLETED' || status === 'CANCELLED') {
+      // Sau khi hoàn thành hoặc huỷ dẫn đường, chờ một chút rồi về màn hình idle Kiosk (Welcome)
       const timeout = status === 'CANCELLED' ? 1500 : 3500;
       const timer = setTimeout(() => {
-        router.replace('/kiosk' as any);
+        router.replace('/' as any);
       }, timeout);
       return () => clearTimeout(timer);
     }
@@ -87,7 +88,7 @@ export default function CartGuideMapScreen() {
           style: 'destructive',
           onPress: async () => {
             await cancelGuide().catch(() => undefined);
-            router.replace('/kiosk' as any);
+            router.replace('/' as any);
           },
         },
       ],
