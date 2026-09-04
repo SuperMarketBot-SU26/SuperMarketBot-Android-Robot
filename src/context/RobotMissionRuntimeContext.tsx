@@ -65,6 +65,8 @@ interface RobotMission {
   flowType: MissionFlow;
   status: MissionStatus;
   waypoints: MissionWaypoint[];
+  floorId?: number;
+  campaignId?: number | null;
 }
 
 interface NavigationStatusPayload {
@@ -265,6 +267,51 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       console.warn('[RobotMissionRuntime] router.push(/cart-guide-map) warning:', navErr);
     }
   }, [activeWaypoint, activeWaypointIndex, router]);
+
+  const searchOtherProductFromAd = useCallback(async () => {
+    const activeMission = missionRef.current;
+    if (!activeMission) return;
+
+    // 1. Lưu lộ trình quảng cáo dở dang vào AdInterruptionService
+    const waypoints = activeMission.waypoints ?? [];
+    const remainingWaypoints = waypoints.slice(activeWaypointIndex + 1);
+    const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId || w.id).filter(Boolean);
+
+    AdInterruptionService.saveInterruptedMission({
+      originalMissionId: activeMission.missionId,
+      robotCode: ROBOT_CODE,
+      remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId || w.id).filter(Boolean),
+      floorId: activeMission.floorId ?? 1,
+      campaignId: activeMission.campaignId ?? null,
+      interruptedAtWaypointIndex: activeWaypointIndex,
+      totalWaypoints: waypoints.length,
+      savedTimestamp: Date.now(),
+    });
+
+    // 2. Hủy mission ad hiện tại trên Backend để giải phóng robot
+    await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Guest requested search for other products')}`, {
+      method: 'POST',
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    }).catch(() => undefined);
+
+    // 3. Đóng overlay quảng cáo
+    setActivePlaylist([]);
+    setMission(null);
+    missionRef.current = null;
+
+    // 4. Phát giọng nói hướng dẫn
+    Speech.speak('Quý khách muốn tìm sản phẩm nào? Xin mời chọn hoặc tìm kiếm trên màn hình để robot dẫn đường nhé!', {
+      language: 'vi-VN',
+      rate: 0.9,
+    });
+
+    // 5. Mở màn hình tìm kiếm Kiosk
+    try {
+      router.push('/product-search' as any);
+    } catch (err) {
+      console.warn('[RobotMissionRuntime] router.push(/product-search) warning:', err);
+    }
+  }, [activeWaypointIndex, router]);
 
   useEffect(() => {
     pendingScansRef.current = pendingScans;
@@ -641,6 +688,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         activeWaypoint={activeWaypoint}
         activePlaylist={activePlaylist}
         onStartGuide={interruptAdForGuidance}
+        onSearchOther={searchOtherProductFromAd}
         onDismiss={() => {
           setActivePlaylist([]);
         }}

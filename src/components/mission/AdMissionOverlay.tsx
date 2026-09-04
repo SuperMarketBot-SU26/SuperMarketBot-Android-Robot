@@ -22,6 +22,7 @@ import {
   Sparkles,
   Tag,
   ArrowRight,
+  Search,
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
@@ -34,6 +35,7 @@ export interface AdMissionOverlayProps {
   activeWaypoint: any;
   activePlaylist: any[];
   onStartGuide?: (item: any) => void | Promise<void>;
+  onSearchOther?: () => void | Promise<void>;
   onDismiss?: () => void;
 }
 
@@ -43,6 +45,7 @@ export function AdMissionOverlay({
   activeWaypoint,
   activePlaylist,
   onStartGuide,
+  onSearchOther,
   onDismiss,
 }: AdMissionOverlayProps) {
   if (!mission || mission.flowType !== 'ad') return null;
@@ -56,6 +59,7 @@ export function AdMissionOverlay({
           playlist={activePlaylist}
           activeWaypoint={activeWaypoint}
           onStartGuide={onStartGuide}
+          onSearchOther={onSearchOther}
           onDismiss={onDismiss}
         />
       </View>
@@ -67,11 +71,13 @@ function AdInteractiveCarousel({
   playlist,
   activeWaypoint,
   onStartGuide,
+  onSearchOther,
   onDismiss,
 }: {
   playlist: any[];
   activeWaypoint: any;
   onStartGuide?: (item: any) => void | Promise<void>;
+  onSearchOther?: () => void | Promise<void>;
   onDismiss?: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -116,6 +122,14 @@ function AdInteractiveCarousel({
     } catch (err) {
       console.warn('[AdMissionOverlay] handleGuide error:', err);
       setIsStartingGuide(false);
+    }
+  };
+
+  const handleSearchOther = async () => {
+    if (onSearchOther) {
+      await onSearchOther();
+    } else if (onDismiss) {
+      onDismiss();
     }
   };
 
@@ -294,6 +308,16 @@ function AdInteractiveCarousel({
 
           {/* SECONDARY BUTTONS ROW */}
           <View style={styles.secondaryRow}>
+            {/* Tìm món khác */}
+            <TouchableOpacity
+              style={styles.searchOtherButton}
+              onPress={handleSearchOther}
+              activeOpacity={0.75}
+            >
+              <Search size={16} color="#f59e0b" />
+              <Text style={styles.searchOtherButtonText}>Tìm món khác</Text>
+            </TouchableOpacity>
+
             {/* Thêm vào giỏ */}
             <TouchableOpacity
               style={[styles.cartButton, isAddingCart && styles.disabledButton]}
@@ -304,9 +328,9 @@ function AdInteractiveCarousel({
               {isAddingCart ? (
                 <ActivityIndicator color="#38bdf8" size="small" />
               ) : (
-                <ShoppingCart size={18} color="#38bdf8" />
+                <ShoppingCart size={16} color="#38bdf8" />
               )}
-              <Text style={styles.cartButtonText}>Thêm vào giỏ</Text>
+              <Text style={styles.cartButtonText}>Vào giỏ</Text>
             </TouchableOpacity>
 
             {/* Bỏ qua / Tiếp tục đi */}
@@ -315,7 +339,7 @@ function AdInteractiveCarousel({
               onPress={onDismiss}
               activeOpacity={0.75}
             >
-              <Text style={styles.skipButtonText}>Tiếp tục tuần tra QC ❯</Text>
+              <Text style={styles.skipButtonText}>Bỏ qua ❯</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -592,14 +616,31 @@ const styles = StyleSheet.create({
   secondaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  cartButton: {
-    flex: 1,
+  searchOtherButton: {
+    flex: 1.1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  searchOtherButtonText: {
+    color: '#fbbf24',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  cartButton: {
+    flex: 0.9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: 'rgba(56, 189, 248, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(56, 189, 248, 0.4)',
@@ -608,11 +649,11 @@ const styles = StyleSheet.create({
   },
   cartButtonText: {
     color: '#38bdf8',
-    fontSize: 15,
+    fontSize: 13.5,
     fontWeight: '700',
   },
   skipButton: {
-    flex: 1,
+    flex: 0.9,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
@@ -621,7 +662,7 @@ const styles = StyleSheet.create({
   },
   skipButtonText: {
     color: '#cbd5e1',
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '600',
   },
 });

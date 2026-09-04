@@ -58,6 +58,8 @@ export default function CartGuideMapScreen() {
   const totalStops = destinations.length;
   const isFinalStop = totalStops > 0 && currentWaypointIndex >= totalStops - 1;
 
+  const [autoCountdown, setAutoCountdown] = React.useState<number | null>(null);
+
   React.useEffect(() => {
     if (status === 'COMPLETED' || status === 'CANCELLED') {
       // Sau khi hoàn thành hoặc huỷ dẫn đường, chờ một chút rồi về màn hình idle Kiosk (Welcome)
@@ -68,6 +70,32 @@ export default function CartGuideMapScreen() {
       return () => clearTimeout(timer);
     }
   }, [status, router]);
+
+  // Bộ đếm ngược 30 giây tự động hoàn tất nếu khách lấy hàng xong và rời đi
+  React.useEffect(() => {
+    if (awaitingPickup) {
+      setAutoCountdown(30);
+      const interval = setInterval(() => {
+        setAutoCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setAutoCountdown(null);
+    }
+  }, [awaitingPickup]);
+
+  React.useEffect(() => {
+    if (autoCountdown === 0 && awaitingPickup) {
+      console.log('[CartGuideMap] Hết 30s tự động xác nhận lấy hàng và tiếp tục lộ trình');
+      handleConfirmPickup();
+    }
+  }, [autoCountdown, awaitingPickup]);
 
   const handleConfirmPickup = async () => {
     try {
@@ -227,8 +255,8 @@ export default function CartGuideMapScreen() {
               <CheckCircle2 size={20} color="#fff" />
               <Text style={styles.heroPickupButtonText}>
                 {isFinalStop
-                  ? 'Tôi đã lấy xong — Hoàn tất mua sắm ✓'
-                  : 'Tôi đã lấy sản phẩm — Đi kệ tiếp theo ➜'}
+                  ? `Tôi đã lấy xong — Hoàn tất mua sắm ✓${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`
+                  : `Tôi đã lấy sản phẩm — Đi kệ tiếp theo ➜${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`}
               </Text>
             </TouchableOpacity>
           )}

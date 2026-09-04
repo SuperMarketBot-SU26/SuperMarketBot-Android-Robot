@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet } from 'react-native';
 import { View, Text, XStack, YStack, Button, Image, Spinner, Paragraph } from 'tamagui';
-import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag } from 'lucide-react-native';
+import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedScrollHandler, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { ProductService, ProductDetailDto } from '../../services/ProductService';
 import { MealSuggestionService, MenuAssistantResponseDto } from '../../services/MealSuggestionService';
 import { CartService } from '../../services/CartService';
+import { RobotControlService } from '../../services/RobotControlService';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { height, width } = Dimensions.get('window');
@@ -32,6 +33,7 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState<string | null>(null);
   const [addingToCart, setAddingToCart] = useState(false);
+  const [guiding, setGuiding] = useState(false);
   const [quantity, setQuantity] = useState(1);
 
   const scrollY = useSharedValue(0);
@@ -103,6 +105,36 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
       showNotification({ title: 'LỖI', message: 'Không thể thêm vào giỏ hàng', type: 'error' });
     } finally {
       setAddingToCart(false);
+    }
+  };
+
+  const handleGuideToProduct = async () => {
+    if (guiding || !detail) return;
+    setGuiding(true);
+    try {
+      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy ${detail.productName}. Xin mời đi theo tôi!`);
+      showNotification({
+        title: '🤖 DẪN ĐƯỜNG',
+        message: `Đang khởi tạo lộ trình đến ${detail.productName}`,
+        type: 'info',
+      });
+      await RobotControlService.dispatchAutonomous({
+        robotCode: 'RB001',
+        flowType: 'guide',
+        productId: detail.productId,
+        productIds: [detail.productId],
+        floorId: 1,
+      });
+      router.push('/cart-guide-map' as any);
+    } catch (err: any) {
+      speak('Không thể khởi tạo dẫn đường');
+      showNotification({
+        title: 'LỖI',
+        message: err?.message || 'Lỗi phát lệnh dẫn đường',
+        type: 'error',
+      });
+    } finally {
+      setGuiding(false);
     }
   };
 
@@ -311,6 +343,24 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
                 {isOutOfStock ? 'Tạm hết hàng' : (isRecipe ? 'Mua tất cả nguyên liệu' : 'Thêm vào giỏ')}
               </Text>
             </Button>
+
+            {/* Guide Me Button (Robot AMR guidance for Kiosk) */}
+            {!isRecipe && !isOutOfStock && (
+              <Button
+                height={56}
+                borderRadius={30}
+                backgroundColor="#0284c7"
+                disabled={guiding}
+                icon={guiding ? <Spinner color="white" /> : <Navigation size={20} color="white" />}
+                onPress={handleGuideToProduct}
+                pressStyle={{ scale: 0.98, backgroundColor: '#0369a1' }}
+                paddingHorizontal="$3.5"
+              >
+                <Text color="white" fontSize={15} fontWeight="bold">
+                  {guiding ? 'Đang gọi xe...' : 'Dẫn đường'}
+                </Text>
+              </Button>
+            )}
           </XStack>
         </View>
       </Animated.View>
