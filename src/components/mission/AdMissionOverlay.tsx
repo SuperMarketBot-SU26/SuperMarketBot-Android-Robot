@@ -50,8 +50,14 @@ export function AdMissionOverlay({
   onDismiss,
 }: AdMissionOverlayProps) {
   if (!mission || mission.flowType !== 'ad') return null;
-  const isArrived = status === 'ARRIVED' || status === 'PLAYLIST_PLAYING';
-  if (!isArrived || !activePlaylist || activePlaylist.length === 0) return null;
+
+  // Trong Mode Tự Do (Free Roam): Cho phép phát quảng cáo và đọc liên tục kể cả khi robot đang di chuyển (MOVING / NAVIGATING)
+  const isFreeRoam = mission.isFreeRoam || mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit');
+  const shouldShow = isFreeRoam
+    ? ['NAVIGATING', 'MOVING', 'ARRIVED', 'PLAYLIST_PLAYING'].includes(status)
+    : (status === 'ARRIVED' || status === 'PLAYLIST_PLAYING');
+
+  if (!shouldShow || !activePlaylist || activePlaylist.length === 0) return null;
 
   return (
     <Modal visible animationType="fade" statusBarTranslucent transparent>
@@ -121,13 +127,19 @@ function AdInteractiveCarousel({
 
   // Auto rotate qua các sản phẩm trong playlist nếu có nhiều hơn 1 sản phẩm
   useEffect(() => {
-    if (total <= 1 || isStartingGuide) return;
-    const duration = (currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? 12) * 1000;
+    if (isStartingGuide) return;
+    const rawSec = currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? 12;
+    const duration = (rawSec > 0 ? rawSec : 12) * 1000;
     const timer = setTimeout(() => {
-      setIndex((curr) => (curr + 1) % total);
+      if (total > 1) {
+        setIndex((curr) => (curr + 1) % total);
+      } else {
+        lastSpokenKeyRef.current = null;
+        setIndex((curr) => curr + 1);
+      }
       setCartSuccess(false);
       setCartNotice(null);
-    }, duration);
+    }, total > 1 ? duration : 20000);
     return () => clearTimeout(timer);
   }, [index, total, currentItem, isStartingGuide]);
 

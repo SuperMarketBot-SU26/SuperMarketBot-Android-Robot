@@ -53,6 +53,7 @@ export interface MissionWaypoint {
   nodeId: number;
   nodeName: string;
   nodeRole?: string | null;
+  dwellTimeSeconds?: number;
   zoneName?: string | null;
   aisleName?: string | null;
   shelfName?: string | null;
@@ -68,6 +69,8 @@ interface RobotMission {
   waypoints: MissionWaypoint[];
   floorId?: number;
   campaignId?: number | null;
+  isFreeRoam?: boolean;
+  adMode?: string;
 }
 
 interface NavigationStatusPayload {
@@ -131,6 +134,11 @@ function normalizeMission(raw: any): RobotMission | null {
   if (!missionId || !robotCode || !['patrol', 'ad'].includes(flowType)) return null;
 
   const rawWaypoints = valueOf<any[]>(raw, 'waypoints', 'Waypoints') ?? [];
+  const adMode = valueOf<string>(raw, 'adMode', 'AdMode');
+  const isFreeRoamExplicit = valueOf<boolean>(raw, 'isFreeRoam', 'IsFreeRoam');
+  const allDwellsZero = rawWaypoints.length > 0 && rawWaypoints.every((item) => Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0) === 0 || String(valueOf(item, 'nodeRole', 'NodeRole', 'role', 'Role') ?? '').toLowerCase() === 'transit');
+  const isFreeRoam = flowType === 'ad' && (adMode === 'freeroam' || isFreeRoamExplicit === true || allDwellsZero);
+
   const waypoints: MissionWaypoint[] = rawWaypoints.map((item) => {
     const rawPlaylist = valueOf<any[]>(item, 'playlist', 'Playlist') ?? [];
     const playlist: PlaylistItem[] = rawPlaylist.map((p) => ({
@@ -154,7 +162,8 @@ function normalizeMission(raw: any): RobotMission | null {
     return {
       nodeId: Number(valueOf(item, 'nodeId', 'NodeId') ?? 0),
       nodeName: String(valueOf(item, 'nodeName', 'NodeName') ?? ''),
-      nodeRole: valueOf<string>(item, 'nodeRole', 'NodeRole'),
+      nodeRole: valueOf<string>(item, 'nodeRole', 'NodeRole', 'role', 'Role'),
+      dwellTimeSeconds: Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0),
       zoneName: valueOf<string>(item, 'zoneName', 'ZoneName'),
       aisleName: valueOf<string>(item, 'aisleName', 'AisleName'),
       shelfName: valueOf<string>(item, 'shelfName', 'ShelfName'),
@@ -169,6 +178,8 @@ function normalizeMission(raw: any): RobotMission | null {
     flowType,
     status,
     waypoints,
+    isFreeRoam,
+    adMode: isFreeRoam ? 'freeroam' : 'shelf',
   };
 }
 
@@ -243,8 +254,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
     // 4. Phát giọng nói chào đón và xác nhận dẫn đường
     const pName = productItem.productName || productItem.name || 'sản phẩm';
-    const shelfLabel = activeWaypoint?.shelfName || 'kệ hàng';
-    Speech.speak(`Dạ vâng! Robot sẽ chuyển sang chế độ dẫn đường đến quầy ${shelfLabel} cho quý khách. Xin mời quý khách đi theo tôi!`, {
+    Speech.speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy bán ${pName}. Xin mời quý khách đi theo tôi!`, {
       language: 'vi-VN',
       rate: 0.9,
     });
@@ -334,7 +344,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   const acceptMission = useCallback((payload: any) => {
     const normalized = normalizeMission(payload);
     if (!normalized || !matchRobot(normalized.robotCode)) return;
-    console.log('[RobotMissionRuntime] Đã nhận nhiệm vụ:', normalized.missionId, normalized.flowType);
+    console.log('[RobotMissionRuntime] Đã nhận nhiệm vụ:', normalized.missionId, normalized.flowType, 'isFreeRoam:', normalized.isFreeRoam);
     missionRef.current = normalized;
     setMission(normalized);
     setStatus(normalized.status);
@@ -342,8 +352,23 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     setCompletedScans(0);
     setFailedScans(0);
     setLastScan(null);
-    setActivePlaylist([]);
     capturedKeys.current.clear();
+
+    if (normalized.flowType === 'ad') {
+      const initialPlaylist = normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? [];
+      if (normalized.isFreeRoam && initialPlaylist.length > 0) {
+        console.log('[RobotMissionRuntime] Kích hoạt phát quảng cáo tự do liên tục:', initialPlaylist.length, 'sản phẩm');
+        setActivePlaylist(initialPlaylist);
+        if (normalized.waypoints.length > 0) {
+          setActiveWaypoint(normalized.waypoints[0]);
+          setActiveWaypointIndex(0);
+        }
+      } else {
+        setActivePlaylist([]);
+      }
+    } else {
+      setActivePlaylist([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -549,20 +574,41 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn nút chụp ảnh để kiểm tra tồn kho.`, { language: 'vi-VN', rate: 0.9 });
         }
         if (activeMission.flowType === 'ad') {
+          const dwell = Number(valueOf(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? waypoint.dwellTimeSeconds ?? 0);
+          const isStopRole = role === 'ad' || role === 'stop';
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
           const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
-          if (playlist.length > 0) {
-            setActivePlaylist(playlist);
+
+          if (activeMission.isFreeRoam) {
+            // Trong Mode Tự Do: Robot lướt qua các kệ, nếu kệ có playlist riêng thì phát, nếu không giữ playlist chung
+            if (playlist.length > 0) {
+              setActivePlaylist(playlist);
+            }
+          } else if (isStopRole && dwell > 0) {
+            // Mode Theo Kệ: Dừng tại kệ đọc quảng cáo
+            if (playlist.length > 0) {
+              setActivePlaylist(playlist);
+            }
           }
-          // Giọng đọc quảng cáo được giao toàn quyền cho AdInteractiveCarousel phát đồng bộ theo từng slide
         }
       }
 
       if (['MOVING', 'NAVIGATING'].includes(nextStatus)) {
-        // Tắt câu nhắc di chuyển gây lặp tiếng theo yêu cầu người dùng
+        if (activeMission.flowType === 'ad' && activeMission.isFreeRoam) {
+          // Trong Mode Tự Do: Đảm bảo playlist luôn sẵn sàng khi robot di chuyển
+          const fallback = waypoint?.playlist?.length
+            ? waypoint.playlist
+            : activeMission.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? [];
+          if (fallback.length > 0) {
+            setActivePlaylist((prev) => (prev.length > 0 ? prev : fallback));
+          }
+        }
       }
       if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus)) {
-        setActivePlaylist([]);
+        // Chỉ dọn dẹp playlist khi KHÔNG PHẢI chế độ quảng cáo tự do
+        if (!(activeMission.flowType === 'ad' && activeMission.isFreeRoam)) {
+          setActivePlaylist([]);
+        }
         setLastScan(null);
       }
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(nextStatus)) {
