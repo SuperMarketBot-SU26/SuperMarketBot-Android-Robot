@@ -99,12 +99,24 @@ export default function MemberCartScreen() {
       </XStack>
 
       {/* OVER BUDGET WARNING */}
-      {isOverBudget && (
+      {isOverBudget && !cart?.alertMessage && (
         <Animated.View entering={FadeInDown}>
           <XStack backgroundColor="#fff1f2" padding="$4" alignItems="center" gap="$3" borderBottomWidth={1} borderBottomColor="#ffe4e6">
             <Info size={20} color="#e11d48" />
             <Text color="#e11d48" fontSize={14} flex={1} fontWeight="600">
               Cảnh báo: Bạn đã vượt quá ngân sách mua sắm dự kiến ({(Math.max(0, currentSpending - budget)).toLocaleString('vi-VN')}đ).
+            </Text>
+          </XStack>
+        </Animated.View>
+      )}
+
+      {/* BACKEND ALERT MESSAGE (ALLERGY, OVER BUDGET, ETC) */}
+      {!!cart?.alertMessage && (
+        <Animated.View entering={FadeInDown}>
+          <XStack backgroundColor="#fef3c7" padding="$4" alignItems="center" gap="$3" borderBottomWidth={1} borderBottomColor="#fde68a">
+            <Info size={20} color="#b45309" />
+            <Text color="#92400e" fontSize={14} flex={1} fontWeight="700">
+              {cart.alertMessage}
             </Text>
           </XStack>
         </Animated.View>
@@ -197,7 +209,7 @@ export default function MemberCartScreen() {
           <YStack gap="$4">
             {cart.items.map((item, index) => (
               <Animated.View key={`cart-item-${item.productId}-${index}`} entering={FadeInUp.delay(index * 50).duration(400)}>
-                <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor="#f0f0f0" padding="$3" onPress={() => router.push(`/product/${item.productId}?isRecipe=false` as any)} pressStyle={{ scale: 0.98 }}>
+                <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor={item.alertType === 'Allergy' ? '#ef4444' : item.alertType === 'Avoid' ? '#f59e0b' : '#f0f0f0'} padding="$3" onPress={() => router.push(`/product/${item.productId}?isRecipe=false` as any)} pressStyle={{ scale: 0.98 }}>
                   <XStack gap="$3" alignItems="center">
                     <Image 
                       src={item.imageUrl || "https://via.placeholder.com/150"} 
@@ -213,6 +225,13 @@ export default function MemberCartScreen() {
                       <Text fontSize={13} color="$textSecondary">
                         Đơn giá: {(item?.unitPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>
+                      {item.alertType && (
+                        <View backgroundColor={item.alertType === 'Allergy' ? '#fef2f2' : '#fffbeb'} paddingHorizontal="$2" paddingVertical="$1" borderRadius={6} alignSelf="flex-start" marginTop="$1">
+                          <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={10} fontWeight="bold">
+                            {item.alertType === 'Allergy' ? 'CẢNH BÁO DỊ ỨNG' : 'CẦN TRÁNH'}
+                          </Text>
+                        </View>
+                      )}
                       <XStack alignItems="center" gap="$3" marginTop="$1">
                         <Button
                           size="$2"
@@ -244,6 +263,12 @@ export default function MemberCartScreen() {
                       </Text>
                     </YStack>
                   </XStack>
+                  
+                  {item.alertMessage && (
+                    <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={12} marginTop="$2" fontWeight="600">
+                      {item.alertMessage}
+                    </Text>
+                  )}
                 </Card>
               </Animated.View>
             ))}

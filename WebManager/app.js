@@ -754,7 +754,7 @@ propType.addEventListener('input', (e) => {
     }
 });
 
-let BASE_URL = localStorage.getItem('smb_backend_url') || 'https://interiorly-pinnatisect-adalyn.ngrok-free.dev';
+let BASE_URL = localStorage.getItem('smb_backend_url') || 'https://semiyearly-deloise-unsourly.ngrok-free.dev';
 let ROBOT_IP = localStorage.getItem('smb_robot_ip') || '192.168.4.1';
 
 document.getElementById('btnSaveMap').addEventListener('click', async () => {

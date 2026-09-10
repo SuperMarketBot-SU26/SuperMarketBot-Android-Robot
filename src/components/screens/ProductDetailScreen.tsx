@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { View, Text, XStack, YStack, Button, Image, Spinner, Paragraph } from 'tamagui';
 import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +30,7 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
 
   const [detail, setDetail] = useState<ProductDetailDto | null>(null);
   const [recipeDetail, setRecipeDetail] = useState<MenuAssistantResponseDto | null>(null);
+  const [alternatives, setAlternatives] = useState<ProductDetailDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState<string | null>(null);
   const [addingToCart, setAddingToCart] = useState(false);
@@ -73,6 +74,10 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
       setDetail(data);
       setLoading(false);
       if (data) {
+        if (data.status === 'OutOfStock') {
+          const altData = await ProductService.getAlternatives(productId, member?.memberId);
+          setAlternatives(altData || []);
+        }
         speak(`Bạn đang xem ${data.productName}. Giá ${data.promotionPrice ? data.promotionPrice : data.unitPrice} đồng.`);
       }
     }
@@ -299,6 +304,45 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
                       <Text fontSize={15} fontWeight="bold" color="#00A550">{(ing.promotionPrice || ing.unitPrice).toLocaleString('vi-VN')}đ</Text>
                     </XStack>
                   ))}
+                </YStack>
+              )}
+
+              {/* Alternatives when Out of Stock */}
+              {isOutOfStock && alternatives.length > 0 && (
+                <YStack gap="$3" marginTop="$4">
+                  <Text fontSize={18} fontWeight="bold" color="#334155">Sản phẩm thay thế cùng loại</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <XStack gap="$4">
+                      {alternatives.map((alt) => (
+                        <TouchableOpacity 
+                          key={alt.productId} 
+                          onPress={() => router.replace({ pathname: '/product/[id]', params: { id: alt.productId } })}
+                        >
+                          <View 
+                            backgroundColor="#f8fafc" 
+                            borderRadius={12} 
+                            borderWidth={1} 
+                            borderColor="#e2e8f0" 
+                            padding="$3" 
+                            width={140}
+                          >
+                            <Image 
+                              src={(alt.imageUrl && typeof alt.imageUrl === 'string' && alt.imageUrl.startsWith('http')) ? alt.imageUrl : require('../../../assets/images/logocute.png')} 
+                              width={110} 
+                              height={110} 
+                              objectFit="cover" 
+                              borderRadius={8} 
+                              marginBottom="$2"
+                            />
+                            <Text fontSize={14} fontWeight="bold" color="#1e293b" numberOfLines={2}>{alt.productName}</Text>
+                            <Text fontSize={14} fontWeight="bold" color="#00A550" marginTop="$1">
+                              {alt.promotionPrice ? alt.promotionPrice.toLocaleString('vi-VN') : alt.unitPrice.toLocaleString('vi-VN')}đ
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </XStack>
+                  </ScrollView>
                 </YStack>
               )}
 

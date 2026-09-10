@@ -253,6 +253,20 @@ export default function MemberSearchScreen() {
               useAi: true,
               token: token
             });
+
+            // Nếu tìm kiếm cá nhân hóa không ra kết quả, kiểm tra xem có phải do bị lọc dị ứng không
+            if (!searchResponse.results || searchResponse.results.length === 0) {
+              const rawSearch = await SearchService.searchProducts(cleanQ);
+              if (rawSearch && rawSearch.length > 0) {
+                const targetProduct = rawSearch[0];
+                setAiExplanation(`⚠️ CẢNH BÁO DỊ ỨNG: Sản phẩm "${targetProduct.productName}" đã bị ẩn vì chứa thành phần dị ứng hoặc không phù hợp với chế độ ăn của bạn! Vui lòng nhờ nhân viên tư vấn sản phẩm thay thế.`);
+                if (!silent) speak(`Xin lỗi, sản phẩm ${targetProduct.productName} không phù hợp với chế độ ăn hoặc dị ứng của bạn nên đã bị hệ thống tự động ẩn đi để bảo vệ sức khỏe.`);
+                setResults([]);
+                setIsLoading(false);
+                return;
+              }
+            }
+
           } else {
             searchResponse = { results: await SearchService.searchProducts(cleanQ), aiExplanation: null, aiRanked: false };
           }
