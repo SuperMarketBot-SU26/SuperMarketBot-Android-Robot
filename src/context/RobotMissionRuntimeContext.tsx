@@ -15,6 +15,7 @@ import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { RobotControlService } from '../services/RobotControlService';
 import { AdInterruptionService } from '../services/AdInterruptionService';
+import { BatteryService } from '../services/BatteryService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
@@ -612,16 +613,34 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
   useEffect(() => {
     if (!API_BASE) return;
-    const report = () => fetch(`${API_BASE}/api/v1/robot-operations/devices/${ROBOT_CODE}/heartbeat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-      body: JSON.stringify({
-        cameraReady: permission?.granted === true,
-        adPlayerReady: true,
-        isForeground: appState === 'active',
-        appVersion: 'android-robot-1.0.0',
-      }),
-    }).catch(() => undefined);
+    const report = async () => {
+      try {
+        const bat = await BatteryService.getBatteryInfo();
+        // 1. Gửi Heartbeat
+        fetch(`${API_BASE}/api/v1/robot-operations/devices/${ROBOT_CODE}/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+          body: JSON.stringify({
+            cameraReady: permission?.granted === true,
+            adPlayerReady: true,
+            isForeground: appState === 'active',
+            appVersion: 'android-robot-1.0.0',
+            deviceBattery: bat.batteryPct,
+            isCharging: bat.isCharging,
+          }),
+        }).catch(() => undefined);
+
+        // 2. Cập nhật Device Battery lên Backend
+        fetch(`${API_BASE}/api/v1/robots/${ROBOT_CODE}/device-battery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+          body: JSON.stringify({
+            batteryPct: bat.batteryPct,
+            isCharging: bat.isCharging,
+          }),
+        }).catch(() => undefined);
+      } catch {}
+    };
     void report();
     const timer = setInterval(report, 10_000);
     return () => clearInterval(timer);
