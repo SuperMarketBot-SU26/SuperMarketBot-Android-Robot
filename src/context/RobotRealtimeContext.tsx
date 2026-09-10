@@ -91,6 +91,8 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     // navigationStatus làm nguồn sự thật.
     connection.on('zoneEntered', () => undefined);
     connection.on('robotLog', () => undefined);
+    connection.on('shelfReport', () => undefined);
+    connection.on('shelfreport', () => undefined);
     connection.onreconnecting(() => mounted && setConnected(false));
     connection.onreconnected(async () => {
       if (!mounted) return;

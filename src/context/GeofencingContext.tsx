@@ -109,7 +109,11 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       const role = String(field(payload, 'role', 'Role') ?? '').toLowerCase();
       const isRouteAd = Boolean(field(activeMissionRef.current, 'robotRouteId', 'RobotRouteId'));
 
-      if (incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase()
+      const isRobotMatch = incomingRobot.toUpperCase() === ROBOT_CODE.toUpperCase()
+        || (incomingRobot.toUpperCase() === 'RB001' && ROBOT_CODE.toUpperCase() === 'RB0001')
+        || (incomingRobot.toUpperCase() === 'RB0001' && ROBOT_CODE.toUpperCase() === 'RB001');
+
+      if (!isRobotMatch
         || !incomingMissionId || incomingMissionId !== activeMissionId
         || activeFlow !== 'ad') return;
 
@@ -155,7 +159,9 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
         }
       }
 
-      if (status !== 'ARRIVED' || role !== 'ad') return;
+      // Nếu robot không gửi role field, fallback theo flow type của mission
+      const isAdArrival = role === 'ad' || activeFlow === 'ad' || isRouteAd;
+      if (status !== 'ARRIVED' || !isAdArrival) return;
 
       const waypointIndex = Number(field(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
       const nodeId = Number(field(payload, 'nodeId', 'NodeId') ?? 0);
@@ -167,7 +173,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       const missionWaypoints = field<any[]>(activeMissionRef.current, 'waypoints', 'Waypoints') ?? [];
       const missionWaypoint = missionWaypoints.find((item, index) =>
         Number(field(item, 'nodeId', 'NodeId') ?? 0) === nodeId
-        || (nodeId <= 0 && index === waypointIndex));
+        || (index === waypointIndex));
       const zoneId = payloadZoneId || Number(field(missionWaypoint, 'zoneId', 'ZoneId') ?? 0);
       const shelfName = field<string>(missionWaypoint, 'shelfName', 'ShelfName');
       const waypointName = field<string>(missionWaypoint, 'nodeName', 'NodeName')
