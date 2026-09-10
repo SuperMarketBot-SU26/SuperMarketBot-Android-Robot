@@ -26,16 +26,10 @@ export default function PersonalizedProductsScreen() {
   // Helper cho hạng thành viên
   const getTierDetails = (level: string | null | undefined) => {
     switch (level?.toUpperCase()) {
-      case 'DIAMOND':
-        return { name: 'Hạng Kim Cương', color: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' };
-      case 'PLATINUM':
-        return { name: 'Hạng Bạch Kim', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' };
-      case 'GOLD':
-        return { name: 'Hạng Vàng', color: '#d97706', bg: '#fef6e0', border: '#fde8b7' };
-      case 'SILVER':
-        return { name: 'Hạng Bạc', color: '#6b7280', bg: '#f3f4f6', border: '#e5e7eb' };
+      case 'PREMIUM':
+        return { name: 'Thành viên Premium', color: '#d97706', bg: '#fef6e0', border: '#fde8b7' };
       default:
-        return { name: 'Hạng Đồng', color: '#92400e', bg: '#fffbeb', border: '#fef3c7' };
+        return { name: 'Thành viên Medium', color: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' };
     }
   };
 
@@ -75,22 +69,30 @@ export default function PersonalizedProductsScreen() {
       let mounted = true;
       setLoading(true);
 
-      speak(`Đang tải danh sách sản phẩm cá nhân hóa dành riêng cho ${tier.name.toLowerCase()} của bạn.`);
+      const level = member?.membershipLevel?.toUpperCase() || 'MEDIUM';
+      const isPremium = level === 'PREMIUM';
 
-      if (token) {
-        MemberService.getPersonalizedProducts(token)
-          .then((res) => {
-            if (mounted) {
-              setProducts(res || []);
-              setLoading(false);
-            }
-          })
-          .catch((err) => {
-            console.log('Lỗi lấy sản phẩm cá nhân hóa:', err);
-            if (mounted) setLoading(false);
-          });
-      } else {
+      if (!isPremium) {
+        speak(`Tính năng gợi ý cá nhân hóa bằng AI chỉ dành cho thành viên Premium trở lên. Vui lòng nâng cấp tài khoản trên ứng dụng điện thoại.`);
         if (mounted) setLoading(false);
+      } else {
+        speak(`Đang tải danh sách sản phẩm cá nhân hóa dành riêng cho ${tier.name.toLowerCase()} của bạn.`);
+
+        if (token) {
+          MemberService.getPersonalizedProducts(token)
+            .then((res) => {
+              if (mounted) {
+                setProducts(res || []);
+                setLoading(false);
+              }
+            })
+            .catch((err) => {
+              console.log('Lỗi lấy sản phẩm cá nhân hóa:', err);
+              if (mounted) setLoading(false);
+            });
+        } else {
+          if (mounted) setLoading(false);
+        }
       }
 
       // Auto sync cart
@@ -180,7 +182,19 @@ export default function PersonalizedProductsScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 90 }}
       >
         <YStack gap="$3">
-          {loading ? (
+          {(!member || member.membershipLevel?.toUpperCase() !== 'PREMIUM') ? (
+             <YStack padding="$8" alignItems="center" justifyContent="center" gap="$3" backgroundColor="white" borderRadius={20} paddingVertical="$10" borderWidth={1} borderColor="#e2e8f0" style={{ elevation: 2 }}>
+               <View backgroundColor="#f1f5f9" padding="$4" borderRadius={100} style={{ marginBottom: 8 }}>
+                 <Text fontSize={36}>🔒</Text>
+               </View>
+               <Text fontSize={18} fontWeight="bold" color="#334155" textAlign="center">
+                 Tính năng độc quyền
+               </Text>
+               <Text fontSize={14} color="#64748b" textAlign="center" paddingHorizontal="$2" lineHeight={22}>
+                 Gợi ý sản phẩm cá nhân hóa bằng AI chỉ dành cho thành viên hạng Premium trở lên. Vui lòng nâng cấp tài khoản để trải nghiệm!
+               </Text>
+             </YStack>
+          ) : loading ? (
             <YStack padding="$8" alignItems="center" justifyContent="center" gap="$3">
               <Spinner size="large" color="#00A550" />
               <Text fontSize={14} color="#666" fontStyle="italic">

@@ -8,6 +8,8 @@ export interface CartItemDto {
   unitPrice: number;
   totalPrice: number;
   imageUrl?: string;
+  alertType?: string;
+  alertMessage?: string;
 }
 
 export interface CartDto {

@@ -68,4 +68,20 @@ export class ProductService {
       return [];
     }
   }
+  static async getAlternatives(id: number | string, memberId?: number | string): Promise<ProductDetailDto[]> {
+    let url = `${BASE_URL}/api/Products/${id}/alternatives`;
+    if (memberId) {
+      url += `?memberId=${memberId}`;
+    }
+    try {
+      const response = await fetch(url, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (!response.ok) return [];
+      return await response.json();
+    } catch (error) {
+      console.error('[ProductService.getAlternatives] error:', error);
+      return [];
+    }
+  }
 }
