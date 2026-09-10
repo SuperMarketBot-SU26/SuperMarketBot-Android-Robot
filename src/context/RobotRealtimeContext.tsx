@@ -56,9 +56,17 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
 
     const joinAndRecover = async () => {
       await connection.invoke('JoinRobotGroup', ROBOT_CODE);
-      const response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
+      if (ROBOT_CODE === 'RB001') await connection.invoke('JoinRobotGroup', 'RB0001').catch(() => undefined);
+      else if (ROBOT_CODE === 'RB0001') await connection.invoke('JoinRobotGroup', 'RB001').catch(() => undefined);
+      let response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
         headers: { 'ngrok-skip-browser-warning': 'true' },
       });
+      if (!response.ok) {
+        const altCode = ROBOT_CODE === 'RB001' ? 'RB0001' : 'RB001';
+        response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${altCode}/active`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        }).catch(() => response);
+      }
       if (response.ok && mounted) {
         const mission = await response.json();
         activeMissionRef.current = mission;

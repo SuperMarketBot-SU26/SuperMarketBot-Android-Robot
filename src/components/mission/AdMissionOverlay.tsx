@@ -1,3 +1,4 @@
+import * as Speech from 'expo-speech';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Modal,
@@ -49,7 +50,7 @@ export function AdMissionOverlay({
   onDismiss,
 }: AdMissionOverlayProps) {
   if (!mission || mission.flowType !== 'ad') return null;
-  const isArrived = status === 'ARRIVED';
+  const isArrived = status === 'ARRIVED' || status === 'PLAYLIST_PLAYING';
   if (!isArrived || !activePlaylist || activePlaylist.length === 0) return null;
 
   return (
@@ -85,10 +86,38 @@ function AdInteractiveCarousel({
   const [isAddingCart, setIsAddingCart] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(false);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [bottomCardHeight, setBottomCardHeight] = useState(330);
   const { token } = useRobotAuth();
 
   const total = playlist.length;
   const currentItem = playlist[index % Math.max(total, 1)];
+  const lastSpokenKeyRef = useRef<string | null>(null);
+
+  // Đọc giọng nói đồng bộ chuẩn tự nhiên 1 lần duy nhất theo từng banner khi hiển thị
+  useEffect(() => {
+    if (!currentItem || isStartingGuide) return;
+    const adKey = `${currentItem.id || currentItem.productId || currentItem.sponsoredId || currentItem.name}-${index}`;
+    if (lastSpokenKeyRef.current === adKey) return;
+    lastSpokenKeyRef.current = adKey;
+
+    const rawPrice = currentItem.productPrice ?? currentItem.unitPrice ?? currentItem.promotionPrice ?? 0;
+    const numericPrice = Math.round(Number(rawPrice));
+    const priceText = numericPrice > 0 ? ` - Giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
+    const pName = currentItem.productName || currentItem.name || 'Sản phẩm';
+    const speechText = `${pName}${priceText} Quý khách có thể chạm vào màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`;
+
+    Speech.stop();
+    Speech.speak(speechText, {
+      language: 'vi-VN',
+      rate: 0.9,
+    });
+  }, [currentItem, index, isStartingGuide]);
+
+  useEffect(() => {
+    return () => {
+      Speech.stop();
+    };
+  }, []);
 
   // Auto rotate qua các sản phẩm trong playlist nếu có nhiều hơn 1 sản phẩm
   useEffect(() => {
@@ -177,11 +206,8 @@ function AdInteractiveCarousel({
 
   return (
     <View style={styles.container}>
-      {/* Visual background / media */}
-      <AdCreativeMedia type={type} url={mediaUrl} />
-
-      {/* Dark gradient shadow overlay */}
-      <View style={styles.backdropLayer} />
+      {/* Visual background & uncropped hero product showcase */}
+      <AdCreativeMedia type={type} url={mediaUrl} bottomSpace={bottomCardHeight} />
 
       {/* TOP HEADER */}
       <View style={styles.header}>
@@ -220,7 +246,15 @@ function AdInteractiveCarousel({
       )}
 
       {/* BOTTOM PRODUCT INFORMATION & INTERACTIVE ACTION CARD */}
-      <View style={styles.bottomCard}>
+      <View
+        style={styles.bottomCard}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 150) {
+            setBottomCardHeight(h);
+          }
+        }}
+      >
         {/* Pagination indicator */}
         {total > 1 && (
           <View style={styles.dotsRow}>
@@ -348,7 +382,15 @@ function AdInteractiveCarousel({
   );
 }
 
-function AdCreativeMedia({ type, url }: { type: string; url: string }) {
+function AdCreativeMedia({
+  type,
+  url,
+  bottomSpace = 330,
+}: {
+  type: string;
+  url: string;
+  bottomSpace?: number;
+}) {
   const isVideo = type.includes('VIDEO') || /\.(mp4|webm|mov)(\?|$)/i.test(url);
   const player = useVideoPlayer(isVideo && url ? url : null, (instance) => {
     instance.loop = true;
@@ -356,11 +398,40 @@ function AdCreativeMedia({ type, url }: { type: string; url: string }) {
   });
 
   if (isVideo && url) {
-    return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />;
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#020617' }]} />
+        <View style={[styles.mediaShowcaseContainer, { bottom: bottomSpace + 12 }]}>
+          <VideoView player={player} style={styles.showcaseMedia} contentFit="contain" nativeControls={false} />
+        </View>
+      </View>
+    );
   }
 
   if (url) {
-    return <Image source={{ uri: url }} style={StyleSheet.absoluteFill} contentFit="cover" />;
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        {/* Ambient blurred backdrop: fills screen and creates soft product color glow */}
+        <Image
+          source={{ uri: url }}
+          style={[StyleSheet.absoluteFill, { opacity: 0.3 }]}
+          contentFit="cover"
+          blurRadius={28}
+        />
+        {/* Soft vignette overlay for contrast */}
+        <View style={styles.ambientVignette} />
+
+        {/* Foreground hero product showcase: uncropped, perfectly proportioned */}
+        <View style={[styles.mediaShowcaseContainer, { bottom: bottomSpace + 12 }]}>
+          <Image
+            source={{ uri: url }}
+            style={styles.showcaseMedia}
+            contentFit="contain"
+            transition={250}
+          />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -437,6 +508,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  mediaShowcaseContainer: {
+    position: 'absolute',
+    top: 90,
+    left: 16,
+    right: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  showcaseMedia: {
+    width: '100%',
+    height: '100%',
+  },
+  ambientVignette: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(2, 6, 23, 0.55)',
+  },
   navLeft: {
     position: 'absolute',
     left: 16,
@@ -444,10 +532,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    zIndex: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   navRight: {
     position: 'absolute',
@@ -456,10 +546,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    zIndex: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   bottomCard: {
     position: 'absolute',

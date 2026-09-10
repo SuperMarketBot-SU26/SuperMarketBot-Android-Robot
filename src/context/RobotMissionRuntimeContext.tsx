@@ -173,7 +173,12 @@ function normalizeMission(raw: any): RobotMission | null {
 }
 
 const matchRobot = (incoming?: string | null) => {
-  return Boolean(incoming && incoming.toUpperCase() === ROBOT_CODE.toUpperCase());
+  if (!incoming) return false;
+  const inc = incoming.toUpperCase();
+  const cur = ROBOT_CODE.toUpperCase();
+  return inc === cur
+    || (inc === 'RB001' && cur === 'RB0001')
+    || (inc === 'RB0001' && cur === 'RB001');
 };
 
 export function RobotMissionRuntimeProvider({ children }: { children: ReactNode }) {
@@ -538,43 +543,23 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         setActiveWaypoint(waypoint);
         setActiveWaypointIndex(matchedIdx);
       }
-      if (nextStatus === 'ARRIVED' && waypoint) {
+      if (['ARRIVED', 'PLAYLIST_PLAYING'].includes(nextStatus) && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
         if (activeMission.flowType === 'patrol' && (role === 'photo' || role === 'scan')) {
           Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn nút chụp ảnh để kiểm tra tồn kho.`, { language: 'vi-VN', rate: 0.9 });
         }
-        if (activeMission.flowType === 'ad' && role === 'ad') {
+        if (activeMission.flowType === 'ad') {
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
           const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
-          setActivePlaylist(playlist);
-
-          // Phát thông báo bằng giọng nói chào khách, giới thiệu sản phẩm khuyến mãi và mời tương tác
-          const firstItem = playlist[0];
-          const shelfLabel = waypoint.shelfName || waypoint.nodeName || 'kệ hàng';
-          if (firstItem) {
-            const pName = firstItem.productName || firstItem.name || 'sản phẩm';
-            const price = firstItem.productPrice ?? firstItem.unitPrice ?? 0;
-            const priceMsg = price > 0 ? ` với giá ưu đãi chỉ ${price.toLocaleString('vi-VN')} đồng.` : '.';
-            Speech.speak(
-              `Xin chào quý khách! Tại quầy ${shelfLabel}, siêu thị đang giới thiệu ${pName}${priceMsg} Quý khách có thể chạm vào màn hình để tôi dẫn đường mua sắm nhé!`,
-              { language: 'vi-VN', rate: 0.9 }
-            );
-          } else {
-            Speech.speak(
-              `Chào mừng quý khách đến quầy ${shelfLabel}! Mời quý khách xem các chương trình ưu đãi hôm nay.`,
-              { language: 'vi-VN', rate: 0.9 }
-            );
+          if (playlist.length > 0) {
+            setActivePlaylist(playlist);
           }
+          // Giọng đọc quảng cáo được giao toàn quyền cho AdInteractiveCarousel phát đồng bộ theo từng slide
         }
       }
 
       if (['MOVING', 'NAVIGATING'].includes(nextStatus)) {
-        if (prevStatus === 'ARRIVED' && activeMission.flowType === 'ad') {
-          const nextWaypoint = updatedMission.waypoints.find(w => w.nodeId !== waypoint?.nodeId) || { shelfName: 'Kệ tiếp theo' };
-          Speech.speak(`Cảm ơn quý khách. Tôi sẽ tiếp tục di chuyển sang ${nextWaypoint.shelfName || 'Kệ tiếp theo'}.`, { language: 'vi-VN', rate: 0.9 });
-        } else if (waypoint?.transitTtsMessage) {
-          Speech.speak(waypoint.transitTtsMessage, { language: 'vi-VN', rate: 0.9 });
-        }
+        // Tắt câu nhắc di chuyển gây lặp tiếng theo yêu cầu người dùng
       }
       if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus)) {
         setActivePlaylist([]);
@@ -602,7 +587,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
             ? 'Tuần tra toàn bộ siêu thị hoàn tất. Robot đang quay về trạm sạc.'
             : 'Quảng cáo hoàn tất. Robot đang quay về trạm sạc.';
           Speech.speak(completionMsg, { language: 'vi-VN', rate: 0.9 });
-          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [10029], floorId: 1 });
+          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [8], floorId: 1 });
         }
         if (nextStatus !== 'COMPLETED' || pendingScansRef.current === 0) {
           missionRef.current = null;

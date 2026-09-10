@@ -47,13 +47,11 @@ function mediaForProduct(ad: AdPlaylistItemDto, type: 'VOICE_TEXT' | 'IMAGE') {
 }
 
 function buildSpeech(ad: AdPlaylistItemDto, index: number, total: number, location?: string) {
-  const voiceText = mediaForProduct(ad, 'VOICE_TEXT')?.contentText;
-  if (voiceText) return voiceText;
-  const zone = location ? ` tại ${location}` : '';
-  const price = ad.productPrice > 0
-    ? ` Giá chỉ ${ad.productPrice.toLocaleString('vi-VN')} đồng.`
-    : '';
-  return `Ưu đãi hôm nay: ${ad.productName}${zone}.${price} Chạm màn hình để xem chi tiết.`;
+  const rawPrice = ad.productPrice ?? (ad as any).unitPrice ?? (ad as any).promotionPrice ?? 0;
+  const numericPrice = Math.round(Number(rawPrice));
+  const priceText = numericPrice > 0 ? ` - Giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
+  const pName = ad.productName || (ad as any).name || 'Sản phẩm';
+  return `${pName}${priceText} Quý khách có thể chạm vào màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`;
 }
 
 export default function ZoneAdOverlay() {
@@ -422,7 +420,7 @@ export default function ZoneAdOverlay() {
             <Image
               source={{ uri: bannerImageUri }}
               style={styles.bannerImage}
-              contentFit="cover"
+              contentFit="contain"
               transition={300}
             />
 

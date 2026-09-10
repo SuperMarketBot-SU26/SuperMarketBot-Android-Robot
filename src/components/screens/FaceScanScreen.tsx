@@ -168,7 +168,6 @@ export default function FaceScanScreen() {
       const welcomeMsg = data.greeting || `Chào mừng ${data.token.fullName || 'bạn'} đến với Smart Market Bot!`;
       setGreeting(welcomeMsg);
       setScanStatus('success');
-      speak(welcomeMsg);
 
       // Soft white flash — nhẹ nhàng như AI scan
       flashOpacity.value = withSequence(
@@ -176,9 +175,21 @@ export default function FaceScanScreen() {
         withTiming(0, { duration: 650, easing: Easing.in(Easing.quad) }),
       );
 
-      setTimeout(() => {
+      // Chờ đọc xong toàn bộ lời chào mới chuyển trang (có fallback tối đa 7.5s phòng lỗi âm thanh)
+      let hasNavigated = false;
+      const doNavigate = () => {
+        if (hasNavigated) return;
+        hasNavigated = true;
         handleSuccessNavigation();
-      }, 1800);
+      };
+
+      const maxWaitTime = Math.max(4000, Math.min(welcomeMsg.length * 80, 7500));
+      const fallbackTimer = setTimeout(doNavigate, maxWaitTime);
+
+      speak(welcomeMsg, () => {
+        clearTimeout(fallbackTimer);
+        setTimeout(doNavigate, 400);
+      });
 
     } catch (error: any) {
       console.warn('[FaceScanScreen] Đã có lỗi xảy ra trong catch block:', error.message || error);

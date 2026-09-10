@@ -75,7 +75,7 @@ export function useRobotVoice() {
     stopGlobalVoice();
   };
 
-  const speak = async (text: string) => {
+  const speak = async (text: string, onDone?: () => void) => {
     // 1. Tăng counter định danh để hủy các yêu cầu cũ bất đồng bộ chưa hoàn thành
     const currentId = ++globalRequestCounter;
 
@@ -89,7 +89,7 @@ export function useRobotVoice() {
 
     if (!apiKey) {
       if (currentId !== globalRequestCounter) return;
-      speakFallback(text);
+      speakFallback(text, onDone);
       return;
     }
 
@@ -174,6 +174,7 @@ export function useRobotVoice() {
             if (globalActiveSound === sound) {
               globalActiveSound = null;
             }
+            onDone?.();
             setTimeout(() => {
               try {
                 sound.remove();
@@ -188,11 +189,11 @@ export function useRobotVoice() {
     } catch (error) {
       if (currentId !== globalRequestCounter) return;
       console.warn('FPT.AI TTS failed, falling back to local TTS:', error);
-      speakFallback(text);
+      speakFallback(text, onDone);
     }
   };
 
-  const speakFallback = async (text: string) => {
+  const speakFallback = async (text: string, onDone?: () => void) => {
     try {
       isSpeakingGlobal = true;
       setIsSpeaking(true);
@@ -234,11 +235,13 @@ export function useRobotVoice() {
           clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
+          onDone?.();
         },
         onError: (err) => {
           clearTimeout(fallbackTimer);
           isSpeakingGlobal = false;
           setIsSpeaking(false);
+          onDone?.();
           console.warn('Speech.speak onError:', err);
         },
         onStopped: () => {

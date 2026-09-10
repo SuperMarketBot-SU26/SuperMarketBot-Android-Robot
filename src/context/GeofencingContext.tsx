@@ -120,14 +120,14 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
         clearZone();
         activeMissionRef.current = null;
-        // Khi Ad flow hoàn tất, tự động quay về Trạm sạc (WP7 = Node 10029)
+        // Khi Ad flow hoàn tất, tự động quay về Trạm sạc (WP7 = Node 8)
         if (status === 'COMPLETED') {
-          console.log('[Geofencing] Ad flow COMPLETED — dispatching return to base (Node 10029).');
+          console.log('[Geofencing] Ad flow COMPLETED — dispatching return to base (Node 8).');
           import('../services/RobotControlService').then(({ RobotControlService }) => {
             RobotControlService.dispatchAutonomous({
               robotCode: ROBOT_CODE,
               flowType: 'return',
-              nodeIds: [10029],
+              nodeIds: [8],
               floorId: 1,
             }).catch((err: any) => console.warn('[Geofencing] Return-to-base dispatch failed:', err));
           });
@@ -160,8 +160,8 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       }
 
       // Nếu robot không gửi role field, fallback theo flow type của mission
-      const isAdArrival = role === 'ad' || activeFlow === 'ad' || isRouteAd;
-      if (status !== 'ARRIVED' || !isAdArrival) return;
+      const isAdArrival = role === 'ad' || activeFlow === 'ad' || isRouteAd || Boolean(field(payload, 'playlist', 'Playlist'));
+      if (!['ARRIVED', 'PLAYLIST_PLAYING'].includes(status) || !isAdArrival) return;
 
       const waypointIndex = Number(field(payload, 'waypointIndex', 'WaypointIndex') ?? -1);
       const nodeId = Number(field(payload, 'nodeId', 'NodeId') ?? 0);
