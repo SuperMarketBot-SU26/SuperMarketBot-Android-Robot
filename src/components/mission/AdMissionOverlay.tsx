@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useRouter } from 'expo-router';
 import {
   MapPin,
   Navigation,
@@ -24,6 +25,9 @@ import {
   Tag,
   ArrowRight,
   Search,
+  Layers,
+  Camera,
+  UserCheck,
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
@@ -51,8 +55,9 @@ export function AdMissionOverlay({
 }: AdMissionOverlayProps) {
   if (!mission || mission.flowType !== 'ad') return null;
 
-  // Trong Mode Tự Do (Free Roam): Cho phép phát quảng cáo và đọc liên tục kể cả khi robot đang di chuyển (MOVING / NAVIGATING)
-  const isFreeRoam = mission.isFreeRoam || mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit');
+  const isFreeRoam = mission.isFreeRoam
+    || mission.adMode === 'freeroam'
+    || mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit');
   const shouldShow = isFreeRoam
     ? ['NAVIGATING', 'MOVING', 'ARRIVED', 'PLAYLIST_PLAYING'].includes(status)
     : (status === 'ARRIVED' || status === 'PLAYLIST_PLAYING');
@@ -63,6 +68,7 @@ export function AdMissionOverlay({
     <Modal visible animationType="fade" statusBarTranslucent transparent>
       <View style={styles.root}>
         <AdInteractiveCarousel
+          isFreeRoam={Boolean(isFreeRoam)}
           playlist={activePlaylist}
           activeWaypoint={activeWaypoint}
           onStartGuide={onStartGuide}
@@ -75,25 +81,29 @@ export function AdMissionOverlay({
 }
 
 function AdInteractiveCarousel({
+  isFreeRoam,
   playlist,
   activeWaypoint,
   onStartGuide,
   onSearchOther,
   onDismiss,
 }: {
+  isFreeRoam: boolean;
   playlist: any[];
   activeWaypoint: any;
   onStartGuide?: (item: any) => void | Promise<void>;
   onSearchOther?: () => void | Promise<void>;
   onDismiss?: () => void;
 }) {
+  const router = useRouter();
+  const { token, member } = useRobotAuth();
   const [index, setIndex] = useState(0);
   const [isStartingGuide, setIsStartingGuide] = useState(false);
   const [isAddingCart, setIsAddingCart] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(false);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [bottomCardHeight, setBottomCardHeight] = useState(330);
-  const { token } = useRobotAuth();
 
   const total = playlist.length;
   const currentItem = playlist[index % Math.max(total, 1)];
@@ -110,14 +120,20 @@ function AdInteractiveCarousel({
     const numericPrice = Math.round(Number(rawPrice));
     const priceText = numericPrice > 0 ? ` - Giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
     const pName = currentItem.productName || currentItem.name || 'Sản phẩm';
-    const speechText = `${pName}${priceText} Quý khách có thể chạm vào màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`;
+
+    // Điều chỉnh nội dung giọng đọc theo chế độ:
+    // - Tự do (Free roam): mời khách chạm để robot dẫn đường đến kệ hoặc thêm vào giỏ
+    // - Theo kệ (Per shelf): robot đã đỗ ngay trước mặt kệ, chỉ mời xem sản phẩm hoặc thêm vào giỏ
+    const speechText = isFreeRoam
+      ? `${pName}${priceText} Quý khách có thể chạm vào màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`
+      : `${pName}${priceText} Sản phẩm đang có sẵn tại kệ ngay trước mặt quý khách. Mời quý khách chọn mua hoặc thêm vào giỏ hàng!`;
 
     Speech.stop();
     Speech.speak(speechText, {
       language: 'vi-VN',
       rate: 0.9,
     });
-  }, [currentItem, index, isStartingGuide]);
+  }, [currentItem, index, isStartingGuide, isFreeRoam]);
 
   useEffect(() => {
     return () => {
@@ -166,6 +182,24 @@ function AdInteractiveCarousel({
     }
   };
 
+  const handleMultiProductGuide = () => {
+    if (!token || !member) {
+      setShowLoginModal(true);
+      Speech.speak(
+        'Tính năng chọn nhiều sản phẩm và lập lộ trình mua sắm thông minh tối ưu dành riêng cho khách hàng thành viên. Quý khách vui lòng đăng nhập nhé!',
+        { language: 'vi-VN', rate: 0.9 }
+      );
+      return;
+    }
+
+    Speech.speak(
+      `Chào ${member.fullName || 'quý khách'}! Xin mời bạn chọn các món vào giỏ hàng để robot lập lộ trình gom hàng tối ưu nhé.`,
+      { language: 'vi-VN', rate: 0.9 }
+    );
+    if (onDismiss) onDismiss();
+    router.push('/member-cart' as any);
+  };
+
   const handleSearchOther = async () => {
     if (onSearchOther) {
       await onSearchOther();
@@ -184,7 +218,12 @@ function AdInteractiveCarousel({
     }
 
     if (!token) {
-      setCartNotice('Chưa quét thẻ thành viên. Chạm "Dẫn tôi mua món này" để xem tại kệ!');
+      setCartNotice('Quý khách vui lòng đăng nhập thành viên để lưu vào giỏ hàng!');
+      setShowLoginModal(true);
+      Speech.speak('Quý khách vui lòng đăng nhập thành viên để lưu sản phẩm vào giỏ hàng nhé!', {
+        language: 'vi-VN',
+        rate: 0.9,
+      });
       setTimeout(() => setCartNotice(null), 4000);
       return;
     }
@@ -329,31 +368,57 @@ function AdInteractiveCarousel({
 
         {/* INTERACTIVE ACTION BUTTONS */}
         <View style={styles.actionsContainer}>
-          {/* PRIMARY BUTTON: Dẫn tôi mua món này */}
-          <TouchableOpacity
-            style={[styles.guideButton, isStartingGuide && styles.disabledButton]}
-            onPress={handleGuide}
-            disabled={isStartingGuide}
-            activeOpacity={0.85}
-          >
-            {isStartingGuide ? (
-              <ActivityIndicator color="white" size="small" />
-            ) : (
-              <Navigation size={22} color="white" />
-            )}
-            <View style={styles.guideButtonTextWrap}>
-              <Text style={styles.guideButtonTitle}>
-                {isStartingGuide ? 'ĐANG KHỞI TẠO LỘ TRÌNH...' : 'DẪN TÔI MUA MÓN NÀY'}
-              </Text>
-              <Text style={styles.guideButtonSub}>
-                Tạm dừng QC · Robot sẽ dẫn bạn đến kệ
-              </Text>
+          {isFreeRoam ? (
+            /* PRIMARY BUTTON: Dẫn tôi mua món này (CHỈ HIỂN THỊ TRONG CHẾ ĐỘ QUẢNG CÁO TỰ DO) */
+            <TouchableOpacity
+              style={[styles.guideButton, isStartingGuide && styles.disabledButton]}
+              onPress={handleGuide}
+              disabled={isStartingGuide}
+              activeOpacity={0.85}
+            >
+              {isStartingGuide ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Navigation size={22} color="white" />
+              )}
+              <View style={styles.guideButtonTextWrap}>
+                <Text style={styles.guideButtonTitle}>
+                  {isStartingGuide ? 'ĐANG KHỞI TẠO LỘ TRÌNH...' : 'DẪN TÔI MUA MÓN NÀY'}
+                </Text>
+                <Text style={styles.guideButtonSub}>
+                  Dẫn đến 1 sản phẩm đang hiển thị · Tạm dừng QC
+                </Text>
+              </View>
+              <ArrowRight size={20} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
+          ) : (
+            /* QUẢNG CÁO THEO KỆ: ĐÃ ĐỖ TRƯỚC KỆ HÀNG, KHÔNG CẦN DẪN ĐƯỜNG MÀ HIỂN THỊ BANNER TẠI CHỖ */
+            <View style={styles.atShelfBanner}>
+              <View style={styles.atShelfIconBox}>
+                <MapPin size={22} color="#10b981" />
+              </View>
+              <View style={styles.atShelfTextWrap}>
+                <Text style={styles.atShelfTitle}>SẢN PHẨM CÓ TẠI KỆ NÀY</Text>
+                <Text style={styles.atShelfSub}>
+                  Vị trí ngay trước mặt bạn · Quý khách có thể chọn lấy trên quầy
+                </Text>
+              </View>
+              <CheckCircle2 size={20} color="#10b981" />
             </View>
-            <ArrowRight size={20} color="rgba(255,255,255,0.7)" />
-          </TouchableOpacity>
+          )}
 
           {/* SECONDARY BUTTONS ROW */}
           <View style={styles.secondaryRow}>
+            {/* DẪN NHIỀU MÓN / CHỌN NHIỀU MÓN */}
+            <TouchableOpacity
+              style={styles.multiSelectButton}
+              onPress={handleMultiProductGuide}
+              activeOpacity={0.75}
+            >
+              <Layers size={16} color="#c084fc" />
+              <Text style={styles.multiSelectButtonText}>Dẫn nhiều món</Text>
+            </TouchableOpacity>
+
             {/* Tìm món khác */}
             <TouchableOpacity
               style={styles.searchOtherButton}
@@ -390,6 +455,91 @@ function AdInteractiveCarousel({
           </View>
         </View>
       </View>
+
+      {/* MODAL YÊU CẦU ĐĂNG NHẬP THÀNH VIÊN ĐỂ DẪN ĐƯỜNG NHIỀU MÓN */}
+      <Modal
+        visible={showLoginModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowLoginModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setShowLoginModal(false)}
+              activeOpacity={0.7}
+            >
+              <X size={20} color="#94a3b8" />
+            </TouchableOpacity>
+
+            <View style={styles.modalIconWrap}>
+              <Sparkles size={36} color="#f59e0b" />
+            </View>
+
+            <Text style={styles.modalTitle}>Dành Riêng Cho Thành Viên</Text>
+            <Text style={styles.modalMessage}>
+              Tính năng chọn nhiều sản phẩm và lập lộ trình mua sắm thông minh tối ưu dành riêng cho Khách hàng Thành viên.
+            </Text>
+            <Text style={styles.modalSubMessage}>
+              Quý khách vui lòng quét khuôn mặt hoặc đăng nhập tài khoản để robot phục vụ gom hàng chu đáo nhất!
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalPrimaryBtn}
+                onPress={() => {
+                  setShowLoginModal(false);
+                  if (onDismiss) onDismiss();
+                  router.push('/face-scan' as any);
+                }}
+                activeOpacity={0.85}
+              >
+                <Camera size={20} color="white" />
+                <Text style={styles.modalPrimaryBtnText}>Quét Khuôn Mặt (Face ID)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSecondaryBtn}
+                onPress={() => {
+                  setShowLoginModal(false);
+                  if (onDismiss) onDismiss();
+                  router.push('/login' as any);
+                }}
+                activeOpacity={0.85}
+              >
+                <UserCheck size={18} color="#e2e8f0" />
+                <Text style={styles.modalSecondaryBtnText}>Đăng Nhập Tài Khoản</Text>
+              </TouchableOpacity>
+
+              {isFreeRoam && (
+                <TouchableOpacity
+                  style={styles.modalSingleGuideBtn}
+                  onPress={() => {
+                    setShowLoginModal(false);
+                    void handleGuide();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Navigation size={16} color="#10b981" />
+                  <Text style={styles.modalSingleGuideBtnText}>
+                    Chỉ dẫn 1 món này (Không cần đăng nhập)
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowLoginModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelBtnText}>Để sau</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -767,6 +917,189 @@ const styles = StyleSheet.create({
   skipButtonText: {
     color: '#cbd5e1',
     fontSize: 13.5,
+    fontWeight: '600',
+  },
+  atShelfBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1.5,
+    borderColor: '#10b981',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  atShelfIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  atShelfTextWrap: {
+    flex: 1,
+  },
+  atShelfTitle: {
+    color: '#10b981',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  atShelfSub: {
+    color: '#cbd5e1',
+    fontSize: 12.5,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  multiSelectButton: {
+    flex: 1.1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(168, 85, 247, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.45)',
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  multiSelectButtonText: {
+    color: '#c084fc',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: '#0f172a',
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalMessage: {
+    color: '#e2e8f0',
+    fontSize: 14.5,
+    lineHeight: 21,
+    textAlign: 'center',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  modalSubMessage: {
+    color: '#94a3b8',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+  modalActions: {
+    width: '100%',
+    gap: 10,
+  },
+  modalPrimaryBtn: {
+    backgroundColor: '#059669',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#34d399',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  modalPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalSecondaryBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  modalSecondaryBtnText: {
+    color: '#e2e8f0',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  modalSingleGuideBtn: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  modalSingleGuideBtnText: {
+    color: '#10b981',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    color: '#64748b',
+    fontSize: 13,
     fontWeight: '600',
   },
 });
