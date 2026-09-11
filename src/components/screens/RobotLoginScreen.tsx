@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Button, Input, Text, View, YStack, XStack } from 'tamagui';
 import { Fingerprint, LogIn } from 'lucide-react-native';
 import { loginEmail } from '../../services/AuthService';
@@ -14,6 +14,8 @@ export default function RobotLoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const params = useLocalSearchParams<{ returnUrl?: string }>();
 
   const submit = async () => {
     if (!email.trim() || !password) return Alert.alert('Thiếu thông tin', 'Vui lòng nhập email và mật khẩu.');
@@ -31,7 +33,11 @@ export default function RobotLoginScreen() {
         avatarUrl: data.member?.avatarUrl,
       });
       speak(`Chào mừng ${data.member?.fullName || data.fullName || 'bạn'} trở lại.`);
-      router.replace('/member-home' as any);
+      if (params.returnUrl) {
+        router.replace(params.returnUrl as any);
+      } else {
+        router.replace('/member-home' as any);
+      }
     } catch (e: any) {
       Alert.alert('Đăng nhập thất bại', e?.message || 'Không thể kết nối máy chủ.');
     } finally { setBusy(false); }

@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { TamaguiProvider, PortalProvider } from 'tamagui';
+import { TamaguiProvider } from 'tamagui';
 import tamaguiConfig from '../theme/tamagui.config';
 import { View } from 'react-native';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
@@ -49,27 +49,25 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <PortalProvider shouldAddRootHost>
-        <NotificationProvider>
-          <RobotAuthProvider>
-            <RobotRealtimeProvider>
-              <GeofencingProvider>
-                <RobotMissionRuntimeProvider>
-                  <RobotGuideProvider>
-                    <MapViewerProvider>
-                      <RouteProvider>
-                        <RobotControlProvider>
-                          <RootLayoutContent />
-                        </RobotControlProvider>
-                      </RouteProvider>
-                    </MapViewerProvider>
-                  </RobotGuideProvider>
-                </RobotMissionRuntimeProvider>
-              </GeofencingProvider>
-            </RobotRealtimeProvider>
-          </RobotAuthProvider>
-        </NotificationProvider>
-      </PortalProvider>
+      <NotificationProvider>
+        <RobotAuthProvider>
+          <RobotRealtimeProvider>
+            <GeofencingProvider>
+              <RobotMissionRuntimeProvider>
+                <RobotGuideProvider>
+                  <MapViewerProvider>
+                    <RouteProvider>
+                      <RobotControlProvider>
+                        <RootLayoutContent />
+                      </RobotControlProvider>
+                    </RouteProvider>
+                  </MapViewerProvider>
+                </RobotGuideProvider>
+              </RobotMissionRuntimeProvider>
+            </GeofencingProvider>
+          </RobotRealtimeProvider>
+        </RobotAuthProvider>
+      </NotificationProvider>
     </TamaguiProvider>
   );
 }

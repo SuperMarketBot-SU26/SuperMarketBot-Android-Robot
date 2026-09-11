@@ -4,7 +4,7 @@ import { View, Text, Button, YStack, XStack } from 'tamagui';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Header } from '../layout/Header';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Alert } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -62,10 +62,16 @@ export default function FaceScanScreen() {
     }
   }, []);
 
+  const params = useLocalSearchParams<{ returnUrl?: string }>();
+
   const handleSuccessNavigation = () => {
     screenOpacity.value = withTiming(0, { duration: 400 });
     setTimeout(() => {
-      router.replace('/member-home' as any);
+      if (params.returnUrl) {
+        router.replace(params.returnUrl as any);
+      } else {
+        router.replace('/member-home' as any);
+      }
     }, 400);
   };
 

@@ -18,12 +18,16 @@ export interface InterruptedAdMission {
   originalMissionId: string;
   robotCode: string;
   remainingNodeIds: number[];
+  remainingShelfIds?: number[];
+  isPerShelfAd?: boolean;
+  isFreeRoam?: boolean;
   floorId: number;
   campaignId?: number | null;
   interruptedAtWaypointIndex: number;
   totalWaypoints: number;
   productName?: string;
   shelfName?: string;
+  durationMinutes?: number;
   savedTimestamp: number;
 }
 
@@ -31,13 +35,30 @@ type Listener = (mission: InterruptedAdMission | null) => void;
 
 class AdInterruptionServiceManager {
   private interruptedMission: InterruptedAdMission | null = null;
+  private cachedAdPlaylist: any[] = [];
   private listeners: Listener[] = [];
+
+  public setCachedAdPlaylist(items: any[]): void {
+    if (items && items.length > 0) {
+      this.cachedAdPlaylist = items;
+    }
+  }
+
+  public getCachedAdPlaylist(): any[] {
+    return this.cachedAdPlaylist;
+  }
+
+  public hasCachedPlaylist(): boolean {
+    return this.cachedAdPlaylist.length > 0;
+  }
 
   public saveInterruptedMission(data: InterruptedAdMission): void {
     console.log('[AdInterruptionService] Đã lưu lộ trình quảng cáo bị tạm dừng:', {
       originalMissionId: data.originalMissionId,
       remainingNodeCount: data.remainingNodeIds.length,
       remainingNodeIds: data.remainingNodeIds,
+      remainingShelfIds: data.remainingShelfIds,
+      isPerShelfAd: data.isPerShelfAd,
       interruptedIndex: data.interruptedAtWaypointIndex,
     });
     this.interruptedMission = data;

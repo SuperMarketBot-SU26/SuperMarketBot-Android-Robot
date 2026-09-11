@@ -177,11 +177,15 @@ class RobotControlServiceClass {
     aisleId?: number;
     zoneId?: number;
     nodeIds?: number[];
+    shelfIds?: number[];
     robotRouteId?: number;
     campaignId?: number | null;
     fullZoneMap?: boolean;
     floorId?: number;
     startNodeId?: number;
+    dwellTimeSeconds?: number;
+    durationMinutes?: number;
+    loopCount?: number;
   }): Promise<{ ok: boolean; status: number; data: any }> {
     if (!API_BASE) {
       console.warn('[RobotControl.dispatchAutonomous] EXPO_PUBLIC_API_URL chưa set');
@@ -204,11 +208,15 @@ class RobotControlServiceClass {
           aisleId: payload.aisleId,
           zoneId: payload.zoneId,
           nodeIds: payload.nodeIds,
+          shelfIds: payload.shelfIds,
           robotRouteId: payload.robotRouteId,
           campaignId: payload.campaignId,
           fullZoneMap: payload.fullZoneMap,
           floorId: payload.floorId,
           startNodeId: payload.startNodeId,
+          dwellTimeSeconds: payload.dwellTimeSeconds,
+          durationMinutes: payload.durationMinutes,
+          loopCount: payload.loopCount,
         }),
       });
       const raw = await res.text();

@@ -63,6 +63,15 @@ const RobotGuideContext = createContext<RobotGuideContextValue | null>(null);
 const newMissionId = () =>
   `guide-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const matchRobot = (incoming?: string | null) => {
+  if (!incoming) return false;
+  const inc = incoming.toUpperCase();
+  const cur = ROBOT_CODE.toUpperCase();
+  return inc === cur
+    || (inc === 'RB001' && cur === 'RB0001')
+    || (inc === 'RB0001' && cur === 'RB001');
+};
+
 export function RobotGuideProvider({ children }: { children: ReactNode }) {
   const { isConnected: isHubConnected, subscribeMissionAssigned, subscribeNavigationStatus, subscribeTelemetry } = useRobotRealtime();
   const [status, setStatus] = useState<GuideStatus>('IDLE');
@@ -110,12 +119,14 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         const response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
           headers: { 'ngrok-skip-browser-warning': 'true' },
         });
-        if (response.ok && active) {
-          const assignedMission = await response.json();
+        if (response.ok && response.status !== 204 && active) {
+          const text = await response.text();
+          if (!text || !text.trim()) return;
+          const assignedMission = JSON.parse(text);
           const flowType = String(assignedMission?.flowType ?? assignedMission?.FlowType ?? '').toLowerCase();
           const incomingRobot = String(assignedMission?.robotCode ?? assignedMission?.RobotCode ?? '');
           const incomingMission = String(assignedMission?.missionId ?? assignedMission?.MissionId ?? '');
-          if (flowType === 'guide' && incomingRobot.toUpperCase() === ROBOT_CODE.toUpperCase() && incomingMission) {
+          if (flowType === 'guide' && matchRobot(incomingRobot) && incomingMission) {
             const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
             const recoveredStatus = String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus;
             missionRef.current = incomingMission;
@@ -142,7 +153,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       const flowType = String(assignedMission?.flowType ?? assignedMission?.FlowType ?? '').toLowerCase();
       const incomingRobot = String(assignedMission?.robotCode ?? assignedMission?.RobotCode ?? '');
       const incomingMission = String(assignedMission?.missionId ?? assignedMission?.MissionId ?? '');
-      if (flowType !== 'guide' || incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase() || !incomingMission) return;
+      if (flowType !== 'guide' || !matchRobot(incomingRobot) || !incomingMission) return;
       const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
       const recoveredStatus = String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus;
       missionRef.current = incomingMission;
@@ -167,7 +178,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => subscribeTelemetry((payload: any) => {
     const incomingRobot = String(payload?.robotCode ?? payload?.RobotCode ?? '');
-    if (incomingRobot.toUpperCase() !== ROBOT_CODE.toUpperCase()) return;
+    if (!matchRobot(incomingRobot)) return;
     const x = Number(payload?.xCoord ?? payload?.XCoord);
     const y = Number(payload?.yCoord ?? payload?.YCoord);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -189,8 +200,13 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       const incomingIndex = payload.waypointIndex ?? (payload as any).WaypointIndex;
       console.log(`[RobotGuide] NAV_STATUS: status=${rawStatus} robot=${incomingRobot} mission=${incomingMission} nodeId=${incomingNodeId} wpIndex=${incomingIndex} awaitingPickup=${awaitingPickupRef.current} currentMission=${missionRef.current} totalDest=${destinationsRef.current.length}`);
 
-      if (incomingRobot?.toUpperCase() !== ROBOT_CODE.toUpperCase()) return;
-      if (!incomingMission || incomingMission !== missionRef.current) return;
+      if (!matchRobot(incomingRobot)) return;
+      if (!incomingMission) return;
+      // QUAN TRỌNG: Chỉ xử lý navigation status của chính mission Guide mà RobotGuideContext đang quản lý.
+      // Tuyệt đối KHÔNG tự động bind missionRef vào các mission khác (Ad, Patrol, Return).
+      if (!missionRef.current || incomingMission !== missionRef.current) {
+        return;
+      }
       acknowledgedMissionRef.current = incomingMission;
 
       const next = String(rawStatus).toUpperCase() as GuideStatus;
@@ -276,7 +292,12 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         awaitingPickupRef.current = false;
         setAwaitingPickup(false);
         missionRef.current = null;
+        acknowledgedMissionRef.current = null;
+        destinationRef.current = null;
+        destinationsRef.current = [];
         setMissionId(null);
+        setDestination(null);
+        setDestinations([]);
       }
     });
   }, [clearTimeoutGuard, subscribeNavigationStatus]);
@@ -284,7 +305,22 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => clearTimeoutGuard(), [clearTimeoutGuard]);
 
   const dispatchCart = useCallback(async (items: { productId: number; productName: string }[]) => {
-    if (missionRef.current) throw new Error('RB001 đang dẫn một khách khác. Vui lòng chờ nhiệm vụ hoàn tất.');
+    // Nếu có mission cũ còn tồn đọng, dọn dẹp để ưu tiên phục vụ khách trực tiếp tại kiosk
+    if (missionRef.current) {
+      console.log(`[RobotGuide] dispatchCart clearing prior/active mission: ${missionRef.current}`);
+      try {
+        await fetch(
+          `${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Customer starting new cart guide')}`,
+          { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true' } }
+        );
+      } catch (e) {
+        console.warn('[RobotGuide] Cancel prior mission warning:', e);
+      }
+      clearTimeoutGuard();
+      missionRef.current = null;
+      acknowledgedMissionRef.current = null;
+      setMissionId(null);
+    }
     if (!isHubConnected) throw new Error('Chưa kết nối được kênh trạng thái của robot. Vui lòng thử lại.');
     const uniqueItems = items.filter((item, index, all) =>
       item.productId > 0 && all.findIndex(other => other.productId === item.productId) === index);
@@ -318,9 +354,17 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       missionRef.current = null;
       setMissionId(null);
       setStatus('FAILED');
-      const message = result.data?.detail || result.data?.error || `Dispatch thất bại (${result.status})`;
-      setError(message);
-      throw new Error(message);
+      const rawError = String(result.data?.detail || result.data?.error || `Dispatch thất bại (${result.status})`);
+      let friendlyMsg = 'Dạ sản phẩm bạn chọn hiện chưa có vị trí quầy kệ hoặc đang tạm hết hàng. Quý khách vui lòng liên hệ nhân viên siêu thị để được hỗ trợ nhé!';
+      if (rawError.includes('tạm ngưng') || rawError.includes('tạm hết hàng') || rawError.includes('not available')) {
+        friendlyMsg = 'Dạ sản phẩm này hiện đang tạm hết hàng trên quầy kệ. Quý khách thông cảm nhé!';
+      } else if (rawError.includes('chưa có vị trí') || rawError.includes('không tìm thấy') || rawError.includes('no shelf approach')) {
+        friendlyMsg = 'Dạ sản phẩm bạn chọn hiện chưa có vị trí trưng bày trên quầy kệ siêu thị.';
+      } else if (rawError.includes('kết nối') || result.status === 0) {
+        friendlyMsg = 'Không thể kết nối đến máy chủ. Quý khách vui lòng kiểm tra lại kết nối mạng.';
+      }
+      setError(friendlyMsg);
+      throw new Error(friendlyMsg);
     }
 
     const confirmedMissionId = result.data?.missionId;
@@ -331,8 +375,9 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       missionRef.current = null;
       setMissionId(null);
       setStatus('FAILED');
-      setError('Backend không xác nhận đúng missionId để theo dõi nhiệm vụ.');
-      throw new Error('Backend không xác nhận đúng missionId để theo dõi nhiệm vụ.');
+      const friendlyMsg = 'Hệ thống đang bận cập nhật dữ liệu. Quý khách vui lòng thử lại sau giây lát!';
+      setError(friendlyMsg);
+      throw new Error(friendlyMsg);
     }
     missionRef.current = confirmedMissionId;
     setMissionId(confirmedMissionId);
@@ -345,9 +390,9 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       missionRef.current = null;
       setMissionId(null);
       setStatus('FAILED');
-      const message = 'Backend không trả điểm dừng cho giỏ hàng.';
-      setError(message);
-      throw new Error(message);
+      const friendlyMsg = 'Dạ sản phẩm bạn chọn hiện chưa có vị trí quầy kệ trên bản đồ. Quý khách vui lòng liên hệ nhân viên siêu thị để được hỗ trợ nhé!';
+      setError(friendlyMsg);
+      throw new Error(friendlyMsg);
     }
     destinationsRef.current = confirmedDestinations;
     setDestinations(confirmedDestinations);
@@ -406,7 +451,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         if (AdInterruptionService.hasInterruptedMission()) {
           const interrupted = AdInterruptionService.getInterruptedMission()!;
           AdInterruptionService.clear();
-          console.log(`[RobotGuide] Phát hiện lộ trình quảng cáo đang chờ! Tiếp tục ${interrupted.remainingNodeIds.length} waypoint còn lại:`, interrupted.remainingNodeIds);
+          console.log(`[RobotGuide] Phát hiện lộ trình quảng cáo đang chờ! Tiếp tục ${interrupted.remainingNodeIds.length} waypoint còn lại:`, interrupted.remainingNodeIds, 'shelves:', interrupted.remainingShelfIds);
 
           Speech.speak('Cảm ơn quý khách đã mua sắm! Robot xin phép tiếp tục hành trình quảng cáo.', {
             language: 'vi-VN',
@@ -417,9 +462,12 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
             await RobotControlService.dispatchAutonomous({
               robotCode: ROBOT_CODE,
               flowType: 'ad',
+              shelfIds: interrupted.remainingShelfIds,
               nodeIds: interrupted.remainingNodeIds,
               floorId: interrupted.floorId ?? 1,
-              campaignId: interrupted.campaignId,
+              campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
+              fullZoneMap: interrupted.isFreeRoam ? true : undefined,
+              durationMinutes: interrupted.durationMinutes,
             });
             console.log('[RobotGuide] Đã tự động khôi phục và tiếp tục lộ trình quảng cáo.');
           } catch (err) {
@@ -497,9 +545,12 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           await RobotControlService.dispatchAutonomous({
             robotCode: ROBOT_CODE,
             flowType: 'ad',
+            shelfIds: interrupted.remainingShelfIds,
             nodeIds: interrupted.remainingNodeIds,
             floorId: interrupted.floorId ?? 1,
-            campaignId: interrupted.campaignId,
+            campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
+            fullZoneMap: interrupted.isFreeRoam ? true : undefined,
+            durationMinutes: interrupted.durationMinutes,
           });
         } catch (err) {
           console.warn('[RobotGuide] Resume ad mission on cancel warning:', err);

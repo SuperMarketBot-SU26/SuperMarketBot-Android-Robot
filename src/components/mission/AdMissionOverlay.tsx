@@ -31,6 +31,7 @@ import {
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
+import { AdInterruptionService } from '../../services/AdInterruptionService';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -68,6 +69,7 @@ export function AdMissionOverlay({
     <Modal visible animationType="fade" statusBarTranslucent transparent>
       <View style={styles.root}>
         <AdInteractiveCarousel
+          mission={mission}
           isFreeRoam={Boolean(isFreeRoam)}
           playlist={activePlaylist}
           activeWaypoint={activeWaypoint}
@@ -81,6 +83,7 @@ export function AdMissionOverlay({
 }
 
 function AdInteractiveCarousel({
+  mission,
   isFreeRoam,
   playlist,
   activeWaypoint,
@@ -88,6 +91,7 @@ function AdInteractiveCarousel({
   onSearchOther,
   onDismiss,
 }: {
+  mission?: any;
   isFreeRoam: boolean;
   playlist: any[];
   activeWaypoint: any;
@@ -183,6 +187,36 @@ function AdInteractiveCarousel({
   };
 
   const handleMultiProductGuide = () => {
+    // 1. Lưu toàn bộ danh sách sản phẩm quảng cáo vào cache
+    if (playlist && playlist.length > 0) {
+      AdInterruptionService.setCachedAdPlaylist(playlist);
+    }
+
+    // 2. Bảo lưu trạng thái quảng cáo dở dang vào AdInterruptionService
+    if (mission && mission.flowType === 'ad') {
+      const waypoints = mission.waypoints ?? [];
+      const currentIdx = activeWaypoint ? waypoints.findIndex((w: any) => w.nodeId === activeWaypoint.nodeId) : 0;
+      const resolvedIdx = currentIdx >= 0 ? currentIdx : 0;
+      const remainingWaypoints = waypoints.slice(resolvedIdx + 1);
+      const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId).filter((id: any) => id > 0);
+      const remainingShelfIds = remainingWaypoints.map((w: any) => w.shelfId).filter((id: any) => typeof id === 'number' && id > 0);
+      const isPerShelf = Boolean(!isFreeRoam && (remainingShelfIds.length > 0 || mission.adMode === 'shelf'));
+
+      AdInterruptionService.saveInterruptedMission({
+        originalMissionId: mission.missionId,
+        robotCode: mission.robotCode || 'RB001',
+        remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId).filter((id: any) => id > 0),
+        remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+        isPerShelfAd: isPerShelf,
+        isFreeRoam: Boolean(isFreeRoam),
+        floorId: mission.floorId ?? 1,
+        campaignId: isPerShelf ? null : (mission.campaignId ?? null),
+        interruptedAtWaypointIndex: resolvedIdx,
+        totalWaypoints: waypoints.length,
+        savedTimestamp: Date.now(),
+      });
+    }
+
     if (!token || !member) {
       setShowLoginModal(true);
       Speech.speak(
@@ -193,11 +227,11 @@ function AdInteractiveCarousel({
     }
 
     Speech.speak(
-      `Chào ${member.fullName || 'quý khách'}! Xin mời bạn chọn các món vào giỏ hàng để robot lập lộ trình gom hàng tối ưu nhé.`,
+      `Chào ${member.fullName || 'quý khách'}! Mời bạn chọn các sản phẩm đang quảng cáo trên màn hình để robot dẫn đường gom hàng tối ưu nhé!`,
       { language: 'vi-VN', rate: 0.9 }
     );
     if (onDismiss) onDismiss();
-    router.push('/member-cart' as any);
+    router.push('/ad-multi-select' as any);
   };
 
   const handleSearchOther = async () => {
@@ -490,9 +524,10 @@ function AdInteractiveCarousel({
               <TouchableOpacity
                 style={styles.modalPrimaryBtn}
                 onPress={() => {
+                  AdInterruptionService.setCachedAdPlaylist(playlist);
                   setShowLoginModal(false);
                   if (onDismiss) onDismiss();
-                  router.push('/face-scan' as any);
+                  router.push({ pathname: '/face-scan', params: { returnUrl: '/ad-multi-select' } } as any);
                 }}
                 activeOpacity={0.85}
               >
@@ -503,9 +538,10 @@ function AdInteractiveCarousel({
               <TouchableOpacity
                 style={styles.modalSecondaryBtn}
                 onPress={() => {
+                  AdInterruptionService.setCachedAdPlaylist(playlist);
                   setShowLoginModal(false);
                   if (onDismiss) onDismiss();
-                  router.push('/login' as any);
+                  router.push({ pathname: '/login', params: { returnUrl: '/ad-multi-select' } } as any);
                 }}
                 activeOpacity={0.85}
               >

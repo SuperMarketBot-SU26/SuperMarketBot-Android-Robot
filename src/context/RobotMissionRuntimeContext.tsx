@@ -47,6 +47,10 @@ export interface PlaylistItem {
   imageUrl?: string | null;
   description?: string | null;
   mediaContents?: AdMedia[];
+  shelfId?: number | null;
+  shelfName?: string | null;
+  aisleName?: string | null;
+  zoneName?: string | null;
 }
 
 export interface MissionWaypoint {
@@ -56,6 +60,7 @@ export interface MissionWaypoint {
   dwellTimeSeconds?: number;
   zoneName?: string | null;
   aisleName?: string | null;
+  shelfId?: number | null;
   shelfName?: string | null;
   playlist?: PlaylistItem[];
   transitTtsMessage?: string | null;
@@ -113,6 +118,7 @@ interface RuntimeContextValue {
   hubConnected: boolean;
   resumeToNextWaypoint: () => Promise<void>;
   interruptAdForGuidance: (productItem: PlaylistItem) => Promise<void>;
+  interruptAdForMultiGuidance: (productItems: PlaylistItem[]) => Promise<void>;
 }
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
@@ -166,6 +172,7 @@ function normalizeMission(raw: any): RobotMission | null {
       dwellTimeSeconds: Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0),
       zoneName: valueOf<string>(item, 'zoneName', 'ZoneName'),
       aisleName: valueOf<string>(item, 'aisleName', 'AisleName'),
+      shelfId: valueOf<number>(item, 'shelfId', 'ShelfId'),
       shelfName: valueOf<string>(item, 'shelfName', 'ShelfName'),
       transitTtsMessage: valueOf<string>(item, 'transitTtsMessage', 'TransitTtsMessage'),
       playlist,
@@ -225,15 +232,20 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       : (activeWaypoint ? activeMission.waypoints.findIndex((w) => w.nodeId === activeWaypoint.nodeId) : -1);
     const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
     const remainingWaypoints = activeMission.waypoints.slice(currentIdx + 1);
-    const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId);
+    const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId).filter((id) => id > 0);
+    const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
+    const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
     // 1. Lưu lộ trình quảng cáo bị tạm dừng vào AdInterruptionService
     AdInterruptionService.saveInterruptedMission({
       originalMissionId: activeMission.missionId,
       robotCode: ROBOT_CODE,
       remainingNodeIds,
+      remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+      isPerShelfAd: isPerShelf,
+      isFreeRoam: Boolean(activeMission.isFreeRoam),
       floorId: 1,
-      campaignId: (productItem as any).adCampaignId ?? null,
+      campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
       interruptedAtWaypointIndex: currentIdx,
       totalWaypoints: activeMission.waypoints.length,
       productName: productItem.productName || productItem.name,
@@ -284,6 +296,83 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     }
   }, [activeWaypoint, activeWaypointIndex, router]);
 
+  const interruptAdForMultiGuidance = useCallback(async (selectedProducts: PlaylistItem[]) => {
+    const activeMission = missionRef.current;
+    if (!activeMission || activeMission.flowType !== 'ad' || selectedProducts.length === 0) return;
+
+    console.log('[RobotMissionRuntime] Khách yêu cầu dẫn đường nhiều món từ quảng cáo:', selectedProducts.length);
+    const resolvedIndex = activeWaypointIndex >= 0
+      ? activeWaypointIndex
+      : (activeWaypoint ? activeMission.waypoints.findIndex((w) => w.nodeId === activeWaypoint.nodeId) : -1);
+    const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
+    const remainingWaypoints = activeMission.waypoints.slice(currentIdx + 1);
+    const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId).filter((id) => id > 0);
+    const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
+    const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
+
+    // 1. Lưu lộ trình quảng cáo bị tạm dừng vào AdInterruptionService
+    AdInterruptionService.saveInterruptedMission({
+      originalMissionId: activeMission.missionId,
+      robotCode: ROBOT_CODE,
+      remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : activeMission.waypoints.map((w) => w.nodeId).filter((id) => id > 0),
+      remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+      isPerShelfAd: isPerShelf,
+      isFreeRoam: Boolean(activeMission.isFreeRoam),
+      floorId: 1,
+      campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
+      interruptedAtWaypointIndex: currentIdx,
+      totalWaypoints: activeMission.waypoints.length,
+      productName: selectedProducts.map(p => p.productName || p.name).join(', '),
+      shelfName: activeWaypoint?.shelfName ?? undefined,
+      savedTimestamp: Date.now(),
+    });
+
+    // 2. Hủy mission ad hiện tại trên Backend để giải phóng trạng thái robot
+    await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Customer requested multi-product guidance from ads')}`, {
+      method: 'POST',
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    }).catch(() => undefined);
+
+    // 3. Tắt màn hình quảng cáo và dọn dẹp state ad
+    setActivePlaylist([]);
+    setMission(null);
+    missionRef.current = null;
+
+    // 4. Phát giọng nói chào đón và thông báo dẫn đường
+    const pNames = selectedProducts.map(p => p.productName || p.name).filter(Boolean);
+    const spokenNames = pNames.slice(0, 3).join(', ') + (pNames.length > 3 ? ' cùng các món khác' : '');
+    Speech.speak(`Dạ vâng! Robot sẽ dẫn quý khách lần lượt đến quầy bán ${spokenNames} theo lộ trình tối ưu nhất. Xin mời quý khách đi theo tôi!`, {
+      language: 'vi-VN',
+      rate: 0.9,
+    });
+
+    // 5. Phát lệnh dẫn đường (flowType: 'guide') tới danh sách sản phẩm
+    const validProductIds = selectedProducts
+      .map(p => p.productId || p.id || 0)
+      .filter(id => id > 0);
+
+    if (validProductIds.length > 0) {
+      try {
+        await RobotControlService.dispatchAutonomous({
+          robotCode: ROBOT_CODE,
+          flowType: 'guide',
+          productIds: validProductIds,
+          floorId: 1,
+        });
+        console.log(`[RobotMissionRuntime] Đã dispatch autonomous guide cho ${validProductIds.length} sản phẩm`);
+      } catch (err) {
+        console.warn('[RobotMissionRuntime] Dispatch autonomous guide thất bại:', err);
+      }
+    }
+
+    // 6. Điều hướng sang CartGuideMapScreen
+    try {
+      router.push('/cart-guide-map' as any);
+    } catch (navErr) {
+      console.warn('[RobotMissionRuntime] router.push(/cart-guide-map) warning:', navErr);
+    }
+  }, [activeWaypoint, activeWaypointIndex, router]);
+
   const searchOtherProductFromAd = useCallback(async () => {
     const activeMission = missionRef.current;
     if (!activeMission) return;
@@ -291,14 +380,19 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     // 1. Lưu lộ trình quảng cáo dở dang vào AdInterruptionService
     const waypoints = activeMission.waypoints ?? [];
     const remainingWaypoints = waypoints.slice(activeWaypointIndex + 1);
-    const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId || w.id).filter(Boolean);
+    const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId || w.id).filter((id) => id > 0);
+    const remainingShelfIds = remainingWaypoints.map((w: any) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
+    const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
     AdInterruptionService.saveInterruptedMission({
       originalMissionId: activeMission.missionId,
       robotCode: ROBOT_CODE,
-      remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId || w.id).filter(Boolean),
+      remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId || w.id).filter((id) => id > 0),
+      remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+      isPerShelfAd: isPerShelf,
+      isFreeRoam: Boolean(activeMission.isFreeRoam),
       floorId: activeMission.floorId ?? 1,
-      campaignId: activeMission.campaignId ?? null,
+      campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
       interruptedAtWaypointIndex: activeWaypointIndex,
       totalWaypoints: waypoints.length,
       savedTimestamp: Date.now(),
@@ -355,7 +449,15 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     capturedKeys.current.clear();
 
     if (normalized.flowType === 'ad') {
-      const initialPlaylist = normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? [];
+      const allWaypointsPlaylist = normalized.waypoints.flatMap((w) => w.playlist || []);
+      const initialPlaylist = allWaypointsPlaylist.length > 0
+        ? allWaypointsPlaylist
+        : (normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? []);
+
+      if (initialPlaylist.length > 0) {
+        AdInterruptionService.setCachedAdPlaylist(initialPlaylist);
+      }
+
       if (normalized.isFreeRoam && initialPlaylist.length > 0) {
         console.log('[RobotMissionRuntime] Kích hoạt phát quảng cáo tự do liên tục:', initialPlaylist.length, 'sản phẩm');
         setActivePlaylist(initialPlaylist);
@@ -690,6 +792,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     hubConnected,
     resumeToNextWaypoint,
     interruptAdForGuidance,
+    interruptAdForMultiGuidance,
   }), [
     mission,
     status,
@@ -703,6 +806,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     hubConnected,
     resumeToNextWaypoint,
     interruptAdForGuidance,
+    interruptAdForMultiGuidance,
   ]);
 
   return (

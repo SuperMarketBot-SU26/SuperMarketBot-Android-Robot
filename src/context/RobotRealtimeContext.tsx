@@ -67,10 +67,13 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
           headers: { 'ngrok-skip-browser-warning': 'true' },
         }).catch(() => response);
       }
-      if (response.ok && mounted) {
-        const mission = await response.json();
-        activeMissionRef.current = mission;
-        missionHandlers.current.forEach((handler) => handler(mission));
+      if (response.ok && response.status !== 204 && mounted) {
+        const text = await response.text();
+        if (text && text.trim()) {
+          const mission = JSON.parse(text);
+          activeMissionRef.current = mission;
+          missionHandlers.current.forEach((handler) => handler(mission));
+        }
       }
     };
 
