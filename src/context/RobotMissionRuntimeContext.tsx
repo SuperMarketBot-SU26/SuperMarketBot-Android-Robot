@@ -673,7 +673,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       if (['ARRIVED', 'PLAYLIST_PLAYING'].includes(nextStatus) && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
         if (activeMission.flowType === 'patrol' && (role === 'photo' || role === 'scan')) {
-          Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Xin vui lòng nhấn nút chụp ảnh để kiểm tra tồn kho.`, { language: 'vi-VN', rate: 0.9 });
+          Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Đang tiến hành quét phân tích kệ hàng.`, { language: 'vi-VN', rate: 0.9 });
         }
         if (activeMission.flowType === 'ad') {
           const dwell = Number(valueOf(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? waypoint.dwellTimeSeconds ?? 0);
@@ -894,10 +894,8 @@ function MissionOverlay({
     }
   }, [lastScan, pendingScans, status, onResumeNext]);
 
-  if (!mission || mission.flowType !== 'patrol') return null;
-  const missionEnded = ['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status);
-  const visible = !missionEnded || pendingScans > 0;
-  if (!visible) return null;
+  // Camera Raspi trên robot đã xử lý việc quan sát/chụp quét AI kệ hàng, không mở camera sau điện thoại
+  return null;
 
   return (
     <Modal visible animationType="fade" statusBarTranslucent>
@@ -912,7 +910,7 @@ function MissionOverlay({
           <View style={{ flex: 1 }}>
             <Text style={styles.eyebrow}>AI VISION PATROL · {ROBOT_CODE}</Text>
             <Text style={styles.title} numberOfLines={1}>{activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Đang tới kệ tiếp theo'}</Text>
-            <Text style={styles.subtitle}>{activeWaypoint?.zoneName} {activeWaypoint?.aisleName ? `· ${activeWaypoint.aisleName}` : ''}</Text>
+            <Text style={styles.subtitle}>{activeWaypoint?.zoneName} {activeWaypoint?.aisleName ? `· ${activeWaypoint?.aisleName}` : ''}</Text>
           </View>
           <TouchableOpacity style={styles.closeBtn} onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <X size={20} color="white" />
@@ -1005,30 +1003,30 @@ function MissionOverlay({
 
           {/* Card Kết Quả Phân Tích AI */}
           {lastScan && (
-            <View style={[styles.resultCard, lastScan.needsRestock ? styles.resultWarning : styles.resultSuccess]}>
+            <View style={[styles.resultCard, lastScan?.needsRestock ? styles.resultWarning : styles.resultSuccess]}>
               <View style={styles.resultHeader}>
-                {lastScan.needsRestock ? (
+                {lastScan?.needsRestock ? (
                   <AlertTriangle size={22} color="#FBBF24" />
                 ) : (
                   <CheckCircle2 size={22} color="#34D399" />
                 )}
                 <View style={{ flex: 1, marginLeft: 8 }}>
                   <Text style={styles.resultTitle}>
-                    {lastScan.analysisStatus === 'Failed'
+                    {lastScan?.analysisStatus === 'Failed'
                       ? 'Không phân tích được ảnh'
-                      : lastScan.needsRestock
-                        ? `⚠️ CẦN BỔ SUNG HÀNG (${lastScan.emptySlotCount ?? 0} VỊ TRÍ TRỐNG)`
-                        : `✅ KỆ ĐÃ ĐẦY ĐỦ HÀNG (${lastScan.occupancyRatePct}%)`}
+                      : lastScan?.needsRestock
+                        ? `⚠️ CẦN BỔ SUNG HÀNG (${lastScan?.emptySlotCount ?? 0} VỊ TRÍ TRỐNG)`
+                        : `✅ KỆ ĐÃ ĐẦY ĐỦ HÀNG (${lastScan?.occupancyRatePct}%)`}
                   </Text>
-                  {lastScan.analysisStatus !== 'Failed' && (
+                  {lastScan?.analysisStatus !== 'Failed' && (
                     <Text style={styles.resultSubText}>
-                      {activeWaypoint?.shelfName || 'Kệ hàng'}: Tỷ lệ lấp đầy {lastScan.occupancyRatePct}% · Trống {lastScan.emptySlotCount ?? 0} ô
+                      {activeWaypoint?.shelfName || 'Kệ hàng'}: Tỷ lệ lấp đầy {lastScan?.occupancyRatePct}% · Trống {lastScan?.emptySlotCount ?? 0} ô
                     </Text>
                   )}
                 </View>
               </View>
 
-              {lastScan.errorMessage && <Text style={styles.error}>{lastScan.errorMessage}</Text>}
+              {lastScan?.errorMessage && <Text style={styles.error}>{lastScan?.errorMessage}</Text>}
 
               {/* Nút Chuyển Tiếp Sang Kệ Sau */}
               {status === 'ARRIVED' && (

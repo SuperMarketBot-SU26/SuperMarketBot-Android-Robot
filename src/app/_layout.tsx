@@ -3,6 +3,7 @@ import { TamaguiProvider } from 'tamagui';
 import tamaguiConfig from '../theme/tamagui.config';
 import { View } from 'react-native';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
+import { CustomerSessionProvider } from '../context/CustomerSessionContext';
 import { RobotAuthProvider } from '../context/RobotAuthContext';
 import { MapViewerProvider } from '../context/MapViewerContext';
 import { RobotControlProvider } from '../context/RobotControlContext';
@@ -49,25 +50,27 @@ function RootLayoutContent() {
 export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <NotificationProvider>
-        <RobotAuthProvider>
-          <RobotRealtimeProvider>
-            <GeofencingProvider>
-              <RobotMissionRuntimeProvider>
-                <RobotGuideProvider>
-                  <MapViewerProvider>
-                    <RouteProvider>
-                      <RobotControlProvider>
-                        <RootLayoutContent />
-                      </RobotControlProvider>
-                    </RouteProvider>
-                  </MapViewerProvider>
-                </RobotGuideProvider>
-              </RobotMissionRuntimeProvider>
-            </GeofencingProvider>
-          </RobotRealtimeProvider>
-        </RobotAuthProvider>
-      </NotificationProvider>
+      <CustomerSessionProvider>
+        <NotificationProvider>
+          <RobotAuthProvider>
+            <RobotRealtimeProvider>
+              <GeofencingProvider>
+                <RobotMissionRuntimeProvider>
+                  <RobotGuideProvider>
+                    <MapViewerProvider>
+                      <RouteProvider>
+                        <RobotControlProvider>
+                          <RootLayoutContent />
+                        </RobotControlProvider>
+                      </RouteProvider>
+                    </MapViewerProvider>
+                  </RobotGuideProvider>
+                </RobotMissionRuntimeProvider>
+              </GeofencingProvider>
+            </RobotRealtimeProvider>
+          </RobotAuthProvider>
+        </NotificationProvider>
+      </CustomerSessionProvider>
     </TamaguiProvider>
   );
 }

@@ -42,16 +42,26 @@ export interface ImpressionRequestDto {
 export interface LogInteractionRequestDto {
   adCampaignId: number;
   actionType: 'Click' | 'Navigation' | 'Impression';
-  sponsoredId: number;
-  productId: number;
-  robotId: number;
+  sponsoredId?: number;
+  productId?: number;
+  robotId?: number;
   semanticObjectId?: number;
   zoneId?: number;
+  shelfId?: number;
   slotId?: number;
   memberId?: number;
   sessionId?: string;
   xCoord?: number;
   yCoord?: number;
+}
+
+export interface LogInteractionResponseDto {
+  success: boolean;
+  logId: number;
+  chargedAmount: number;
+  isFraud: boolean;
+  fraudReason?: string | null;
+  message: string;
 }
 
 export const AdService = {
@@ -131,12 +141,15 @@ export const AdService = {
   },
 
   /**
-   * Ghi log tương tác của khách hàng với quảng cáo trên Robot (Ví dụ: Click)
+   * Ghi log tương tác của khách hàng với quảng cáo trên Robot (Ví dụ: Impression, Click, Navigation)
    */
-  async logInteraction(payload: LogInteractionRequestDto): Promise<any> {
+  async logInteraction(payload: LogInteractionRequestDto): Promise<LogInteractionResponseDto> {
     const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/log-interaction`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: JSON.stringify(payload),
     });
 

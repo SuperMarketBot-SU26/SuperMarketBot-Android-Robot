@@ -31,8 +31,11 @@ import {
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
+import { useCustomerSession } from '../../context/CustomerSessionContext';
+import { AdService } from '../../services/AdService';
 import { AdInterruptionService } from '../../services/AdInterruptionService';
 
+const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 const { width: SW, height: SH } = Dimensions.get('window');
 
 export interface AdMissionOverlayProps {
@@ -101,17 +104,44 @@ function AdInteractiveCarousel({
 }) {
   const router = useRouter();
   const { token, member } = useRobotAuth();
+  const { sessionId, refreshSession, markProductFraud, isProductFraud } = useCustomerSession();
   const [index, setIndex] = useState(0);
   const [isStartingGuide, setIsStartingGuide] = useState(false);
   const [isAddingCart, setIsAddingCart] = useState(false);
   const [cartSuccess, setCartSuccess] = useState(false);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [selectedDetailProduct, setSelectedDetailProduct] = useState<any | null>(null);
   const [bottomCardHeight, setBottomCardHeight] = useState(330);
 
   const total = playlist.length;
   const currentItem = playlist[index % Math.max(total, 1)];
   const lastSpokenKeyRef = useRef<string | null>(null);
+  const lastLoggedImpressionKeyRef = useRef<string | null>(null);
+  const isClickDebouncedRef = useRef(false);
+
+  // 1. Ghi nhận Lượt Hiển Thị (Impression) khi màn hình bắt đầu phát banner/video quảng cáo
+  useEffect(() => {
+    if (!currentItem) return;
+    const campaignId = currentItem.adCampaignId || currentItem.campaignId;
+    const productId = currentItem.productId || currentItem.id;
+    if (!campaignId) return;
+
+    const logKey = `${campaignId}-${productId}-${index}`;
+    if (lastLoggedImpressionKeyRef.current === logKey) return;
+    lastLoggedImpressionKeyRef.current = logKey;
+
+    AdService.logInteraction({
+      adCampaignId: campaignId,
+      actionType: 'Impression',
+      productId: productId,
+      robotId: ROBOT_ID,
+      sessionId,
+      shelfId: activeWaypoint?.shelfId,
+    }).catch((err) => {
+      console.warn('[AdMissionOverlay] log Impression error:', err);
+    });
+  }, [currentItem, index, sessionId, activeWaypoint]);
 
   // Đọc giọng nói đồng bộ chuẩn tự nhiên 1 lần duy nhất theo từng banner khi hiển thị
   useEffect(() => {
@@ -164,18 +194,72 @@ function AdInteractiveCarousel({
   }, [index, total, currentItem, isStartingGuide]);
 
   const handleNext = () => {
+    refreshSession();
     setIndex((curr) => (curr + 1) % total);
     setCartSuccess(false);
     setCartNotice(null);
   };
 
   const handlePrev = () => {
+    refreshSession();
     setIndex((curr) => (curr - 1 + total) % total);
     setCartSuccess(false);
     setCartNotice(null);
   };
 
+  // Ghi nhận Lượt Chạm Sản Phẩm (Click) & Client Debounce & Server Fraud Handling
+  const handleProductClick = async (e?: any) => {
+    refreshSession();
+    if (!currentItem) return;
+
+    const campaignId = currentItem.adCampaignId || currentItem.campaignId;
+    const productId = currentItem.productId || currentItem.id;
+
+    // Client Debounce (Chống chạm đúp): vô hiệu hóa touch trên sản phẩm đó trong 1.5 giây
+    if (isClickDebouncedRef.current) return;
+    isClickDebouncedRef.current = true;
+    setTimeout(() => {
+      isClickDebouncedRef.current = false;
+    }, 1500);
+
+    // Mở popup thông tin chi tiết sản phẩm
+    setSelectedDetailProduct(currentItem);
+
+    // Nếu server đã báo spam (isFraud) cho sản phẩm này trong session hiện tại, không gửi thêm request
+    if (productId && isProductFraud(productId)) {
+      console.log(`[AdMissionOverlay] Product ${productId} already marked fraud in session - skipping Click request.`);
+      return;
+    }
+
+    if (campaignId) {
+      const xCoord = Math.round(e?.nativeEvent?.pageX ?? e?.nativeEvent?.locationX ?? 0);
+      const yCoord = Math.round(e?.nativeEvent?.pageY ?? e?.nativeEvent?.locationY ?? 0);
+
+      try {
+        const res = await AdService.logInteraction({
+          adCampaignId: campaignId,
+          actionType: 'Click',
+          productId: productId,
+          robotId: ROBOT_ID,
+          sessionId,
+          shelfId: activeWaypoint?.shelfId,
+          xCoord,
+          yCoord,
+        });
+
+        console.log('[AdMissionOverlay] Click response:', res);
+        if (res?.isFraud && productId) {
+          markProductFraud(productId);
+          console.warn(`[AdMissionOverlay] Server flagged spam click (${res.fraudReason}) - blocked further clicks for product ${productId} in this session.`);
+        }
+      } catch (err) {
+        console.warn('[AdMissionOverlay] log Click error:', err);
+      }
+    }
+  };
+
   const handleGuide = async () => {
+    refreshSession();
     if (isStartingGuide || !onStartGuide || !currentItem) return;
     setIsStartingGuide(true);
     try {
@@ -187,6 +271,7 @@ function AdInteractiveCarousel({
   };
 
   const handleMultiProductGuide = () => {
+    refreshSession();
     // 1. Lưu toàn bộ danh sách sản phẩm quảng cáo vào cache
     if (playlist && playlist.length > 0) {
       AdInterruptionService.setCachedAdPlaylist(playlist);
@@ -235,6 +320,7 @@ function AdInteractiveCarousel({
   };
 
   const handleSearchOther = async () => {
+    refreshSession();
     if (onSearchOther) {
       await onSearchOther();
     } else if (onDismiss) {
@@ -243,6 +329,7 @@ function AdInteractiveCarousel({
   };
 
   const handleAddToCart = async () => {
+    refreshSession();
     if (isAddingCart || !currentItem) return;
     const pId = currentItem.productId || currentItem.id;
     if (!pId) {
@@ -291,8 +378,10 @@ function AdInteractiveCarousel({
 
   return (
     <View style={styles.container}>
-      {/* Visual background & uncropped hero product showcase */}
-      <AdCreativeMedia type={type} url={mediaUrl} bottomSpace={bottomCardHeight} />
+      {/* Visual background & uncropped hero product showcase - Chạm để xem chi tiết & ghi nhận Click */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleProductClick}>
+        <AdCreativeMedia type={type} url={mediaUrl} bottomSpace={bottomCardHeight} />
+      </Pressable>
 
       {/* TOP HEADER */}
       <View style={styles.header}>
@@ -355,31 +444,33 @@ function AdInteractiveCarousel({
           </View>
         )}
 
-        {/* Product Title */}
-        <Text style={styles.productTitle} numberOfLines={2}>
-          {title}
-        </Text>
+        {/* Product Title & Price - Có thể nhấn để xem chi tiết */}
+        <TouchableOpacity activeOpacity={0.88} onPress={handleProductClick}>
+          <Text style={styles.productTitle} numberOfLines={2}>
+            {title}
+          </Text>
 
-        {/* Price and Badges */}
-        <View style={styles.priceRow}>
-          {price > 0 ? (
-            <View style={styles.priceBox}>
-              <Text style={styles.priceNumber}>
-                {price.toLocaleString('vi-VN')}
-              </Text>
-              <Text style={styles.priceCurrency}>₫</Text>
-            </View>
-          ) : (
-            <View style={styles.freeDealBox}>
-              <Sparkles size={16} color="#10b981" />
-              <Text style={styles.freeDealText}>ƯU ĐÃI NỔI BẬT</Text>
-            </View>
-          )}
+          {/* Price and Badges */}
+          <View style={styles.priceRow}>
+            {price > 0 ? (
+              <View style={styles.priceBox}>
+                <Text style={styles.priceNumber}>
+                  {price.toLocaleString('vi-VN')}
+                </Text>
+                <Text style={styles.priceCurrency}>₫</Text>
+              </View>
+            ) : (
+              <View style={styles.freeDealBox}>
+                <Sparkles size={16} color="#10b981" />
+                <Text style={styles.freeDealText}>ƯU ĐÃI NỔI BẬT</Text>
+              </View>
+            )}
 
-          <View style={styles.promoBadge}>
-            <Text style={styles.promoBadgeText}>GIÁ ĐẶC BIỆT HÔM NAY</Text>
+            <View style={styles.promoBadge}>
+              <Text style={styles.promoBadgeText}>GIÁ ĐẶC BIỆT HÔM NAY</Text>
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Description / Text */}
         {!!description && (
@@ -571,6 +662,104 @@ function AdInteractiveCarousel({
                 activeOpacity={0.7}
               >
                 <Text style={styles.modalCancelBtnText}>Để sau</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL CHI TIẾT SẢN PHẨM KHI KHÁCH CHẠM VÀO SẢN PHẨM */}
+      <Modal
+        visible={!!selectedDetailProduct}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setSelectedDetailProduct(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.detailCard}>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setSelectedDetailProduct(null)}
+              activeOpacity={0.7}
+            >
+              <X size={20} color="#94a3b8" />
+            </TouchableOpacity>
+
+            {/* Product Image */}
+            {Boolean(selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl) && (
+              <Image
+                source={{ uri: selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl }}
+                style={styles.detailProductImage}
+                contentFit="contain"
+              />
+            )}
+
+            {/* Shelf Location Tag */}
+            <View style={styles.detailLocationChip}>
+              <MapPin size={16} color="#10b981" />
+              <Text style={styles.detailLocationText}>
+                {activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Kệ hàng siêu thị'}
+              </Text>
+            </View>
+
+            {/* Title */}
+            <Text style={styles.detailTitle} numberOfLines={2}>
+              {selectedDetailProduct?.productName || selectedDetailProduct?.name || 'Chi tiết sản phẩm'}
+            </Text>
+
+            {/* Price */}
+            <View style={styles.detailPriceRow}>
+              {Number(selectedDetailProduct?.productPrice ?? selectedDetailProduct?.unitPrice ?? 0) > 0 ? (
+                <View style={styles.priceBox}>
+                  <Text style={styles.detailPriceNumber}>
+                    {Number(selectedDetailProduct?.productPrice ?? selectedDetailProduct?.unitPrice ?? 0).toLocaleString('vi-VN')}
+                  </Text>
+                  <Text style={styles.detailPriceCurrency}>₫</Text>
+                </View>
+              ) : (
+                <View style={styles.freeDealBox}>
+                  <Sparkles size={16} color="#10b981" />
+                  <Text style={styles.freeDealText}>ƯU ĐÃI NỔI BẬT</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Description */}
+            <Text style={styles.detailDescription} numberOfLines={4}>
+              {selectedDetailProduct?.description || selectedDetailProduct?.mediaContents?.[0]?.contentText || 'Sản phẩm chính hãng với mức giá ưu đãi đặc biệt hôm nay tại siêu thị.'}
+            </Text>
+
+            {/* Action Buttons */}
+            <View style={styles.detailActionsRow}>
+              {isFreeRoam ? (
+                <TouchableOpacity
+                  style={styles.detailGuideBtn}
+                  onPress={() => {
+                    setSelectedDetailProduct(null);
+                    void handleGuide();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Navigation size={18} color="white" />
+                  <Text style={styles.detailGuideBtnText}>Dẫn tôi đến kệ này</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.detailAtShelfNote}>
+                  <MapPin size={16} color="#10b981" />
+                  <Text style={styles.detailAtShelfNoteText}>Sản phẩm có sẵn tại kệ trước mặt bạn</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={styles.detailCartBtn}
+                onPress={() => {
+                  void handleAddToCart();
+                }}
+                activeOpacity={0.85}
+              >
+                <ShoppingCart size={18} color="#38bdf8" />
+                <Text style={styles.detailCartBtnText}>Thêm vào giỏ</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1137,5 +1326,141 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 13,
     fontWeight: '600',
+  },
+  detailCard: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: '#0f172a',
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  detailProductImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: 'rgba(2, 6, 23, 0.5)',
+    marginBottom: 16,
+  },
+  detailLocationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+  },
+  detailLocationText: {
+    color: '#10b981',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  detailTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  detailPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  detailPriceNumber: {
+    color: '#10b981',
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  detailPriceCurrency: {
+    color: '#10b981',
+    fontSize: 18,
+    fontWeight: '800',
+    marginLeft: 2,
+  },
+  detailDescription: {
+    color: '#94a3b8',
+    fontSize: 14,
+    lineHeight: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 20,
+  },
+  detailActionsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  detailGuideBtn: {
+    flex: 1.2,
+    backgroundColor: '#059669',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#34d399',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  detailGuideBtnText: {
+    color: '#ffffff',
+    fontSize: 14.5,
+    fontWeight: '800',
+  },
+  detailAtShelfNote: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  detailAtShelfNoteText: {
+    color: '#10b981',
+    fontSize: 12.5,
+    fontWeight: '700',
+    flex: 1,
+  },
+  detailCartBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+  },
+  detailCartBtnText: {
+    color: '#38bdf8',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

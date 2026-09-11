@@ -33,11 +33,12 @@ import { useGeofencing } from '../../context/GeofencingContext';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { useCustomerSession } from '../../context/CustomerSessionContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
-/** Khoảng thời gian tối thiểu (ms) giữa 2 lần log Click cùng sponsoredId */
-const CLICK_COOLDOWN_MS = 5_000;
+/** Khoảng thời gian tối thiểu (ms) giữa 2 lần log Click (1.5s debounce) */
+const CLICK_COOLDOWN_MS = 1_500;
 
 function mediaForProduct(ad: AdPlaylistItemDto, type: 'VOICE_TEXT' | 'IMAGE') {
   const resources = ad.mediaContents?.filter(item => item.resourceType === type) ?? [];
@@ -59,6 +60,7 @@ export default function ZoneAdOverlay() {
   const { speak, stop, isSpeaking } = useRobotVoice();
   const { member, token } = useRobotAuth();
   const { dispatchCart, status: guideStatus, isBusy: isGuideBusy } = useRobotGuide();
+  const { sessionId, refreshSession, markProductFraud, isProductFraud } = useCustomerSession();
   const router = useRouter();
 
   // Stable refs for speak/stop (không gây re-run effect)
@@ -124,11 +126,12 @@ export default function ZoneAdOverlay() {
         robotId: ROBOT_ID,
         semanticObjectId: zone?.semanticObjectId,
         zoneId: zone?.zoneId,
+        sessionId,
       });
     } catch (e) {
       console.warn('[ZoneAdOverlay] logImpression failed:', e);
     }
-  }, []); // KHÔNG phụ thuộc currentZone để tránh re-create callback
+  }, [sessionId]); // KHÔNG phụ thuộc currentZone để tránh re-create callback
 
   // Stable ref cho logImpression
   const logImpressionRef = useRef(logImpression);
@@ -147,10 +150,12 @@ export default function ZoneAdOverlay() {
   const handleCloseRef = useRef(handleClose);
   useEffect(() => { handleCloseRef.current = handleClose; }, [handleClose]);
 
-  // ─── FIX click spam: cooldown per-sponsoredId ───────────────────────────────
+  // ─── FIX click spam: cooldown per-sponsoredId + fraud protection ────────────
   const handleAdClick = useCallback(async (ad: AdPlaylistItemDto) => {
+    refreshSession();
     if (ad.adCampaignId <= 0 || ad.sponsoredId <= 0) {
       console.warn('[ZoneAdOverlay] Bỏ qua click log vì playlist thiếu AdCampaignId/SponsoredId thật.');
+      router.push(`/product/${ad.productId}` as any);
       return;
     }
     const now = Date.now();
@@ -161,9 +166,18 @@ export default function ZoneAdOverlay() {
     }
     lastClickTimeRef.current.set(ad.sponsoredId, now);
 
+    // Mở chi tiết sản phẩm
+    router.push(`/product/${ad.productId}` as any);
+
+    // Nếu đã bị phát hiện click fraud trong session, không gửi request thêm
+    if (ad.productId && isProductFraud(ad.productId)) {
+      console.log(`[ZoneAdOverlay] Product ${ad.productId} already marked fraud in session - skipping Click request.`);
+      return;
+    }
+
     try {
       const zone = currentZoneRef.current;
-      await AdService.logInteraction({
+      const res = await AdService.logInteraction({
         adCampaignId: ad.adCampaignId,
         actionType: 'Click',
         sponsoredId: ad.sponsoredId,
@@ -171,17 +185,21 @@ export default function ZoneAdOverlay() {
         robotId: ROBOT_ID,
         semanticObjectId: zone?.semanticObjectId,
         zoneId: zone?.zoneId,
+        sessionId,
       });
-      console.log(`[ZoneAdOverlay] Click logged — navigating to product/${ad.productId}`);
+      console.log(`[ZoneAdOverlay] Click logged:`, res);
+      if (res?.isFraud && ad.productId) {
+        markProductFraud(ad.productId);
+        console.warn(`[ZoneAdOverlay] Server flagged spam click (${res.fraudReason}) - blocked further clicks for product ${ad.productId} in session.`);
+      }
     } catch (e) {
       console.warn('[ZoneAdOverlay] Click log failed:', e);
     }
-    // Navigate sang màn hình chi tiết sản phẩm
-    router.push(`/product/${ad.productId}` as any);
-  }, [router]);
+  }, [router, refreshSession, sessionId, isProductFraud, markProductFraud]);
 
   // ─── Inline Add to Cart (không cần navigate) ─────────────────────────────────
   const handleAddToCart = useCallback(async (ad: AdPlaylistItemDto) => {
+    refreshSession();
     if (!token) {
       setCartError('Cần đăng nhập để thêm vào giỏ hàng.');
       setTimeout(() => setCartError(null), 3000);
@@ -197,10 +215,10 @@ export default function ZoneAdOverlay() {
       void speakRef.current(`Đã thêm ${ad.productName} vào giỏ hàng!`);
       setTimeout(() => setCartSuccess(false), 3000);
 
-      // Log click khi add to cart
+      // Log click khi add to cart (nếu chưa bị fraud)
       const now = Date.now();
       const lastTime = lastClickTimeRef.current.get(ad.sponsoredId) ?? 0;
-      if (now - lastTime >= CLICK_COOLDOWN_MS && ad.adCampaignId > 0 && ad.sponsoredId > 0) {
+      if (now - lastTime >= CLICK_COOLDOWN_MS && ad.adCampaignId > 0 && ad.sponsoredId > 0 && !isProductFraud(ad.productId)) {
         lastClickTimeRef.current.set(ad.sponsoredId, now);
         const zone = currentZoneRef.current;
         AdService.logInteraction({
@@ -211,6 +229,11 @@ export default function ZoneAdOverlay() {
           robotId: ROBOT_ID,
           semanticObjectId: zone?.semanticObjectId,
           zoneId: zone?.zoneId,
+          sessionId,
+        }).then(res => {
+          if (res?.isFraud && ad.productId) {
+            markProductFraud(ad.productId);
+          }
         }).catch(() => undefined);
       }
     } catch (err: any) {
@@ -220,7 +243,7 @@ export default function ZoneAdOverlay() {
     } finally {
       setIsAddingToCart(false);
     }
-  }, [token, isAddingToCart]);
+  }, [token, isAddingToCart, refreshSession, sessionId, isProductFraud, markProductFraud]);
 
   // ─── Guide-during-Ad: dẫn đường cho khách mà không kết thúc ad mission ─────
   const handleGuideToShelf = useCallback(async (ad: AdPlaylistItemDto) => {
