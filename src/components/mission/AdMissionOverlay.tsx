@@ -28,12 +28,15 @@ import {
   Layers,
   Camera,
   UserCheck,
+  Clock,
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useCustomerSession } from '../../context/CustomerSessionContext';
 import { AdService } from '../../services/AdService';
 import { AdInterruptionService } from '../../services/AdInterruptionService';
+import { useRobotVoice } from '../../hooks/useRobotVoice';
+import { VoiceService } from '../../services/RobotVoiceService';
 
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -61,20 +64,28 @@ export function AdMissionOverlay({
 
   const isFreeRoam = mission.isFreeRoam
     || mission.adMode === 'freeroam'
-    || mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit');
-  const shouldShow = isFreeRoam
-    ? ['NAVIGATING', 'MOVING', 'ARRIVED', 'PLAYLIST_PLAYING'].includes(status)
-    : (status === 'ARRIVED' || status === 'PLAYLIST_PLAYING');
+    || (mission.isFreeRoam === undefined && mission.adMode === undefined && mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit'));
 
-  if (!shouldShow || !activePlaylist || activePlaylist.length === 0) return null;
+  // Luôn hiển thị quảng cáo liên tục trong suốt mission, trừ khi bị ESTOP
+  const shouldShow = status !== 'ESTOP';
+
+  // Luôn đảm bảo playlist có sản phẩm (nếu activePlaylist tạm thời rỗng thì lấy từ cache hoặc từ mission waypoints)
+  const effectivePlaylist = (activePlaylist && activePlaylist.length > 0)
+    ? activePlaylist
+    : (AdInterruptionService.getCachedAdPlaylist()?.length
+        ? AdInterruptionService.getCachedAdPlaylist()
+        : mission.waypoints?.flatMap((w: any) => w.playlist || []) ?? []);
+
+  if (!shouldShow || !effectivePlaylist || effectivePlaylist.length === 0) return null;
 
   return (
     <Modal visible animationType="fade" statusBarTranslucent transparent>
       <View style={styles.root}>
         <AdInteractiveCarousel
           mission={mission}
+          status={status}
           isFreeRoam={Boolean(isFreeRoam)}
-          playlist={activePlaylist}
+          playlist={effectivePlaylist}
           activeWaypoint={activeWaypoint}
           onStartGuide={onStartGuide}
           onSearchOther={onSearchOther}
@@ -87,6 +98,7 @@ export function AdMissionOverlay({
 
 function AdInteractiveCarousel({
   mission,
+  status,
   isFreeRoam,
   playlist,
   activeWaypoint,
@@ -95,6 +107,7 @@ function AdInteractiveCarousel({
   onDismiss,
 }: {
   mission?: any;
+  status?: string;
   isFreeRoam: boolean;
   playlist: any[];
   activeWaypoint: any;
@@ -105,6 +118,7 @@ function AdInteractiveCarousel({
   const router = useRouter();
   const { token, member } = useRobotAuth();
   const { sessionId, refreshSession, markProductFraud, isProductFraud } = useCustomerSession();
+  const { speak, stop } = useRobotVoice();
   const [index, setIndex] = useState(0);
   const [isStartingGuide, setIsStartingGuide] = useState(false);
   const [isAddingCart, setIsAddingCart] = useState(false);
@@ -119,6 +133,25 @@ function AdInteractiveCarousel({
   const lastSpokenKeyRef = useRef<string | null>(null);
   const lastLoggedImpressionKeyRef = useRef<string | null>(null);
   const isClickDebouncedRef = useRef(false);
+  const prevStatusRef = useRef<string | null>(null);
+  const currentWaypointKey = `${activeWaypoint?.nodeId ?? ''}_${activeWaypoint?.shelfId ?? ''}`;
+  const lastWaypointKeyRef = useRef<string | null>(null);
+
+  const safeSpeak = useCallback((text: string) => {
+    void stop();
+    setTimeout(() => {
+      void speak(text);
+    }, 250);
+  }, [speak, stop]);
+
+  // Reset index về 0 khi robot chuyển sang waypoint/kệ mới
+  useEffect(() => {
+    if (activeWaypoint && currentWaypointKey !== lastWaypointKeyRef.current) {
+      lastWaypointKeyRef.current = currentWaypointKey;
+      setIndex(0);
+      lastSpokenKeyRef.current = null;
+    }
+  }, [activeWaypoint, currentWaypointKey]);
 
   // 1. Ghi nhận Lượt Hiển Thị (Impression) khi màn hình bắt đầu phát banner/video quảng cáo
   useEffect(() => {
@@ -143,58 +176,138 @@ function AdInteractiveCarousel({
     });
   }, [currentItem, index, sessionId, activeWaypoint]);
 
-  // Đọc giọng nói đồng bộ chuẩn tự nhiên 1 lần duy nhất theo từng banner khi hiển thị
+  // 1.5. Preload toàn bộ playlist audio ngay khi nhận danh sách
+  useEffect(() => {
+    if (!playlist || playlist.length === 0) return;
+    const texts = playlist.map((item, i) => {
+      const rawPrice = item.productPrice ?? item.unitPrice ?? item.promotionPrice ?? 0;
+      const numericPrice = Math.round(Number(rawPrice));
+      const priceText = numericPrice > 0 ? `, giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
+      const pName = item.productName || item.name || 'Sản phẩm';
+      const targetShelf = activeWaypoint?.shelfName || activeWaypoint?.nodeName;
+      if (!isFreeRoam && targetShelf && i === 0) {
+        return `Xin chào quý khách! Tôi đang ở ${targetShelf}. Xin giới thiệu ${pName}${priceText} Mời quý khách chạm màn hình để xem thêm nhé!`;
+      }
+      return `Tiếp theo là ${pName}${priceText}`;
+    });
+    void VoiceService.preload(texts);
+  }, [playlist, isFreeRoam, activeWaypoint]);
+
+  // 2. Đồng bộ thời gian phiên quảng cáo với Web Admin (theo estimatedDurationSeconds)
+  const sessionTotalSec = mission?.estimatedDurationSeconds ?? (isFreeRoam ? 120 : 257);
+  const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number>(sessionTotalSec);
+
+  useEffect(() => {
+    if (!mission) return;
+    const durSec = mission.estimatedDurationSeconds;
+    if (!durSec || durSec <= 0) return;
+
+    const dispatchedMs = mission.dispatchedAt
+      ? new Date(mission.dispatchedAt).getTime()
+      : Date.now();
+
+    const updateSessionTimer = () => {
+      const elapsedSec = Math.floor((Date.now() - dispatchedMs) / 1000);
+      const remaining = Math.max(0, durSec - elapsedSec);
+      setSessionSecondsLeft(remaining);
+    };
+
+    updateSessionTimer();
+    const interval = setInterval(updateSessionTimer, 1000);
+    return () => clearInterval(interval);
+  }, [mission?.missionId, mission?.estimatedDurationSeconds, mission?.dispatchedAt]);
+
+  const slideAdvanceTimerRef = useRef<any>(null);
+
+  // 3. TTS & Chuyển slide thông minh: Chờ ĐỌC XONG CÂU HẾT THỨ CẦN ĐỌC + 2 giây nghỉ mới chuyển
   useEffect(() => {
     if (!currentItem || isStartingGuide) return;
-    const adKey = `${currentItem.id || currentItem.productId || currentItem.sponsoredId || currentItem.name}-${index}`;
-    if (lastSpokenKeyRef.current === adKey) return;
-    lastSpokenKeyRef.current = adKey;
+
+    if (slideAdvanceTimerRef.current) {
+      clearTimeout(slideAdvanceTimerRef.current);
+      slideAdvanceTimerRef.current = null;
+    }
 
     const rawPrice = currentItem.productPrice ?? currentItem.unitPrice ?? currentItem.promotionPrice ?? 0;
     const numericPrice = Math.round(Number(rawPrice));
-    const priceText = numericPrice > 0 ? ` - Giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
+    const priceText = numericPrice > 0 ? `, giá ưu đãi chỉ ${numericPrice.toLocaleString('vi-VN')} đồng.` : '.';
     const pName = currentItem.productName || currentItem.name || 'Sản phẩm';
+    const targetShelf = activeWaypoint?.shelfName || activeWaypoint?.nodeName;
 
-    // Điều chỉnh nội dung giọng đọc theo chế độ:
-    // - Tự do (Free roam): mời khách chạm để robot dẫn đường đến kệ hoặc thêm vào giỏ
-    // - Theo kệ (Per shelf): robot đã đỗ ngay trước mặt kệ, chỉ mời xem sản phẩm hoặc thêm vào giỏ
-    const speechText = isFreeRoam
-      ? `${pName}${priceText} Quý khách có thể chạm vào màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`
-      : `${pName}${priceText} Sản phẩm đang có sẵn tại kệ ngay trước mặt quý khách. Mời quý khách chọn mua hoặc thêm vào giỏ hàng!`;
+    let speechText = '';
+    if (!isFreeRoam && targetShelf && index === 0) {
+      speechText = `Xin chào quý khách! Tôi đang ở ${targetShelf}. Xin giới thiệu ${pName}${priceText} Mời quý khách chạm màn hình để tôi dẫn đường hoặc thêm vào giỏ hàng nhé!`;
+    } else {
+      speechText = `Tiếp theo là ${pName}${priceText}`;
+    }
 
-    Speech.stop();
-    Speech.speak(speechText, {
-      language: 'vi-VN',
-      rate: 0.9,
+    const baseDuration = currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? (isFreeRoam ? 10 : 12);
+    setItemSecondsLeft(baseDuration);
+
+    // Phát giọng nói FPT banmai (hoặc fallback)
+    void speak(speechText, () => {
+      // ĐÃ ĐỌC XONG HOÀN TOÀN! Nghỉ 2.2 giây để khách kịp nhìn màn hình rồi mới lật trang
+      slideAdvanceTimerRef.current = setTimeout(() => {
+        if (!selectedDetailProduct && !showLoginModal && !isAddingCart) {
+          if (total > 1) {
+            setIndex((curr: number) => (curr + 1) % total);
+          }
+          setCartSuccess(false);
+          setCartNotice(null);
+        }
+      }, 2200);
     });
-  }, [currentItem, index, isStartingGuide, isFreeRoam]);
+
+    return () => {
+      if (slideAdvanceTimerRef.current) {
+        clearTimeout(slideAdvanceTimerRef.current);
+        slideAdvanceTimerRef.current = null;
+      }
+    };
+  }, [currentItem, index, isStartingGuide, isFreeRoam, activeWaypoint, speak, total, selectedDetailProduct, showLoginModal, isAddingCart]);
 
   useEffect(() => {
     return () => {
-      Speech.stop();
-    };
-  }, []);
-
-  // Auto rotate qua các sản phẩm trong playlist nếu có nhiều hơn 1 sản phẩm
-  useEffect(() => {
-    if (isStartingGuide) return;
-    const rawSec = currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? 12;
-    const duration = (rawSec > 0 ? rawSec : 12) * 1000;
-    const timer = setTimeout(() => {
-      if (total > 1) {
-        setIndex((curr) => (curr + 1) % total);
-      } else {
-        lastSpokenKeyRef.current = null;
-        setIndex((curr) => curr + 1);
+      if (slideAdvanceTimerRef.current) {
+        clearTimeout(slideAdvanceTimerRef.current);
+        slideAdvanceTimerRef.current = null;
       }
-      setCartSuccess(false);
-      setCartNotice(null);
-    }, total > 1 ? duration : 20000);
-    return () => clearTimeout(timer);
-  }, [index, total, currentItem, isStartingGuide]);
+      void stop();
+    };
+  }, [stop]);
+
+  // 4. Thời lượng hiển thị sản phẩm & đếm giây đỗ tại kệ
+  const rawSec = currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? (isFreeRoam ? 10 : 12);
+  const [itemSecondsLeft, setItemSecondsLeft] = useState<number>(rawSec > 0 ? rawSec : 12);
+
+  const shelfDwell = activeWaypoint?.dwellTimeSeconds ?? activeWaypoint?.effectiveDwellTimeSeconds ?? 20;
+  const [shelfDwellLeft, setShelfDwellLeft] = useState<number>(shelfDwell);
+
+  useEffect(() => {
+    const dwell = activeWaypoint?.dwellTimeSeconds ?? activeWaypoint?.effectiveDwellTimeSeconds ?? 20;
+    setShelfDwellLeft(dwell);
+  }, [activeWaypoint, currentWaypointKey]);
+
+  useEffect(() => {
+    if (isFreeRoam) return;
+    const interval = setInterval(() => {
+      setShelfDwellLeft((prev: number) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isFreeRoam, activeWaypoint, currentWaypointKey]);
+
+  // Đếm ngược giây sản phẩm để thanh tiến độ chuyển động mượt mà (không ép lật trang khi chưa đọc xong)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setItemSecondsLeft((prev: number) => (prev > 1 ? prev - 1 : 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [index, currentItem]);
 
   const handleNext = () => {
     refreshSession();
+    if (slideAdvanceTimerRef.current) clearTimeout(slideAdvanceTimerRef.current);
+    void stop();
     setIndex((curr) => (curr + 1) % total);
     setCartSuccess(false);
     setCartNotice(null);
@@ -202,6 +315,8 @@ function AdInteractiveCarousel({
 
   const handlePrev = () => {
     refreshSession();
+    if (slideAdvanceTimerRef.current) clearTimeout(slideAdvanceTimerRef.current);
+    void stop();
     setIndex((curr) => (curr - 1 + total) % total);
     setCartSuccess(false);
     setCartNotice(null);
@@ -289,7 +404,7 @@ function AdInteractiveCarousel({
 
       AdInterruptionService.saveInterruptedMission({
         originalMissionId: mission.missionId,
-        robotCode: mission.robotCode || 'RB001',
+        robotCode: mission.robotCode || 'RB0001',
         remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId).filter((id: any) => id > 0),
         remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
         isPerShelfAd: isPerShelf,
@@ -304,16 +419,14 @@ function AdInteractiveCarousel({
 
     if (!token || !member) {
       setShowLoginModal(true);
-      Speech.speak(
-        'Tính năng chọn nhiều sản phẩm và lập lộ trình mua sắm thông minh tối ưu dành riêng cho khách hàng thành viên. Quý khách vui lòng đăng nhập nhé!',
-        { language: 'vi-VN', rate: 0.9 }
+      safeSpeak(
+        'Tính năng chọn nhiều sản phẩm và lập lộ trình mua sắm thông minh tối ưu dành riêng cho khách hàng thành viên. Quý khách vui lòng đăng nhập nhé!'
       );
       return;
     }
 
-    Speech.speak(
-      `Chào ${member.fullName || 'quý khách'}! Mời bạn chọn các sản phẩm đang quảng cáo trên màn hình để robot dẫn đường gom hàng tối ưu nhé!`,
-      { language: 'vi-VN', rate: 0.9 }
+    safeSpeak(
+      `Chào ${member.fullName || 'quý khách'}! Mời bạn chọn các sản phẩm đang quảng cáo trên màn hình để robot dẫn đường gom hàng tối ưu nhé!`
     );
     if (onDismiss) onDismiss();
     router.push('/ad-multi-select' as any);
@@ -341,10 +454,7 @@ function AdInteractiveCarousel({
     if (!token) {
       setCartNotice('Quý khách vui lòng đăng nhập thành viên để lưu vào giỏ hàng!');
       setShowLoginModal(true);
-      Speech.speak('Quý khách vui lòng đăng nhập thành viên để lưu sản phẩm vào giỏ hàng nhé!', {
-        language: 'vi-VN',
-        rate: 0.9,
-      });
+      safeSpeak('Quý khách vui lòng đăng nhập thành viên để lưu sản phẩm vào giỏ hàng nhé!');
       setTimeout(() => setCartNotice(null), 4000);
       return;
     }
@@ -354,6 +464,8 @@ function AdInteractiveCarousel({
       await CartService.addItem(pId, 1, token);
       setCartSuccess(true);
       setCartNotice('Đã thêm vào giỏ hàng thành công!');
+      const pName = currentItem.productName || currentItem.name || 'sản phẩm';
+      safeSpeak(`Đã thêm ${pName} vào giỏ hàng thành công!`);
       setTimeout(() => {
         setCartSuccess(false);
         setCartNotice(null);
@@ -374,10 +486,24 @@ function AdInteractiveCarousel({
   const price = currentItem?.productPrice ?? currentItem?.unitPrice ?? 0;
   const description = media?.contentText || currentItem?.description || 'Chương trình khuyến mãi nổi bật tại siêu thị hôm nay.';
   const campaign = currentItem?.campaignName;
-  const shelfLabel = activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Kệ hàng';
+  const isEnRoute = status === 'MOVING' || status === 'NAVIGATING';
+  const targetShelfName = activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Kệ hàng';
+  const shelfLabel = isEnRoute
+    ? `Đang tới: ${targetShelfName}`
+    : (isFreeRoam ? 'Quảng cáo toàn siêu thị' : `Đang tại: ${targetShelfName}`);
 
   return (
     <View style={styles.container}>
+      {/* Top product duration progress bar */}
+      <View style={styles.progressBarTrack}>
+        <View
+          style={[
+            styles.progressBarFill,
+            { width: `${Math.min(100, Math.max(0, ((rawSec - itemSecondsLeft) / rawSec) * 100))}%` },
+          ]}
+        />
+      </View>
+
       {/* Visual background & uncropped hero product showcase - Chạm để xem chi tiết & ghi nhận Click */}
       <Pressable style={StyleSheet.absoluteFill} onPress={handleProductClick}>
         <AdCreativeMedia type={type} url={mediaUrl} bottomSpace={bottomCardHeight} />
@@ -386,9 +512,22 @@ function AdInteractiveCarousel({
       {/* TOP HEADER */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.locationChip}>
-            <MapPin size={16} color="#10b981" />
+          <View style={[styles.locationChip, isEnRoute && { backgroundColor: 'rgba(14, 116, 144, 0.85)', borderColor: '#38bdf8' }]}>
+            {isEnRoute ? (
+              <Navigation size={15} color="#38bdf8" />
+            ) : (
+              <MapPin size={15} color="#10b981" />
+            )}
             <Text style={styles.locationText}>{shelfLabel}</Text>
+          </View>
+          {/* Live countdown timer chip: Hiển thị đồng bộ với Web Admin */}
+          <View style={styles.timerChip}>
+            <Clock size={14} color="#ea580c" />
+            <Text style={styles.timerText}>
+              {sessionSecondsLeft > 0
+                ? `Phiên: ${Math.floor(sessionSecondsLeft / 60)}:${String(sessionSecondsLeft % 60).padStart(2, '0')}${!isFreeRoam ? ` (Kệ: ${shelfDwellLeft}s)` : ''}`
+                : (isFreeRoam ? `${itemSecondsLeft}s` : `Kệ: ${shelfDwellLeft}s`)}
+            </Text>
           </View>
           {campaign && (
             <View style={styles.campaignChip}>
@@ -778,10 +917,12 @@ function AdCreativeMedia({
   url: string;
   bottomSpace?: number;
 }) {
-  const isVideo = type.includes('VIDEO') || /\.(mp4|webm|mov)(\?|$)/i.test(url);
-  const player = useVideoPlayer(isVideo && url ? url : null, (instance) => {
-    instance.loop = true;
-    instance.play();
+  const isVideo = (type.includes('VIDEO') || /\.(mp4|webm|mov)(\?|$)/i.test(url)) && Boolean(url);
+  const player = useVideoPlayer(isVideo ? url : null, (instance) => {
+    if (isVideo) {
+      instance.loop = true;
+      instance.play();
+    }
   });
 
   if (isVideo && url) {
@@ -871,6 +1012,36 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     fontSize: 14,
     fontWeight: '700',
+  },
+  timerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: 'rgba(234, 88, 12, 0.7)',
+  },
+  timerText: {
+    color: '#fdba74',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  progressBarTrack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    zIndex: 99,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#ea580c',
+    borderRadius: 2,
   },
   campaignChip: {
     flexDirection: 'row',

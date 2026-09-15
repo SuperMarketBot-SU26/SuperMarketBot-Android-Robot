@@ -3,6 +3,7 @@ import * as Speech from 'expo-speech';
 import { RobotControlService } from '../services/RobotControlService';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { AdInterruptionService } from '../services/AdInterruptionService';
+import { VoiceService } from '../services/RobotVoiceService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const RESPONSE_TIMEOUT_MS = 20_000;
@@ -459,32 +460,33 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           });
 
           try {
+            // Khi free-roam: KHÔNG gửi shelfIds (backend sẽ coi là per-shelf nếu shelfIds > 0)
+            // Khi per-shelf: gửi shelfIds và không dùng fullZoneMap
             await RobotControlService.dispatchAutonomous({
               robotCode: ROBOT_CODE,
               flowType: 'ad',
-              shelfIds: interrupted.remainingShelfIds,
-              nodeIds: interrupted.remainingNodeIds,
+              shelfIds: interrupted.isFreeRoam ? [] : (interrupted.remainingShelfIds ?? []),
+              nodeIds: interrupted.isFreeRoam ? [] : (interrupted.remainingNodeIds ?? []),
               floorId: interrupted.floorId ?? 1,
               campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
               fullZoneMap: interrupted.isFreeRoam ? true : undefined,
               durationMinutes: interrupted.durationMinutes,
             });
-            console.log('[RobotGuide] Đã tự động khôi phục và tiếp tục lộ trình quảng cáo.');
+            console.log('[RobotGuide] Đã tự động khôi phục và tiếp tục lộ trình quảng cáo.',
+              `isFreeRoam=${interrupted.isFreeRoam}, durationMinutes=${interrupted.durationMinutes}`);
           } catch (err) {
             console.warn('[RobotGuide] Khôi phục lộ trình quảng cáo thất bại:', err);
           }
           return;
         }
 
-        Speech.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Robot đang quay về vị trí chờ. Chúc quý khách mua sắm vui vẻ!', {
-          language: 'vi-VN', rate: 0.9,
-        });
+        void VoiceService.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Robot đang quay về trạm sạc. Chúc quý khách mua sắm vui vẻ!');
 
         try {
           await RobotControlService.dispatchAutonomous({
             robotCode: ROBOT_CODE,
             flowType: 'return',
-            nodeIds: [8],
+            nodeIds: [7],
             floorId: 1,
           });
         } catch (err) {
@@ -545,8 +547,8 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           await RobotControlService.dispatchAutonomous({
             robotCode: ROBOT_CODE,
             flowType: 'ad',
-            shelfIds: interrupted.remainingShelfIds,
-            nodeIds: interrupted.remainingNodeIds,
+            shelfIds: interrupted.isFreeRoam ? [] : (interrupted.remainingShelfIds ?? []),
+            nodeIds: interrupted.isFreeRoam ? [] : (interrupted.remainingNodeIds ?? []),
             floorId: interrupted.floorId ?? 1,
             campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
             fullZoneMap: interrupted.isFreeRoam ? true : undefined,

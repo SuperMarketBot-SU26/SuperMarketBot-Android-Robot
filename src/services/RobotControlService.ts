@@ -17,7 +17,7 @@
 const ESP32_WS_CONTROL = 'ws://192.168.4.1:81';
 const RECONNECT_INTERVAL_MS = 3000;
 const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
-const ROBOT_CODE_DEFAULT = 'RB001';
+const ROBOT_CODE_DEFAULT = 'RB0001';
 
 export type ConnectionCallback = (connected: boolean) => void;
 

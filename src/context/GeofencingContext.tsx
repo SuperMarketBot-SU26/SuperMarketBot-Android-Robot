@@ -120,22 +120,10 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
         clearZone();
         activeMissionRef.current = null;
-        // Khi Ad flow hoàn tất, tự động quay về Trạm sạc (WP7 = Node 8)
-        if (status === 'COMPLETED') {
-          console.log('[Geofencing] Ad flow COMPLETED — dispatching return to base (Node 8).');
-          import('../services/RobotControlService').then(({ RobotControlService }) => {
-            RobotControlService.dispatchAutonomous({
-              robotCode: ROBOT_CODE,
-              flowType: 'return',
-              nodeIds: [8],
-              floorId: 1,
-            }).catch((err: any) => console.warn('[Geofencing] Return-to-base dispatch failed:', err));
-          });
-        }
         return;
       }
 
-      if (!isRouteAd && ['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(status)) {
+      if (!isRouteAd && ['WAYPOINT_COMPLETED'].includes(status)) {
         clearZone();
         return;
       }

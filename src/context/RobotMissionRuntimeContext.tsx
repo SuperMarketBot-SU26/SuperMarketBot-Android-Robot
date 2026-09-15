@@ -16,6 +16,7 @@ import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { RobotControlService } from '../services/RobotControlService';
 import { AdInterruptionService } from '../services/AdInterruptionService';
 import { BatteryService } from '../services/BatteryService';
+import { VoiceService } from '../services/RobotVoiceService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
@@ -23,7 +24,7 @@ const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 type MissionFlow = 'patrol' | 'ad';
 type MissionStatus = 'IDLE' | 'DISPATCHED' | 'NAVIGATING' | 'MOVING' | 'ARRIVED'
   | 'PLAYLIST_PLAYING' | 'PLAYLIST_COMPLETE' | 'WAYPOINT_COMPLETED'
-  | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'ESTOP';
+  | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'ESTOP' | 'WAYPOINT_FAILED';
 
 interface AdMedia {
   resourceType?: string;
@@ -76,6 +77,8 @@ interface RobotMission {
   campaignId?: number | null;
   isFreeRoam?: boolean;
   adMode?: string;
+  estimatedDurationSeconds?: number | null;
+  dispatchedAt?: string | null;
 }
 
 interface NavigationStatusPayload {
@@ -142,8 +145,19 @@ function normalizeMission(raw: any): RobotMission | null {
   const rawWaypoints = valueOf<any[]>(raw, 'waypoints', 'Waypoints') ?? [];
   const adMode = valueOf<string>(raw, 'adMode', 'AdMode');
   const isFreeRoamExplicit = valueOf<boolean>(raw, 'isFreeRoam', 'IsFreeRoam');
-  const allDwellsZero = rawWaypoints.length > 0 && rawWaypoints.every((item) => Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0) === 0 || String(valueOf(item, 'nodeRole', 'NodeRole', 'role', 'Role') ?? '').toLowerCase() === 'transit');
-  const isFreeRoam = flowType === 'ad' && (adMode === 'freeroam' || isFreeRoamExplicit === true || allDwellsZero);
+  let isFreeRoam = false;
+  if (flowType === 'ad') {
+    if (isFreeRoamExplicit !== undefined) {
+      isFreeRoam = Boolean(isFreeRoamExplicit);
+    } else if (adMode === 'freeroam') {
+      isFreeRoam = true;
+    } else if (adMode === 'shelf') {
+      isFreeRoam = false;
+    } else {
+      const allDwellsZero = rawWaypoints.length > 0 && rawWaypoints.every((item) => Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0) === 0 || String(valueOf(item, 'nodeRole', 'NodeRole', 'role', 'Role') ?? '').toLowerCase() === 'transit');
+      isFreeRoam = allDwellsZero;
+    }
+  }
 
   const waypoints: MissionWaypoint[] = rawWaypoints.map((item) => {
     const rawPlaylist = valueOf<any[]>(item, 'playlist', 'Playlist') ?? [];
@@ -187,6 +201,10 @@ function normalizeMission(raw: any): RobotMission | null {
     waypoints,
     isFreeRoam,
     adMode: isFreeRoam ? 'freeroam' : 'shelf',
+    campaignId: valueOf<number>(raw, 'campaignId', 'CampaignId') ?? null,
+    floorId: Number(valueOf<number>(raw, 'floorId', 'FloorId') ?? 1),
+    estimatedDurationSeconds: valueOf<number>(raw, 'estimatedDurationSeconds', 'EstimatedDurationSeconds') ?? null,
+    dispatchedAt: valueOf<string>(raw, 'dispatchedAt', 'DispatchedAt') ?? new Date().toISOString(),
   };
 }
 
@@ -220,6 +238,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const cameraRef = useRef<CameraView | null>(null);
   const capturedKeys = useRef<Set<string>>(new Set());
+  const isMissionExpiringRef = useRef(false);
   const pendingScansRef = useRef(0);
 
   const interruptAdForGuidance = useCallback(async (productItem: PlaylistItem) => {
@@ -236,16 +255,17 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
     const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
-    // 1. Lưu lộ trình quảng cáo bị tạm dừng vào AdInterruptionService
+    const isFreeRoam = Boolean(activeMission.isFreeRoam);
+    // Khi free-roam: không lưu remainingNodeIds/remainingShelfIds để tránh backend nhận ra là per-shelf
     AdInterruptionService.saveInterruptedMission({
       originalMissionId: activeMission.missionId,
       robotCode: ROBOT_CODE,
-      remainingNodeIds,
-      remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
-      isPerShelfAd: isPerShelf,
-      isFreeRoam: Boolean(activeMission.isFreeRoam),
+      remainingNodeIds: isFreeRoam ? [] : remainingNodeIds,
+      remainingShelfIds: isFreeRoam ? undefined : (remainingShelfIds.length > 0 ? remainingShelfIds : undefined),
+      isPerShelfAd: isFreeRoam ? false : isPerShelf,
+      isFreeRoam,
       floorId: 1,
-      campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
+      campaignId: (isFreeRoam || !isPerShelf) ? (activeMission.campaignId ?? null) : null,
       interruptedAtWaypointIndex: currentIdx,
       totalWaypoints: activeMission.waypoints.length,
       productName: productItem.productName || productItem.name,
@@ -458,8 +478,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         AdInterruptionService.setCachedAdPlaylist(initialPlaylist);
       }
 
-      if (normalized.isFreeRoam && initialPlaylist.length > 0) {
-        console.log('[RobotMissionRuntime] Kích hoạt phát quảng cáo tự do liên tục:', initialPlaylist.length, 'sản phẩm');
+      if (initialPlaylist.length > 0) {
+        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo (${normalized.adMode}):`, initialPlaylist.length, 'sản phẩm');
         setActivePlaylist(initialPlaylist);
         if (normalized.waypoints.length > 0) {
           setActiveWaypoint(normalized.waypoints[0]);
@@ -676,68 +696,90 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Đang tiến hành quét phân tích kệ hàng.`, { language: 'vi-VN', rate: 0.9 });
         }
         if (activeMission.flowType === 'ad') {
-          const dwell = Number(valueOf(payload, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? waypoint.dwellTimeSeconds ?? 0);
-          const isStopRole = role === 'ad' || role === 'stop';
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
-          const playlist = statusPlaylist?.length ? statusPlaylist : waypoint.playlist ?? [];
+          const playlist = statusPlaylist?.length ? statusPlaylist : (waypoint.playlist?.length ? waypoint.playlist : (AdInterruptionService.getCachedAdPlaylist() ?? []));
 
-          if (activeMission.isFreeRoam) {
-            // Trong Mode Tự Do: Robot lướt qua các kệ, nếu kệ có playlist riêng thì phát, nếu không giữ playlist chung
-            if (playlist.length > 0) {
-              setActivePlaylist(playlist);
-            }
-          } else if (isStopRole && dwell > 0) {
-            // Mode Theo Kệ: Dừng tại kệ đọc quảng cáo
-            if (playlist.length > 0) {
-              setActivePlaylist(playlist);
-            }
+          if (playlist.length > 0) {
+            setActivePlaylist(playlist);
           }
         }
       }
 
       if (['MOVING', 'NAVIGATING'].includes(nextStatus)) {
-        if (activeMission.flowType === 'ad' && activeMission.isFreeRoam) {
-          // Trong Mode Tự Do: Đảm bảo playlist luôn sẵn sàng khi robot di chuyển
-          const fallback = waypoint?.playlist?.length
+        if (activeMission.flowType === 'ad') {
+          // Khi robot di chuyển: luôn đảm bảo có playlist để phát sóng liên tục trên tablet
+          const upcomingPlaylist = waypoint?.playlist?.length
             ? waypoint.playlist
-            : activeMission.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? [];
-          if (fallback.length > 0) {
-            setActivePlaylist((prev) => (prev.length > 0 ? prev : fallback));
+            : (activeMission.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? AdInterruptionService.getCachedAdPlaylist() ?? []);
+          if (upcomingPlaylist.length > 0) {
+            setActivePlaylist((prev) => (prev.length > 0 ? prev : upcomingPlaylist));
           }
         }
       }
-      if (['MOVING', 'WAYPOINT_COMPLETED', 'PLAYLIST_COMPLETE'].includes(nextStatus)) {
-        // Chỉ dọn dẹp playlist khi KHÔNG PHẢI chế độ quảng cáo tự do
-        if (!(activeMission.flowType === 'ad' && activeMission.isFreeRoam)) {
-          setActivePlaylist([]);
-        }
+      if (['WAYPOINT_COMPLETED'].includes(nextStatus)) {
         setLastScan(null);
       }
-      if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(nextStatus)) {
-        setActivePlaylist([]);
-        setLastScan(null);
+      if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP', 'WAYPOINT_FAILED'].includes(nextStatus)) {
+        const isAdFlow = activeMission.flowType === 'ad';
+        const isFreeRoamAd = isAdFlow && activeMission.isFreeRoam;
+        const totalWps = activeMission.waypoints?.length ?? 0;
+        const isIntermediateWaypoint = waypointIndex >= 0 && waypointIndex < totalWps - 1;
+
+        // Nếu là lỗi cục bộ tại 1 waypoint của Free Roam Ad hoặc lộ trình nhiều waypoint:
+        // Tiếp tục duy trì phát quảng cáo & không hủy nhiệm vụ
+        if ((nextStatus === 'FAILED' || nextStatus === 'WAYPOINT_FAILED') && (isFreeRoamAd || isIntermediateWaypoint)) {
+          console.log(`[RobotMissionRuntime] Bỏ qua ${nextStatus} tại waypoint ${waypointIndex} (tiếp tục duy trì nhiệm vụ & phát quảng cáo).`);
+          const cached = AdInterruptionService.getCachedAdPlaylist() ?? [];
+          if (cached.length > 0) {
+            setActivePlaylist((prev) => prev.length > 0 ? prev : cached);
+          }
+          return;
+        }
+
+        if (nextStatus === 'COMPLETED') {
+          if (isAdFlow) {
+            console.log('[RobotMissionRuntime] Nhiệm vụ quảng cáo đã hoàn thành tất cả các điểm.');
+            void VoiceService.speak('Nhiệm vụ quảng cáo đã hoàn tất. Robot chuẩn bị quay về trạm sạc.');
+            // Giữ màn hình quảng cáo thêm 5 giây để khách hàng kịp xem/tương tác nốt, sau đó mới quay về trạm
+            setTimeout(() => {
+              setActivePlaylist([]);
+              setMission(null);
+              missionRef.current = null;
+              void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
+            }, 5000);
+            return;
+          } else if (activeMission.flowType === 'patrol') {
+            void VoiceService.speak('Tuần tra toàn bộ siêu thị hoàn tất. Robot đang quay về trạm sạc.');
+            setActivePlaylist([]);
+            setLastScan(null);
+            setMission(null);
+            missionRef.current = null;
+            void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
+            return;
+          }
+        }
         if (nextStatus === 'CANCELLED') {
           const cancelReason = String(valueOf(payload, 'error', 'Error') ?? valueOf(payload, 'reason', 'Reason') ?? '');
           const isInterruptedForGuide = AdInterruptionService.hasInterruptedMission() || cancelReason.toLowerCase().includes('guidance');
-          if (!isInterruptedForGuide) {
-            Speech.speak('Đã dừng nhiệm vụ.', { language: 'vi-VN', rate: 0.9 });
+          const isTimerExpired = cancelReason.toLowerCase().includes('expired') || isMissionExpiringRef.current;
+
+          console.log(`[RobotMissionRuntime] Nhận trạng thái CANCELLED (reason: "${cancelReason}"). Dọn dẹp nhiệm vụ.`);
+          if (!isInterruptedForGuide && !isTimerExpired) {
+            void VoiceService.speak('Đã dừng nhiệm vụ.');
           }
+          setActivePlaylist([]);
+          setLastScan(null);
           setMission(null);
           missionRef.current = null;
         }
         if (nextStatus === 'ESTOP') {
-          Speech.speak('Dừng khẩn cấp.', { language: 'vi-VN', rate: 0.9 });
+          void VoiceService.speak('Dừng khẩn cấp.');
+          setActivePlaylist([]);
+          setLastScan(null);
           setMission(null);
           missionRef.current = null;
         }
-        if (nextStatus === 'COMPLETED') {
-          const completionMsg = activeMission.flowType === 'patrol' 
-            ? 'Tuần tra toàn bộ siêu thị hoàn tất. Robot đang quay về trạm sạc.'
-            : 'Quảng cáo hoàn tất. Robot đang quay về trạm sạc.';
-          Speech.speak(completionMsg, { language: 'vi-VN', rate: 0.9 });
-          void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [8], floorId: 1 });
-        }
-        if (nextStatus !== 'COMPLETED' || pendingScansRef.current === 0) {
+        if (pendingScansRef.current === 0 && !isAdFlow) {
           missionRef.current = null;
         }
       }
@@ -778,6 +820,67 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     const timer = setInterval(report, 10_000);
     return () => clearInterval(timer);
   }, [appState, permission?.granted]);
+
+  // ── Auto-expire Ad Session Timer ──────────────────────────────────────────
+  // Khi mission quảng cáo có estimatedDurationSeconds được đặt (từ BE/web admin),
+  // robot app sẽ đồng bộ hết giờ và tự động quay về trạm sạc (node 7).
+  useEffect(() => {
+    const activeMission = mission;
+    if (!activeMission || activeMission.flowType !== 'ad') return;
+    const durSec = activeMission.estimatedDurationSeconds;
+    if (!durSec || durSec <= 0) return;
+
+    const dispatchedMs = activeMission.dispatchedAt
+      ? new Date(activeMission.dispatchedAt).getTime()
+      : Date.now();
+
+    const elapsedMs = Date.now() - dispatchedMs;
+    const remainingMs = Math.max(0, durSec * 1000 - elapsedMs);
+
+    if (remainingMs <= 0) {
+      // Đã hết giờ ngay khi nhận mission (edge case) - hủy và về trạm
+      console.log('[RobotMissionRuntime] Ad session đã hết giờ ngay khi nhận, quay về trạm sạc.');
+      void VoiceService.speak('Phiên quảng cáo đã kết thúc. Robot đang quay về trạm sạc.');
+      setTimeout(() => {
+        setActivePlaylist([]);
+        setMission(null);
+        missionRef.current = null;
+        void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
+      }, 2000);
+      return;
+    }
+
+    console.log(`[RobotMissionRuntime] Ad session timer: ${Math.round(remainingMs / 1000)}s còn lại (total: ${durSec}s). Sẽ tự kết thúc và quay về trạm.`);
+
+    const timer = setTimeout(() => {
+      const stillActive = missionRef.current;
+      if (!stillActive || stillActive.missionId !== activeMission.missionId) return;
+      if (stillActive.flowType !== 'ad') return;
+
+      console.log('[RobotMissionRuntime] ⏰ Ad session hết giờ theo estimatedDurationSeconds. Đóng quảng cáo, hủy mission và quay về trạm sạc.');
+      isMissionExpiringRef.current = true;
+      void VoiceService.speak('Phiên quảng cáo đã kết thúc. Cảm ơn quý khách! Robot đang quay về trạm sạc.');
+
+      // 1. Đóng ngay overlay quảng cáo để đưa robot về màn hình chờ
+      setActivePlaylist([]);
+      setMission(null);
+      missionRef.current = null;
+
+      // 2. Hủy mission trên backend
+      fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Ad session expired by duration timer')}`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      }).catch(() => undefined);
+
+      // 3. Chờ 3 giây cho giọng nói kết thúc rồi điều hướng robot về trạm sạc Wp7
+      setTimeout(() => {
+        isMissionExpiringRef.current = false;
+        void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
+      }, 3000);
+    }, remainingMs);
+
+    return () => clearTimeout(timer);
+  }, [mission?.missionId, mission?.estimatedDurationSeconds]);
 
   const value = useMemo<RuntimeContextValue>(() => ({
     mission,

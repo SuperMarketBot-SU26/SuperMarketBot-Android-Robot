@@ -2,7 +2,7 @@ import * as SignalR from '@microsoft/signalr';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
-export const ROBOT_CODE = process.env.EXPO_PUBLIC_ROBOT_CODE ?? 'RB001';
+export const ROBOT_CODE = process.env.EXPO_PUBLIC_ROBOT_CODE ?? 'RB0001';
 
 interface RobotRealtimeContextValue {
   isConnected: boolean;
@@ -55,19 +55,11 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
       .build();
 
     const joinAndRecover = async () => {
-      await connection.invoke('JoinRobotGroup', ROBOT_CODE);
-      if (ROBOT_CODE === 'RB001') await connection.invoke('JoinRobotGroup', 'RB0001').catch(() => undefined);
-      else if (ROBOT_CODE === 'RB0001') await connection.invoke('JoinRobotGroup', 'RB001').catch(() => undefined);
-      let response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
+      await connection.invoke('JoinRobotGroup', ROBOT_CODE).catch(() => undefined);
+      const response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
         headers: { 'ngrok-skip-browser-warning': 'true' },
-      });
-      if (!response.ok) {
-        const altCode = ROBOT_CODE === 'RB001' ? 'RB0001' : 'RB001';
-        response = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${altCode}/active`, {
-          headers: { 'ngrok-skip-browser-warning': 'true' },
-        }).catch(() => response);
-      }
-      if (response.ok && response.status !== 204 && mounted) {
+      }).catch(() => null);
+      if (response && response.ok && response.status !== 204 && mounted) {
         const text = await response.text();
         if (text && text.trim()) {
           const mission = JSON.parse(text);
