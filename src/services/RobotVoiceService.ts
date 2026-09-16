@@ -197,18 +197,12 @@ class RobotVoiceService {
   }
 
   /**
-   * Tải trước âm thanh FPT.AI cho danh sách văn bản (tuần tự, tránh chạm Rate Limit)
+  /**
+   * Tải trước âm thanh (đã chuyển sang Native TTS nên không cần gọi API mạng)
    */
-  public async preload(texts: string[]): Promise<void> {
-    for (const raw of texts) {
-      if (Date.now() < this.rateLimitCooldownUntil) break;
-      const cleaned = this.cleanText(raw);
-      if (cleaned.length > 2) {
-        await this.getFptAiAudioUrl(cleaned);
-        // Giãn cách 1.5s giữa các lần tải trước để tránh làm nghẽn API
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    }
+  public async preload(_texts: string[]): Promise<void> {
+    // Không cần gọi API FPT.AI, tránh nghẽn mạng và lỗi 429 quota
+    return Promise.resolve();
   }
 
   /**
@@ -224,7 +218,7 @@ class RobotVoiceService {
   }
 
   /**
-   * Phát giọng nói mượt mà với FPT.AI (giọng banmai) và fallback tức thì sang Android TTS cục bộ
+   * Phát giọng nói mượt mà với Android TTS cục bộ (ngay lập tức < 50ms, không lag, không phụ thuộc FPT.AI)
    */
   public async speak(text: string, options?: SpeakOptions): Promise<void> {
     const cleaned = this.cleanText(text);
@@ -233,86 +227,34 @@ class RobotVoiceService {
       return;
     }
 
-    const requestId = ++this.currentRequestId;
+    // Dừng phát âm thanh cũ trước, sau đó mới cấp requestId mới để tránh bị stop() vô hiệu hoá chính nó
     await this.stop();
+    const requestId = ++this.currentRequestId;
 
     this.isCurrentlySpeaking = true;
     options?.onStart?.();
 
-    // 1. Thử phát bằng giọng FPT.AI tự nhiên
-    const audioUrl = await this.getFptAiAudioUrl(cleaned);
-
-    if (requestId !== this.currentRequestId) return;
-
-    if (audioUrl) {
-      try {
-        await this.initAudioMode();
-
-        const sound = createAudioPlayer(audioUrl);
-        this.activeSound = sound;
-        sound.play();
-
-        let finished = false;
-        const markDone = () => {
-          if (finished) return;
-          finished = true;
-          this.isCurrentlySpeaking = false;
-          if (this.activeSound === sound) {
-            this.activeSound = null;
-          }
-          options?.onDone?.();
-          setTimeout(() => {
-            try {
-              sound.remove();
-            } catch (e) {}
-          }, 200);
-        };
-
-        sound.addListener('playbackStatusUpdate', (status: any) => {
-          if (requestId !== this.currentRequestId) return;
-
-          if (
-            status.didJustFinish === true ||
-            (status.isLoaded &&
-              status.playing === false &&
-              status.duration > 0 &&
-              status.currentTime >= status.duration - 0.3)
-          ) {
-            markDone();
-          }
-        });
-
-        setTimeout(() => {
-          if (requestId === this.currentRequestId && !finished) {
-            markDone();
-          }
-        }, 30000);
-
-        return;
-      } catch (playerError) {
-        console.warn('[RobotVoiceService] FPT.AI sound playback failed, fallback to local TTS:', playerError);
-      }
-    }
-
-    // 2. Fallback sang Local Android TTS
-    if (requestId !== this.currentRequestId) return;
+    // Phát trực tiếp bằng Native Android TTS (vi-VN): phản hồi tức thì, to rõ, 100% không bị rate limit
     this.speakLocalTts(cleaned, requestId, options);
   }
+
 
   private speakLocalTts(cleanedText: string, requestId: number, options?: SpeakOptions) {
     try {
       this.isCurrentlySpeaking = true;
 
+      // Đặt timeout an toàn phòng trường hợp hệ điều hành không trigger onDone
+      const wordsCount = cleanedText.split(/\s+/).length;
+      const estimatedDurationMs = Math.max(3000, Math.min(18000, wordsCount * 450));
       const fallbackTimer = setTimeout(() => {
         if (requestId === this.currentRequestId) {
           this.isCurrentlySpeaking = false;
           options?.onDone?.();
         }
-      }, 15000);
+      }, estimatedDurationMs);
 
       Speech.speak(cleanedText, {
         language: 'vi-VN',
-        voice: this.cachedViVoiceId,
         pitch: options?.pitch ?? 1.0,
         rate: options?.rate ?? 0.9,
         volume: 1.0,

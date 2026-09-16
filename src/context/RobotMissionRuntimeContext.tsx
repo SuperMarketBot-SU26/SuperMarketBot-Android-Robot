@@ -52,6 +52,9 @@ export interface PlaylistItem {
   shelfName?: string | null;
   aisleName?: string | null;
   zoneName?: string | null;
+  adScore?: number;
+  packageScore?: number;
+  priority?: number;
 }
 
 export interface MissionWaypoint {
@@ -470,8 +473,27 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
     if (normalized.flowType === 'ad') {
       const allWaypointsPlaylist = normalized.waypoints.flatMap((w) => w.playlist || []);
-      const initialPlaylist = allWaypointsPlaylist.length > 0
-        ? allWaypointsPlaylist
+      // Khử trùng lặp sản phẩm giữa các waypoints đồng thời sắp xếp theo thứ tự ưu tiên (AdScore gói -> Priority chiến dịch)
+      const seen = new Set<string | number>();
+      const dedupedPlaylist: any[] = [];
+      for (const item of allWaypointsPlaylist) {
+        const key = item.productId || item.id || item.sponsoredId || item.productName;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          dedupedPlaylist.push(item);
+        }
+      }
+      dedupedPlaylist.sort((a, b) => {
+        const scoreA = Number(a.adScore ?? a.packageScore ?? 0);
+        const scoreB = Number(b.adScore ?? b.packageScore ?? 0);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        const prioA = Number(a.priority ?? 0);
+        const prioB = Number(b.priority ?? 0);
+        return prioB - prioA;
+      });
+
+      const initialPlaylist = dedupedPlaylist.length > 0
+        ? dedupedPlaylist
         : (normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? []);
 
       if (initialPlaylist.length > 0) {
@@ -479,7 +501,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       }
 
       if (initialPlaylist.length > 0) {
-        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo (${normalized.adMode}):`, initialPlaylist.length, 'sản phẩm');
+        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo (${normalized.adMode}):`, initialPlaylist.length, 'sản phẩm ưu tiên');
         setActivePlaylist(initialPlaylist);
         if (normalized.waypoints.length > 0) {
           setActiveWaypoint(normalized.waypoints[0]);
@@ -947,7 +969,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         onStartGuide={interruptAdForGuidance}
         onSearchOther={searchOtherProductFromAd}
         onDismiss={() => {
-          setActivePlaylist([]);
+          // Giữ nguyên activePlaylist trong cache để màn hình chọn nhiều món và phục hồi sau dẫn đường hoạt động liền mạch
         }}
       />
     </RuntimeContext.Provider>

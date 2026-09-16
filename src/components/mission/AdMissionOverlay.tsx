@@ -70,11 +70,32 @@ export function AdMissionOverlay({
   const shouldShow = status !== 'ESTOP';
 
   // Luôn đảm bảo playlist có sản phẩm (nếu activePlaylist tạm thời rỗng thì lấy từ cache hoặc từ mission waypoints)
-  const effectivePlaylist = (activePlaylist && activePlaylist.length > 0)
+  const rawPlaylist = (activePlaylist && activePlaylist.length > 0)
     ? activePlaylist
     : (AdInterruptionService.getCachedAdPlaylist()?.length
         ? AdInterruptionService.getCachedAdPlaylist()
         : mission.waypoints?.flatMap((w: any) => w.playlist || []) ?? []);
+
+  // Khử trùng lặp và sắp xếp theo thứ tự ưu tiên: AdScore gói (VIP > Pro > Standard) -> Điểm ưu tiên chiến dịch (Priority)
+  const effectivePlaylist = React.useMemo(() => {
+    const seen = new Set<string | number>();
+    const res: any[] = [];
+    for (const item of (rawPlaylist || [])) {
+      const key = item.productId || item.id || item.sponsoredId || item.productName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        res.push(item);
+      }
+    }
+    return res.sort((a, b) => {
+      const scoreA = Number(a.adScore ?? a.packageScore ?? 0);
+      const scoreB = Number(b.adScore ?? b.packageScore ?? 0);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      const prioA = Number(a.priority ?? 0);
+      const prioB = Number(b.priority ?? 0);
+      return prioB - prioA;
+    });
+  }, [rawPlaylist]);
 
   if (!shouldShow || !effectivePlaylist || effectivePlaylist.length === 0) return null;
 
@@ -144,14 +165,14 @@ function AdInteractiveCarousel({
     }, 250);
   }, [speak, stop]);
 
-  // Reset index về 0 khi robot chuyển sang waypoint/kệ mới
+  // Reset index về 0 khi robot chuyển sang kệ mới trong chế độ quảng cáo theo kệ (KHÔNG RESET KHI ĐANG QUẢNG CÁO TỰ DO)
   useEffect(() => {
-    if (activeWaypoint && currentWaypointKey !== lastWaypointKeyRef.current) {
+    if (!isFreeRoam && activeWaypoint && currentWaypointKey !== lastWaypointKeyRef.current) {
       lastWaypointKeyRef.current = currentWaypointKey;
       setIndex(0);
       lastSpokenKeyRef.current = null;
     }
-  }, [activeWaypoint, currentWaypointKey]);
+  }, [isFreeRoam, activeWaypoint, currentWaypointKey]);
 
   // 1. Ghi nhận Lượt Hiển Thị (Impression) khi màn hình bắt đầu phát banner/video quảng cáo
   useEffect(() => {
@@ -218,14 +239,19 @@ function AdInteractiveCarousel({
   }, [mission?.missionId, mission?.estimatedDurationSeconds, mission?.dispatchedAt]);
 
   const slideAdvanceTimerRef = useRef<any>(null);
+  const fallbackAdvanceTimerRef = useRef<any>(null);
 
-  // 3. TTS & Chuyển slide thông minh: Chờ ĐỌC XONG CÂU HẾT THỨ CẦN ĐỌC + 2 giây nghỉ mới chuyển
+  // 3. TTS & Chuyển slide thông minh: Chờ ĐỌC XONG CÂU HẾT THỨ CẦN ĐỌC + 2 giây nghỉ mới chuyển (có Fallback hẹn giờ bảo vệ)
   useEffect(() => {
     if (!currentItem || isStartingGuide) return;
 
     if (slideAdvanceTimerRef.current) {
       clearTimeout(slideAdvanceTimerRef.current);
       slideAdvanceTimerRef.current = null;
+    }
+    if (fallbackAdvanceTimerRef.current) {
+      clearTimeout(fallbackAdvanceTimerRef.current);
+      fallbackAdvanceTimerRef.current = null;
     }
 
     const rawPrice = currentItem.productPrice ?? currentItem.unitPrice ?? currentItem.promotionPrice ?? 0;
@@ -244,24 +270,37 @@ function AdInteractiveCarousel({
     const baseDuration = currentItem?.durationSeconds ?? currentItem?.displayDurationSeconds ?? (isFreeRoam ? 10 : 12);
     setItemSecondsLeft(baseDuration);
 
-    // Phát giọng nói FPT banmai (hoặc fallback)
-    void speak(speechText, () => {
-      // ĐÃ ĐỌC XONG HOÀN TOÀN! Nghỉ 2.2 giây để khách kịp nhìn màn hình rồi mới lật trang
-      slideAdvanceTimerRef.current = setTimeout(() => {
-        if (!selectedDetailProduct && !showLoginModal && !isAddingCart) {
-          if (total > 1) {
-            setIndex((curr: number) => (curr + 1) % total);
-          }
-          setCartSuccess(false);
-          setCartNotice(null);
+    const advanceSlide = () => {
+      if (!selectedDetailProduct && !showLoginModal && !isAddingCart) {
+        if (total > 1) {
+          setIndex((curr: number) => (curr + 1) % total);
         }
-      }, 2200);
+        setCartSuccess(false);
+        setCartNotice(null);
+      }
+    };
+
+    // Fallback bảo vệ: Tối đa sau baseDuration + 2 giây robot bắt buộc chuyển banner tiếp theo kể cả khi TTS bị ngắt
+    fallbackAdvanceTimerRef.current = setTimeout(advanceSlide, (baseDuration + 2) * 1000);
+
+    // Phát giọng nói FPT banmai (hoặc fallback Android TTS)
+    void speak(speechText, () => {
+      // ĐÃ ĐỌC XONG HOÀN TOÀN! Nghỉ 2 giây để khách kịp nhìn màn hình rồi mới lật trang
+      if (fallbackAdvanceTimerRef.current) {
+        clearTimeout(fallbackAdvanceTimerRef.current);
+        fallbackAdvanceTimerRef.current = null;
+      }
+      slideAdvanceTimerRef.current = setTimeout(advanceSlide, 2000);
     });
 
     return () => {
       if (slideAdvanceTimerRef.current) {
         clearTimeout(slideAdvanceTimerRef.current);
         slideAdvanceTimerRef.current = null;
+      }
+      if (fallbackAdvanceTimerRef.current) {
+        clearTimeout(fallbackAdvanceTimerRef.current);
+        fallbackAdvanceTimerRef.current = null;
       }
     };
   }, [currentItem, index, isStartingGuide, isFreeRoam, activeWaypoint, speak, total, selectedDetailProduct, showLoginModal, isAddingCart]);
@@ -417,16 +456,10 @@ function AdInteractiveCarousel({
       });
     }
 
-    if (!token || !member) {
-      setShowLoginModal(true);
-      safeSpeak(
-        'Tính năng chọn nhiều sản phẩm và lập lộ trình mua sắm thông minh tối ưu dành riêng cho khách hàng thành viên. Quý khách vui lòng đăng nhập nhé!'
-      );
-      return;
-    }
-
+    // Cho phép tất cả khách hàng (vãng lai và thành viên) đều được chọn nhiều món để robot dẫn đường
+    const greetingName = member?.fullName ? member.fullName : 'quý khách';
     safeSpeak(
-      `Chào ${member.fullName || 'quý khách'}! Mời bạn chọn các sản phẩm đang quảng cáo trên màn hình để robot dẫn đường gom hàng tối ưu nhé!`
+      `Chào ${greetingName}! Mời bạn chọn các sản phẩm đang có ưu đãi để robot lập lộ trình dẫn đường tối ưu nhé!`
     );
     if (onDismiss) onDismiss();
     router.push('/ad-multi-select' as any);
@@ -671,51 +704,55 @@ function AdInteractiveCarousel({
             </View>
           )}
 
-          {/* SECONDARY BUTTONS ROW */}
-          <View style={styles.secondaryRow}>
-            {/* DẪN NHIỀU MÓN / CHỌN NHIỀU MÓN */}
-            <TouchableOpacity
-              style={styles.multiSelectButton}
-              onPress={handleMultiProductGuide}
-              activeOpacity={0.75}
-            >
-              <Layers size={16} color="#c084fc" />
-              <Text style={styles.multiSelectButtonText}>Dẫn nhiều món</Text>
-            </TouchableOpacity>
+          {/* SECONDARY BUTTONS GRID: 2 HÀNG RỘNG RÃI, CÂN ĐỐI, DỄ CHẠM */}
+          <View style={styles.secondaryGrid}>
+            <View style={styles.secondaryRow}>
+              {/* DẪN NHIỀU MÓN / CHỌN NHIỀU MÓN */}
+              <TouchableOpacity
+                style={styles.multiSelectButton}
+                onPress={handleMultiProductGuide}
+                activeOpacity={0.75}
+              >
+                <Layers size={17} color="#c084fc" />
+                <Text style={styles.multiSelectButtonText}>Dẫn nhiều món</Text>
+              </TouchableOpacity>
 
-            {/* Tìm món khác */}
-            <TouchableOpacity
-              style={styles.searchOtherButton}
-              onPress={handleSearchOther}
-              activeOpacity={0.75}
-            >
-              <Search size={16} color="#f59e0b" />
-              <Text style={styles.searchOtherButtonText}>Tìm món khác</Text>
-            </TouchableOpacity>
+              {/* THÊM VÀO GIỎ */}
+              <TouchableOpacity
+                style={[styles.cartButton, isAddingCart && styles.disabledButton]}
+                onPress={handleAddToCart}
+                disabled={isAddingCart}
+                activeOpacity={0.75}
+              >
+                {isAddingCart ? (
+                  <ActivityIndicator color="#38bdf8" size="small" />
+                ) : (
+                  <ShoppingCart size={17} color="#38bdf8" />
+                )}
+                <Text style={styles.cartButtonText}>Vào giỏ hàng</Text>
+              </TouchableOpacity>
+            </View>
 
-            {/* Thêm vào giỏ */}
-            <TouchableOpacity
-              style={[styles.cartButton, isAddingCart && styles.disabledButton]}
-              onPress={handleAddToCart}
-              disabled={isAddingCart}
-              activeOpacity={0.75}
-            >
-              {isAddingCart ? (
-                <ActivityIndicator color="#38bdf8" size="small" />
-              ) : (
-                <ShoppingCart size={16} color="#38bdf8" />
-              )}
-              <Text style={styles.cartButtonText}>Vào giỏ</Text>
-            </TouchableOpacity>
+            <View style={styles.secondaryRow}>
+              {/* TÌM MÓN KHÁC */}
+              <TouchableOpacity
+                style={styles.searchOtherButton}
+                onPress={handleSearchOther}
+                activeOpacity={0.75}
+              >
+                <Search size={17} color="#f59e0b" />
+                <Text style={styles.searchOtherButtonText}>Tìm món khác</Text>
+              </TouchableOpacity>
 
-            {/* Bỏ qua / Tiếp tục đi */}
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={onDismiss}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.skipButtonText}>Bỏ qua ❯</Text>
-            </TouchableOpacity>
+              {/* TIẾP TỤC XEM / LẬT BANNER TIẾP THEO */}
+              <TouchableOpacity
+                style={styles.skipButton}
+                onPress={handleNext}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.skipButtonText}>Tiếp tục xem ❯</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -1228,7 +1265,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionsContainer: {
-    gap: 12,
+    gap: 10,
   },
   guideButton: {
     backgroundColor: '#059669',
@@ -1254,64 +1291,86 @@ const styles = StyleSheet.create({
   },
   guideButtonTitle: {
     color: '#ffffff',
-    fontSize: 17,
+    fontSize: 16.5,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   guideButtonSub: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.82)',
     fontSize: 12,
     marginTop: 2,
+  },
+  secondaryGrid: {
+    gap: 8,
   },
   secondaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  searchOtherButton: {
-    flex: 1.1,
+  multiSelectButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    gap: 7,
+    backgroundColor: 'rgba(168, 85, 247, 0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.45)',
-    paddingVertical: 14,
-    borderRadius: 16,
+    borderColor: 'rgba(168, 85, 247, 0.5)',
+    paddingVertical: 12,
+    borderRadius: 14,
   },
-  searchOtherButtonText: {
-    color: '#fbbf24',
+  multiSelectButtonText: {
+    color: '#c084fc',
     fontSize: 13.5,
     fontWeight: '700',
   },
   cartButton: {
-    flex: 0.9,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    gap: 7,
+    backgroundColor: 'rgba(56, 189, 248, 0.14)',
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
-    paddingVertical: 14,
-    borderRadius: 16,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+    paddingVertical: 12,
+    borderRadius: 14,
   },
   cartButtonText: {
     color: '#38bdf8',
     fontSize: 13.5,
     fontWeight: '700',
   },
-  skipButton: {
-    flex: 0.9,
+  searchOtherButton: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    paddingVertical: 14,
-    borderRadius: 16,
+    gap: 7,
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  searchOtherButtonText: {
+    color: '#fbbf24',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  skipButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    paddingVertical: 12,
+    borderRadius: 14,
   },
   skipButtonText: {
-    color: '#cbd5e1',
+    color: '#e2e8f0',
     fontSize: 13.5,
     fontWeight: '600',
   },
@@ -1348,23 +1407,6 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     marginTop: 2,
     fontWeight: '500',
-  },
-  multiSelectButton: {
-    flex: 1.1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(168, 85, 247, 0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(168, 85, 247, 0.45)',
-    paddingVertical: 14,
-    borderRadius: 16,
-  },
-  multiSelectButtonText: {
-    color: '#c084fc',
-    fontSize: 13,
-    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,

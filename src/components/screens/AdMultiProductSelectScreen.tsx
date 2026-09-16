@@ -69,7 +69,7 @@ export default function AdMultiProductSelectScreen() {
     message: '',
   });
 
-  // 1. Thu thập và khử trùng lặp toàn bộ sản phẩm trong phiên quảng cáo
+  // 1. Thu thập và khử trùng lặp toàn bộ sản phẩm trong phiên quảng cáo, sắp xếp theo thứ tự ưu tiên
   const products = useMemo(() => {
     const cached = (AdInterruptionService.getCachedAdPlaylist() ?? []) as PlaylistItem[];
     const active = activePlaylist ?? [];
@@ -94,7 +94,17 @@ export default function AdMultiProductSelectScreen() {
       }
     }
 
-    return Array.from(uniqueMap.values());
+    const result = Array.from(uniqueMap.values());
+    result.sort((a, b) => {
+      const scoreA = Number(a.adScore ?? a.packageScore ?? 0);
+      const scoreB = Number(b.adScore ?? b.packageScore ?? 0);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      const prioA = Number(a.priority ?? 0);
+      const prioB = Number(b.priority ?? 0);
+      return prioB - prioA;
+    });
+
+    return result;
   }, [activePlaylist, mission]);
 
   // 2. Mặc định chọn tất cả sản phẩm khi vừa mở màn hình
