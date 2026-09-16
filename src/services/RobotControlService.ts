@@ -153,6 +153,28 @@ class RobotControlServiceClass {
     this._send({ t: 'test_motor', payload: `${slot}_${speedPct}` });
   }
 
+  /** Gửi raw payload (JSON string hoặc object) trực tiếp tới ESP32 WebSocket cổng 81 */
+  sendRaw(data: any) {
+    if (!data) return;
+    try {
+      if (typeof data === 'string') {
+        const trimmed = data.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          const parsed = JSON.parse(trimmed);
+          this._send(parsed);
+        } else {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(trimmed);
+          }
+        }
+      } else if (typeof data === 'object') {
+        this._send(data);
+      }
+    } catch (err) {
+      console.warn('[RobotControl] Lỗi gửi raw payload tới ESP32:', err);
+    }
+  }
+
   // ─── Getters & Listeners ───────────────────────────────────────────────────
 
   getIsConnected(): boolean {

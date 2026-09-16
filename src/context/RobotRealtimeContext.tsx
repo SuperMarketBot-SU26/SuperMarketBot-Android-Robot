@@ -1,5 +1,6 @@
 import * as SignalR from '@microsoft/signalr';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { RobotControlService } from '../services/RobotControlService';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 export const ROBOT_CODE = process.env.EXPO_PUBLIC_ROBOT_CODE ?? 'RB0001';
@@ -96,6 +97,24 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     connection.on('robotLog', () => undefined);
     connection.on('shelfReport', () => undefined);
     connection.on('shelfreport', () => undefined);
+
+    // Lắng nghe lệnh điều khiển từ Backend (Cloud Relay qua SignalR)
+    // Tablet lập tức đẩy lệnh này vào ESP32 cổng 81 qua WebSocket cục bộ
+    connection.on('robotCommand', (payload: any) => {
+      if (!mounted) return;
+      const targetCode = payload?.robotCode ?? payload?.RobotCode;
+      const currentCode = ROBOT_CODE.toUpperCase();
+      if (targetCode) {
+        const normTarget = String(targetCode).toUpperCase();
+        if (normTarget !== currentCode && normTarget !== 'RB001' && normTarget !== 'RB0001') {
+          return;
+        }
+      }
+      const rawPayload = payload?.payload ?? payload?.Payload;
+      if (rawPayload) {
+        RobotControlService.sendRaw(rawPayload);
+      }
+    });
     connection.onreconnecting(() => mounted && setConnected(false));
     connection.onreconnected(async () => {
       if (!mounted) return;
