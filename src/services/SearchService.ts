@@ -1,7 +1,7 @@
 import { BASE_URL } from './AuthService';
 
 export interface ProductLocation {
-  semanticObjectId: number;
+  shelfId?: number;
   shelfName: string | null;
   zone: string | null;
 }

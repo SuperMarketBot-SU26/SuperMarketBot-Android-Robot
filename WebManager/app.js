@@ -800,25 +800,6 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         }
     });
 
-    const beSemanticObjects = shapes.map(s => {
-        const rX = parseFloat(s.x * PIXEL_TO_METER) || 0.0;
-        const rY = parseFloat(s.y * PIXEL_TO_METER) || 0.0;
-        const rW = parseFloat((s.w || (s.r * 2)) * PIXEL_TO_METER) || 0.1;
-        const rH = parseFloat((s.h || (s.r * 2)) * PIXEL_TO_METER) || 0.1;
-        return {
-            objectId: s.id > 0 ? s.id : null, // Nếu đã có id dương từ DB thì truyền, ngược lại null
-            objectType: s.object_type || 'OBSTACLE',
-            xMin: rX,
-            yMin: rY,
-            xMax: rX + rW,
-            yMax: rY + rH,
-            label: s.name || 'Object',
-            confidence: 1.0,
-            detectedAt: new Date().toISOString(),
-            imageUrl: ""
-        };
-    });
-
     const w = mapImage ? mapImage.width : graphCanvas.width;
     const h = mapImage ? mapImage.height : graphCanvas.height;
     
@@ -829,8 +810,7 @@ document.getElementById('btnSaveMap').addEventListener('click', async () => {
         heightMeters: parseFloat((h * PIXEL_TO_METER).toFixed(2)),
         mapData: JSON.stringify({ version: "1.0", nodes, edges, shapes }),
         nodes: beNodes,
-        edges: beEdgesFiltered,
-        semanticObjects: beSemanticObjects
+        edges: beEdgesFiltered
     };
 
     try {
@@ -907,23 +887,7 @@ document.getElementById('btnLoadMapFromServer').addEventListener('click', async 
             }));
         }
         
-        if (data.semanticObjects && Array.isArray(data.semanticObjects)) {
-            shapes = data.semanticObjects.map(s => {
-                const w = (s.xMax - s.xMin) / PIXEL_TO_METER;
-                const h = (s.yMax - s.yMin) / PIXEL_TO_METER;
-                return {
-                    id: s.objectId,
-                    type: 'rect', // Mặc định vẽ hình chữ nhật
-                    object_type: s.objectType,
-                    name: s.label,
-                    x: s.xMin / PIXEL_TO_METER,
-                    y: s.yMin / PIXEL_TO_METER,
-                    w: w,
-                    h: h,
-                    color: 'rgba(234, 179, 8, 0.4)'
-                };
-            });
-        }
+
         
         selectedNodeId = null;
         selectedShapeId = null;

@@ -5,7 +5,7 @@ import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 export interface ZoneEnteredPayload {
   robotCode: string;
   zoneId: number;
-  semanticObjectId?: number;
+  shelfId?: number;
   objectName: string;
   dwellTimeSeconds?: number;
   missionId: string;
@@ -87,7 +87,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
           setCurrentZone({
             robotCode: String(field(mission, 'robotCode', 'RobotCode') ?? ROBOT_CODE),
             zoneId: 0,
-            semanticObjectId: undefined,
+            shelfId: undefined,
             objectName: 'Lộ trình quảng cáo ưu tiên',
             dwellTimeSeconds: 0,
             missionId: String(field(mission, 'missionId', 'MissionId') ?? ''),
@@ -137,7 +137,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
           setCurrentZone({
             robotCode: incomingRobot,
             zoneId: 0,
-            semanticObjectId: undefined,
+            shelfId: undefined,
             objectName: 'Lộ trình quảng cáo ưu tiên',
             dwellTimeSeconds: 0,
             missionId: incomingMissionId,
@@ -178,7 +178,7 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
       setCurrentZone({
         robotCode: incomingRobot,
         zoneId,
-        semanticObjectId: nodeId || undefined,
+        shelfId: Number(field(missionWaypoint, 'shelfId', 'ShelfId') ?? 0) || undefined,
         objectName,
         dwellTimeSeconds,
         missionId: incomingMissionId,

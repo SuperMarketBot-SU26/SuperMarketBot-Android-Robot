@@ -207,7 +207,6 @@ export default function MemberSearchScreen() {
         location,
         distance: 'Tính toán...', // Lidar sẽ update sau
         voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${location}.`,
-        semanticObjectId: null,
         relevanceScore: p.relevanceScore || 0,
         healthTags: p.healthTags || []
       };

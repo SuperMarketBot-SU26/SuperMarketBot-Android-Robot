@@ -9,14 +9,14 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 interface RobotAdDisplayProps {
   robotId?: number;
   currentZoneId?: number;
-  semanticObjectId?: number;
+  shelfId?: number;
   robotCode?: string;
 }
 
 export default function RobotAdDisplay({
   robotId = 1,
   currentZoneId,
-  semanticObjectId,
+  shelfId,
 }: RobotAdDisplayProps) {
   const [playlist, setPlaylist] = useState<AdPlaylistItemDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +24,7 @@ export default function RobotAdDisplay({
   const fetchPlaylist = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await AdService.getRobotPlaylist(robotId, semanticObjectId);
+      const data = await AdService.getRobotPlaylist(robotId, shelfId);
       setPlaylist(data.playlist || []);
 
     } catch (e) {
@@ -32,7 +32,7 @@ export default function RobotAdDisplay({
     } finally {
       setLoading(false);
     }
-  }, [robotId, semanticObjectId]);
+  }, [robotId, shelfId]);
 
   useEffect(() => {
     // Playlist is external server state; refresh whenever the robot's location context changes.
@@ -49,7 +49,7 @@ export default function RobotAdDisplay({
         sponsoredId: ad.sponsoredId,
         productId: ad.productId,
         robotId,
-        semanticObjectId,
+        shelfId,
         zoneId: currentZoneId,
       });
       // TODO: Điều hướng sang màn hình chi tiết sản phẩm hoặc mở map

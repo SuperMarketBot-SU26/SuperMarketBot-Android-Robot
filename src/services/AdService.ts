@@ -27,7 +27,7 @@ export interface RobotPlaylistResponseDto {
   currentZoneId?: number;
   zoneId?: number;
   zoneName?: string | null;
-  semanticObjectId?: number;
+  shelfId?: number;
   generatedAt: string;
   playlist: AdPlaylistItemDto[];
 }
@@ -45,7 +45,6 @@ export interface LogInteractionRequestDto {
   sponsoredId?: number;
   productId?: number;
   robotId?: number;
-  semanticObjectId?: number;
   zoneId?: number;
   shelfId?: number;
   slotId?: number;
@@ -106,8 +105,8 @@ export const AdService = {
   /**
    * Lấy danh sách quảng cáo cần phát trên Robot dựa theo vị trí hiện tại
    */
-  async getRobotPlaylist(robotId: number, semanticObjectId?: number): Promise<RobotPlaylistResponseDto> {
-    const query = semanticObjectId ? `?semanticObjectId=${semanticObjectId}` : '';
+  async getRobotPlaylist(robotId: number, shelfId?: number): Promise<RobotPlaylistResponseDto> {
+    const query = shelfId ? `?shelfId=${shelfId}` : '';
     const response = await fetch(`${BASE_URL}/api/v1/ad-campaign/robot-playlist/${robotId}${query}`, {
       method: 'GET',
       headers: {

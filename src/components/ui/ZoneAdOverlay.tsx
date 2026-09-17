@@ -124,7 +124,7 @@ export default function ZoneAdOverlay() {
         sponsoredId: ad.sponsoredId,
         productId: ad.productId,
         robotId: ROBOT_ID,
-        semanticObjectId: zone?.semanticObjectId,
+        shelfId: zone?.shelfId,
         zoneId: zone?.zoneId,
         sessionId,
       });
@@ -183,7 +183,7 @@ export default function ZoneAdOverlay() {
         sponsoredId: ad.sponsoredId,
         productId: ad.productId,
         robotId: ROBOT_ID,
-        semanticObjectId: zone?.semanticObjectId,
+        shelfId: zone?.shelfId,
         zoneId: zone?.zoneId,
         sessionId,
       });
@@ -227,7 +227,7 @@ export default function ZoneAdOverlay() {
           sponsoredId: ad.sponsoredId,
           productId: ad.productId,
           robotId: ROBOT_ID,
-          semanticObjectId: zone?.semanticObjectId,
+          shelfId: zone?.shelfId,
           zoneId: zone?.zoneId,
           sessionId,
         }).then(res => {
