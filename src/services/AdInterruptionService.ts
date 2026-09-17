@@ -70,7 +70,8 @@ class AdInterruptionServiceManager {
   }
 
   public hasInterruptedMission(): boolean {
-    return this.interruptedMission !== null && (this.interruptedMission.remainingNodeIds?.length ?? 0) > 0;
+    if (!this.interruptedMission) return false;
+    return (this.interruptedMission.remainingNodeIds?.length ?? 0) > 0 || Boolean(this.interruptedMission.isFreeRoam);
   }
 
   public clear(): void {

@@ -259,6 +259,15 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
     const isFreeRoam = Boolean(activeMission.isFreeRoam);
+    let remainingDurationMinutes: number | undefined = undefined;
+    if (isFreeRoam) {
+      const totalEstSec = activeMission.estimatedDurationSeconds || 180;
+      const startedAtMs = activeMission.dispatchedAt ? new Date(activeMission.dispatchedAt).getTime() : Date.now() - 60000;
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+      const remainingSec = Math.max(30, totalEstSec - elapsedSec);
+      remainingDurationMinutes = Math.max(1, Math.ceil(remainingSec / 60));
+    }
+
     // Khi free-roam: không lưu remainingNodeIds/remainingShelfIds để tránh backend nhận ra là per-shelf
     AdInterruptionService.saveInterruptedMission({
       originalMissionId: activeMission.missionId,
@@ -273,6 +282,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       totalWaypoints: activeMission.waypoints.length,
       productName: productItem.productName || productItem.name,
       shelfName: activeWaypoint?.shelfName ?? undefined,
+      durationMinutes: remainingDurationMinutes,
       savedTimestamp: Date.now(),
     });
 
