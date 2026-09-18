@@ -128,4 +128,24 @@ export class CartService {
     const data = await response.json();
     return normalizeCartDto(data);
   }
+
+  static async clearCart(token: string): Promise<CartDto> {
+    console.log(`[CartService.clearCart] DELETE ${BASE_URL}/api/cart`);
+    const response = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'DELETE',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        Authorization: `Bearer ${token}`
+      },
+    });
+
+    if (!response.ok) {
+      const { rawText, data } = await parseErrorBody(response);
+      console.error(`[CartService.clearCart] Error body (${response.status}):`, rawText);
+      throw new Error(data.error || data.message || data.detail || `Xóa giỏ hàng thất bại (${response.status})`);
+    }
+
+    const data = await response.json();
+    return normalizeCartDto(data);
+  }
 }

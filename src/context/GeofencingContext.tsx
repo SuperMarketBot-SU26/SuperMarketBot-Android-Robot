@@ -113,15 +113,17 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
         || (incomingRobot.toUpperCase() === 'RB001' && ROBOT_CODE.toUpperCase() === 'RB0001')
         || (incomingRobot.toUpperCase() === 'RB0001' && ROBOT_CODE.toUpperCase() === 'RB001');
 
-      if (!isRobotMatch
-        || !incomingMissionId || incomingMissionId !== activeMissionId
-        || activeFlow !== 'ad') return;
+      if (!isRobotMatch) return;
 
+      // Khi bất kỳ nhiệm vụ nào hoàn tất, bị hủy hoặc khẩn cấp -> xóa triệt để zone và playlist cũ
       if (['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP'].includes(status)) {
         clearZone();
         activeMissionRef.current = null;
         return;
       }
+
+      if (!incomingMissionId || incomingMissionId !== activeMissionId
+        || activeFlow !== 'ad') return;
 
       if (!isRouteAd && ['WAYPOINT_COMPLETED'].includes(status)) {
         clearZone();

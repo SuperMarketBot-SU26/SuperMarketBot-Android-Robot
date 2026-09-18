@@ -28,6 +28,7 @@ import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useNotification } from '../../context/NotificationContext';
 import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
+import { useRobotGuide } from '../../context/RobotGuideContext';
 
 const SkeletonCard = ({ cardWidth }: { cardWidth: DimensionValue }) => {
   const opacity = useSharedValue(0.4);
@@ -65,6 +66,7 @@ export default function GuestCampaignScreen() {
   const router = useVoiceRouter();
   const { speak } = useRobotVoice();
   const { showNotification } = useNotification();
+  const { dispatchCart } = useRobotGuide();
 
   const [deals, setDeals] = useState<MobileProductSearchResultDto[]>([]);
   const [generalAds, setGeneralAds] = useState<AdPlaylistItemDto[]>([]);
@@ -107,7 +109,13 @@ export default function GuestCampaignScreen() {
   }, []);
 
   // Xử lý Robot dẫn đường đến kệ hàng khi khách bấm "Dẫn đến kệ"
-  const handleGuideToProduct = async (product: { productId: number; productName: string }) => {
+  const handleGuideToProduct = async (product: {
+    productId: number;
+    productName: string;
+    imageUrl?: string | null;
+    unitPrice?: number;
+    location?: { shelfName?: string; zone?: string } | any;
+  }) => {
     if (guidingId !== null) return;
     setGuidingId(product.productId);
     try {
@@ -117,14 +125,17 @@ export default function GuestCampaignScreen() {
         message: `Đang khởi tạo lộ trình đến quầy ${product.productName}`,
         type: 'info',
       });
-      await RobotControlService.dispatchAutonomous({
-        robotCode: ROBOT_CODE,
-        flowType: 'guide',
-        productId: product.productId,
-        productIds: [product.productId],
-        floorId: 1,
-      });
-      router.push('/cart-guide-map' as any);
+      await dispatchCart([{ productId: product.productId, productName: product.productName }]);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          productId: String(product.productId),
+          productName: product.productName,
+          productImage: product.imageUrl || '',
+          productPrice: String(product.unitPrice || 0),
+          shelfName: product.location?.shelfName || '',
+        },
+      } as any);
     } catch (err: any) {
       speak('Không thể khởi tạo dẫn đường. Vui lòng thử lại sau.');
       showNotification({
@@ -562,6 +573,9 @@ export default function GuestCampaignScreen() {
                             handleGuideToProduct({
                               productId: product.productId,
                               productName: product.productName,
+                              imageUrl: product.imageUrl,
+                              unitPrice: product.promotionPrice ?? product.unitPrice,
+                              location: product.location,
                             });
                           }}
                           pressStyle={{ scale: 0.96 }}

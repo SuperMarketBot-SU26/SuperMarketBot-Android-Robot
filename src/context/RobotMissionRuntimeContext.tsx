@@ -305,26 +305,26 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       rate: 0.9,
     });
 
-    // 5. Phát lệnh dẫn đường (flowType: 'guide') tới sản phẩm
-    const pId = productItem.productId || productItem.id || 0;
-    if (pId > 0) {
-      try {
-        await RobotControlService.dispatchAutonomous({
-          robotCode: ROBOT_CODE,
-          flowType: 'guide',
-          productId: pId,
-          productIds: [pId],
-          floorId: 1,
-        });
-        console.log(`[RobotMissionRuntime] Đã dispatch autonomous guide cho productId=${pId}`);
-      } catch (err) {
-        console.warn('[RobotMissionRuntime] Dispatch autonomous guide thất bại:', err);
-      }
-    }
-
-    // 6. Điều hướng giao diện sang CartGuideMapScreen
+    // 5. Điều hướng sang CartGuideMapScreen — screen đó sẽ tự gọi dispatchCart()
+    //    thông qua RobotGuideContext để đảm bảo destinations được điền đúng.
+    //    (Không thể gọi useRobotGuide() ở đây vì RobotMissionRuntimeProvider là
+    //    provider cha của RobotGuideProvider trong cây component.)
+    const pId    = productItem.productId || productItem.id || 0;
+    const pImage = productItem.imageUrl || '';
+    const pPrice = productItem.promotionPrice ?? productItem.unitPrice ?? productItem.productPrice ?? 0;
     try {
-      router.push('/cart-guide-map' as any);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          fromAd: '1',
+          productId: String(pId),
+          productName: pName,
+          productImage: pImage,
+          productPrice: String(pPrice),
+          shelfName: productItem.shelfName || '',
+          aisleName: productItem.aisleName || '',
+        },
+      } as any);
     } catch (navErr) {
       console.warn('[RobotMissionRuntime] router.push(/cart-guide-map) warning:', navErr);
     }
@@ -380,28 +380,24 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       rate: 0.9,
     });
 
-    // 5. Phát lệnh dẫn đường (flowType: 'guide') tới danh sách sản phẩm
-    const validProductIds = selectedProducts
-      .map(p => p.productId || p.id || 0)
-      .filter(id => id > 0);
-
-    if (validProductIds.length > 0) {
-      try {
-        await RobotControlService.dispatchAutonomous({
-          robotCode: ROBOT_CODE,
-          flowType: 'guide',
-          productIds: validProductIds,
-          floorId: 1,
-        });
-        console.log(`[RobotMissionRuntime] Đã dispatch autonomous guide cho ${validProductIds.length} sản phẩm`);
-      } catch (err) {
-        console.warn('[RobotMissionRuntime] Dispatch autonomous guide thất bại:', err);
-      }
-    }
-
-    // 6. Điều hướng sang CartGuideMapScreen
+    // 5. Điều hướng sang CartGuideMapScreen — screen đó sẽ tự gọi dispatchCart()
+    //    với danh sách sản phẩm qua RobotGuideContext.
+    const validProducts = selectedProducts.filter(p => (p.productId || p.id || 0) > 0);
+    const productIdsParam = validProducts.map(p => String(p.productId || p.id)).join(',');
+    const productNamesParam = validProducts.map(p => p.productName || p.name || '').join('||');
+    const productImagesParam = validProducts.map(p => p.imageUrl || '').join('||');
+    const productPricesParam = validProducts.map(p => String(p.promotionPrice ?? p.unitPrice ?? p.productPrice ?? 0)).join(',');
     try {
-      router.push('/cart-guide-map' as any);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          fromAd: '1',
+          productIds: productIdsParam,
+          productNames: productNamesParam,
+          productImages: productImagesParam,
+          productPrices: productPricesParam,
+        },
+      } as any);
     } catch (navErr) {
       console.warn('[RobotMissionRuntime] router.push(/cart-guide-map) warning:', navErr);
     }
@@ -1039,8 +1035,12 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         activePlaylist={activePlaylist}
         onStartGuide={interruptAdForGuidance}
         onSearchOther={searchOtherProductFromAd}
-        onDismiss={() => {
+        onOpenCatalog={() => {
           void openPromotedProductsCatalog(activePlaylist);
+        }}
+        onDismiss={() => {
+          VoiceService.stop();
+          Speech.stop();
         }}
       />
     </RuntimeContext.Provider>

@@ -13,12 +13,14 @@ import { MemberService, SponsoredRecommendationDto, MemberDealDto } from '../../
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
+import { useRobotGuide } from '../../context/RobotGuideContext';
 
 export default function MemberOffersScreen() {
   const insets = useSafeAreaInsets();
   const router = useVoiceRouter();
   const { speak } = useRobotVoice();
   const { showNotification } = useNotification();
+  const { dispatchCart } = useRobotGuide();
 
   // State cho bộ đếm giờ Flash Sale
   const [timeLeft, setTimeLeft] = useState({ hours: '01', minutes: '45', seconds: '32' });
@@ -32,7 +34,13 @@ export default function MemberOffersScreen() {
   const [cart, setCart] = useState<any>(null);
   const [guidingId, setGuidingId] = useState<number | null>(null);
 
-  const handleGuideToProduct = async (product: { productId: number; productName: string }) => {
+  const handleGuideToProduct = async (product: {
+    productId: number;
+    productName: string;
+    imageUrl?: string;
+    unitPrice?: number;
+    location?: { shelfName?: string; zone?: string };
+  }) => {
     if (guidingId !== null) return;
     setGuidingId(product.productId);
     try {
@@ -42,17 +50,17 @@ export default function MemberOffersScreen() {
         message: `Đang lập lộ trình đến sản phẩm ${product.productName}`,
         type: 'info',
       });
-      await RobotControlService.dispatchAutonomous({
-        robotCode: ROBOT_CODE,
-        flowType: 'guide',
-        productId: product.productId,
-        productIds: [product.productId],
-        floorId: 1,
-        source: 'RobotKiosk',
-        dispatchedBy: member?.fullName ? `${member.fullName} (VIP)` : 'Thành viên VIP',
-        targetSummary: `Sản phẩm ưu đãi: ${product.productName}`,
-      });
-      router.push('/cart-guide-map' as any);
+      await dispatchCart([{ productId: product.productId, productName: product.productName }]);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          productId: String(product.productId),
+          productName: product.productName,
+          productImage: product.imageUrl || '',
+          productPrice: String(product.unitPrice || 0),
+          shelfName: product.location?.shelfName || '',
+        },
+      } as any);
     } catch (err: any) {
       speak('Không thể khởi tạo dẫn đường lúc này.');
       showNotification({

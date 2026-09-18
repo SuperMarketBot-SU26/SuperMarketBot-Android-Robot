@@ -154,6 +154,7 @@ import { RecipeRecommendationUI } from '../ui/RecipeRecommendationUI';
 import { CartService } from '../../services/CartService';
 import { useNotification } from '../../context/NotificationContext';
 import { RobotControlService } from '../../services/RobotControlService';
+import { useRobotGuide } from '../../context/RobotGuideContext';
 
 const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
 
@@ -164,6 +165,7 @@ export default function MemberSearchScreen() {
   const { query: initialQuery } = params as { query?: string };
   const { speak, stop } = useRobotVoice();
   const { token } = useRobotAuth();
+  const { dispatchCart } = useRobotGuide();
 
   const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [isSearching, setIsSearching] = useState(false);
@@ -357,7 +359,7 @@ export default function MemberSearchScreen() {
     speak(voiceText);
   };
 
-  const handleGuideToProduct = async (product: { id: number; name: string }) => {
+  const handleGuideToProduct = async (product: { id: number; name: string; image?: string; price?: any; location?: string }) => {
     try {
       speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy bán ${product.name}. Xin mời đi theo tôi!`);
       showNotification({
@@ -365,14 +367,17 @@ export default function MemberSearchScreen() {
         message: `Đang khởi tạo lộ trình đến quầy ${product.name}`,
         type: 'info',
       });
-      await RobotControlService.dispatchAutonomous({
-        robotCode: 'RB001',
-        flowType: 'guide',
-        productId: product.id,
-        productIds: [product.id],
-        floorId: 1,
-      });
-      router.push('/cart-guide-map' as any);
+      await dispatchCart([{ productId: product.id, productName: product.name }]);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          productId: String(product.id),
+          productName: product.name,
+          productImage: product.image || '',
+          productPrice: String(product.price || 0),
+          shelfName: product.location || '',
+        },
+      } as any);
     } catch (err: any) {
       speak('Không thể khởi tạo dẫn đường');
       showNotification({

@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,7 +23,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   ArrowRight,
   BatteryCharging,
@@ -58,15 +59,34 @@ import {
   resolveRobotPosition,
 } from '../map/StoreLayoutConstants';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
+import { useRobotAuth } from '../../context/RobotAuthContext';
+import { CartService } from '../../services/CartService';
 
 /**
  * Trợ giúp phân giải thông tin kệ hàng thân thiện từ destination
  */
-function getShelfData(item?: GuideDestination | null) {
+function getShelfData(item?: GuideDestination | null, fallbackShelfName?: string) {
   if (!item) {
+    if (fallbackShelfName) {
+      const match = fallbackShelfName.match(/(\d+)/);
+      const sId = match ? parseInt(match[1], 10) : 1;
+      const found = SHELVES_6.find((s) => s.shelfId === sId);
+      if (found) {
+        return {
+          shelfId: sId,
+          name: found.name,
+          category: found.category,
+          icon: found.icon,
+          aisleCode: found.aisleCode,
+          themeColor: found.themeColor,
+          themeBg: found.themeBg,
+          products: found.sampleProducts || [],
+        };
+      }
+    }
     return {
       shelfId: 1,
-      name: 'Kệ hàng siêu thị',
+      name: fallbackShelfName || 'Kệ hàng siêu thị',
       category: 'Hàng hóa',
       icon: '📦',
       aisleCode: 'Dãy A01',
@@ -82,7 +102,11 @@ function getShelfData(item?: GuideDestination | null) {
     if (match) sId = parseInt(match[1], 10);
   }
   if (!sId || sId < 1 || sId > 6) {
-    if (item.nodeId >= 1 && item.nodeId <= 6) sId = item.nodeId;
+    if (item.nodeId >= 10017 && item.nodeId <= 10022) {
+      sId = item.nodeId - 10016; // 10017 -> 1, ..., 10022 -> 6
+    } else if (item.nodeId >= 1 && item.nodeId <= 6) {
+      sId = item.nodeId;
+    }
   }
 
   const foundShelf = SHELVES_6.find((s) => s.shelfId === sId);
@@ -106,6 +130,21 @@ export default function CartGuideMapScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
+  // Params từ màn hình quảng cáo (khi khách tương tác "Dẫn Đường")
+  const params = useLocalSearchParams<{
+    fromAd?: string;
+    productId?: string;
+    productIds?: string;
+    productName?: string;
+    productNames?: string;
+    productImage?: string;
+    productImages?: string;
+    productPrice?: string;
+    productPrices?: string;
+    shelfName?: string;
+    aisleName?: string;
+  }>();
+
   const {
     status,
     missionId,
@@ -118,10 +157,47 @@ export default function CartGuideMapScreen() {
     awaitingPickup,
     confirmPickup,
     cancelGuide,
+    dispatchCart,
   } = useRobotGuide();
 
   const { subscribeTelemetry, subscribeNavigationStatus } = useRobotRealtime();
   const { speak } = useRobotVoice();
+  const { token } = useRobotAuth();
+
+  // Flag dọn dẹp giỏ hàng khi hoàn tất
+  const hasClearedCartRef = useRef(false);
+
+  // Tự động dispatch guide khi có params sản phẩm mà chưa có active mission
+  const hasAutoDispatchedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoDispatchedRef.current) return;
+
+    // Xây dựng danh sách sản phẩm từ params
+    let items: { productId: number; productName: string }[] = [];
+
+    if (params.productIds) {
+      const ids = params.productIds.split(',').map(s => Number(s.trim())).filter(n => n > 0);
+      const names = params.productNames ? params.productNames.split('||') : [];
+      items = ids.map((id, i) => ({ productId: id, productName: names[i] || 'Sản phẩm' }));
+    } else if (params.productId) {
+      const id = Number(params.productId);
+      if (id > 0) items = [{ productId: id, productName: params.productName || 'Sản phẩm' }];
+    }
+
+    if (items.length === 0) return;
+
+    // Nếu mission hiện tại đã đang điều hướng thì không dispatch đè
+    if (status === 'NAVIGATING' || status === 'MOVING' || status === 'DISPATCHING') {
+      return;
+    }
+
+    hasAutoDispatchedRef.current = true;
+    dispatchCart(items).catch(err => {
+      console.warn('[CartGuideMapScreen] Auto-dispatch thất bại:', err);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.productId, params.productIds, params.productName, status]);
+
 
   // Chế độ xem: 'timeline' (Lộ trình & Sản phẩm) | 'map' (Sơ đồ 2D siêu thị)
   const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
@@ -141,7 +217,10 @@ export default function CartGuideMapScreen() {
 
   const totalStops = destinations.length;
   const isFinalStop = totalStops > 0 && currentWaypointIndex >= totalStops - 1;
-  const currentShelf = useMemo(() => getShelfData(destination), [destination]);
+  const currentShelf = useMemo(
+    () => getShelfData(destination, params.shelfName || params.aisleName),
+    [destination, params.shelfName, params.aisleName]
+  );
 
   // Bộ đếm ngược 30 giây tự động khi đã đến kệ
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
@@ -237,15 +316,37 @@ export default function CartGuideMapScreen() {
     }
   }, [status, awaitingPickup, destination, currentWaypointIndex, currentShelf, speak]);
 
-  // Tự động chuyển về Home sau khi hoàn tất
+  // Tự động chuyển về Home sau khi hoàn tất & Dọn dẹp các sản phẩm đã được dẫn trong giỏ hàng
   useEffect(() => {
+    if (status === 'COMPLETED' && token && !hasClearedCartRef.current) {
+      hasClearedCartRef.current = true;
+      console.log('[CartGuideMapScreen] Dẫn đường hoàn tất -> Xóa các sản phẩm đã dẫn trong giỏ hàng');
+      if (params.fromAd === '1' && params.productId) {
+        CartService.removeItem(Number(params.productId), token).catch((e) =>
+          console.warn('[CartGuideMapScreen] removeItem error:', e)
+        );
+      } else if (params.fromAd === '1' && params.productIds) {
+        const ids = params.productIds.split(',').map((s) => Number(s.trim())).filter((n) => n > 0);
+        ids.forEach((id) =>
+          CartService.removeItem(id, token).catch((e) =>
+            console.warn('[CartGuideMapScreen] removeItem error:', e)
+          )
+        );
+      } else {
+        // Dẫn đường từ Giỏ hàng (toàn bộ giỏ) -> Xóa toàn bộ giỏ hàng của thành viên
+        CartService.clearCart(token).catch((e) =>
+          console.warn('[CartGuideMapScreen] clearCart error:', e)
+        );
+      }
+    }
+
     if (status === 'COMPLETED' || status === 'CANCELLED') {
       const timer = setTimeout(() => {
         router.replace('/' as any);
       }, status === 'CANCELLED' ? 1800 : 4000);
       return () => clearTimeout(timer);
     }
-  }, [status, router]);
+  }, [status, router, token, params.fromAd, params.productId, params.productIds]);
 
   const handleConfirmPickup = async () => {
     try {
@@ -280,581 +381,235 @@ export default function CartGuideMapScreen() {
     }));
   };
 
+
+  // ─── Derive ad product info from params ───────────────────────────────────
+  const adImages   = params.productImages  ? params.productImages.split('||')  : params.productImage  ? [params.productImage]  : [];
+  const adNames    = params.productNames   ? params.productNames.split('||')   : params.productName   ? [params.productName]   : [];
+  const adPrices   = params.productPrices  ? params.productPrices.split(',').map(Number)  : params.productPrice  ? [Number(params.productPrice)] : [];
+  const primaryImage  = adImages[0]  || '';
+  const primaryName   = adNames[0]   || (destination?.productNames?.[0] ?? currentShelf.name);
+  const primaryPrice  = adPrices[0]  || 0;
+  const isFromAd      = params.fromAd === '1';
+  const isMultiProduct = adNames.length > 1;
+
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* ── 1. Header Khách Hàng Thân Thiện ── */}
-      <View style={styles.header}>
+    <SafeAreaView style={s.safe}>
+      {/* ── Header slim ── */}
+      <View style={s.header}>
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            if (isBusy) {
-              handleCancelGuide();
-            } else {
-              router.back();
-            }
-          }}
+          style={s.backBtn}
+          onPress={() => { if (isBusy) handleCancelGuide(); else router.back(); }}
           activeOpacity={0.7}
         >
-          <ChevronLeft size={24} color="#0f172a" />
+          <ChevronLeft size={22} color="#0f172a" />
         </TouchableOpacity>
 
-        <View style={styles.headerTitleWrap}>
-          <View style={styles.robotAvatar}>
-            <Bot size={22} color="#16a34a" />
-            <View style={styles.livePulseDot} />
+        <View style={s.headerCenter}>
+          <View style={s.robotDot}>
+            <Bot size={18} color="#16a34a" />
+            <View style={[s.liveDot, { backgroundColor: isHubConnected ? '#22c55e' : '#ef4444' }]} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Robot Dẫn Đường Mua Sắm</Text>
-            <Text style={styles.headerSub}>
+            <Text style={s.headerTitle} numberOfLines={1}>Robot Dẫn Đường</Text>
+            <Text style={s.headerSub} numberOfLines={1}>
               {totalStops > 0
-                ? `Chặng ${Math.min(currentWaypointIndex + 1, totalStops)}/${totalStops} điểm dừng · Dẫn theo giỏ hàng`
-                : 'Đang chuẩn bị lộ trình mua sắm...'}
+                ? `Chặng ${Math.min(currentWaypointIndex + 1, totalStops)}/${totalStops} · ${isHubConnected ? 'Trực tuyến' : 'Mất kết nối'}`
+                : 'Đang chuẩn bị…'}
             </Text>
           </View>
         </View>
 
-        {/* Trạng thái Pin & Kết nối */}
-        <View style={styles.statusPillGroup}>
-          <View style={[styles.statusPill, { backgroundColor: isHubConnected ? '#dcfce7' : '#fee2e2' }]}>
-            <Radio size={13} color={isHubConnected ? '#15803d' : '#dc2626'} />
-            <Text style={[styles.statusPillText, { color: isHubConnected ? '#15803d' : '#dc2626' }]}>
-              {isHubConnected ? 'Trực tuyến' : 'Mất mạng'}
-            </Text>
-          </View>
-          <View style={[styles.statusPill, { backgroundColor: '#f1f5f9' }]}>
-            <Zap size={13} color="#f59e0b" />
-            <Text style={[styles.statusPillText, { color: '#334155' }]}>{mapPose.batteryPct}%</Text>
-          </View>
+        <View style={s.batteryPill}>
+          <Zap size={12} color="#f59e0b" />
+          <Text style={s.batteryText}>{mapPose.batteryPct}%</Text>
         </View>
       </View>
 
-      {/* Progress Bar Thanh Tiến Độ Lộ Trình */}
+      {/* Progress bar */}
       {totalStops > 0 && (
-        <View style={styles.progressBarBg}>
-          <View
-            style={[
-              styles.progressBarFill,
-              {
-                width: `${Math.min(
-                  100,
-                  ((status === 'COMPLETED' ? totalStops : currentWaypointIndex + (awaitingPickup ? 0.8 : 0.4)) /
-                    totalStops) *
-                    100
-                )}%`,
-              },
-            ]}
-          />
+        <View style={s.progressBg}>
+          <View style={[s.progressFill, {
+            width: `${Math.min(100,
+              ((status === 'COMPLETED' ? totalStops : currentWaypointIndex + (awaitingPickup ? 0.85 : 0.3)) / totalStops) * 100
+            )}%` as any,
+          }]} />
         </View>
       )}
 
-      {/* ── 2. Nội dung chính: Hỗ trợ Responsive Kiosk / Tablet & Mobile ── */}
-      <View style={[styles.mainContainer, isWide && styles.mainContainerWide]}>
-        {/* CỘT TRÁI (HOẶC PHẦN BẢN ĐỒ KHI Ở TAB MAP TRÊN MOBILE) */}
-        {(isWide || viewMode === 'map') && (
-          <View style={[styles.mapColumn, isWide && styles.mapColumnWide]}>
-            <View style={styles.mapCardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <MapIcon size={18} color="#16a34a" />
-                <Text style={styles.mapCardTitle}>Sơ Đồ Siêu Thị 2D</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[s.scroll, awaitingPickup && { paddingBottom: 120 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── STATUS CHIP ── */}
+        <View style={s.statusChipRow}>
+          <View style={[
+            s.statusChip,
+            awaitingPickup   ? s.chipArrived   :
+            status === 'COMPLETED' ? s.chipDone :
+            s.chipMoving,
+          ]}>
+            {awaitingPickup ? (
+              <Sparkles size={14} color="#15803d" />
+            ) : status === 'COMPLETED' ? (
+              <CheckCircle2 size={14} color="#059669" />
+            ) : (
+              <Navigation size={14} color="#0284c7" />
+            )}
+            <Text style={[
+              s.statusChipText,
+              awaitingPickup   ? { color: '#15803d' } :
+              status === 'COMPLETED' ? { color: '#059669' } :
+              { color: '#0284c7' },
+            ]}>
+              {awaitingPickup
+                ? '📍 Đã đến điểm hẹn'
+                : status === 'COMPLETED'
+                ? '✅ Hoàn tất mua sắm!'
+                : '🚀 Robot đang di chuyển…'}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── COMPLETED STATE ── */}
+        {status === 'COMPLETED' ? (
+          <View style={s.completedBox}>
+            <Text style={s.completedEmoji}>🎉</Text>
+            <Text style={s.completedTitle}>Mua sắm hoàn tất!</Text>
+            <Text style={s.completedSub}>
+              Mời quý khách tiến về{' '}
+              <Text style={{ fontWeight: '800' }}>Quầy Thu Ngân</Text> để thanh toán.
+            </Text>
+            <TouchableOpacity style={s.homeBtn} onPress={() => router.replace('/' as any)} activeOpacity={0.85}>
+              <Home size={18} color="#fff" />
+              <Text style={s.homeBtnText}>Về Màn Hình Chính</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* ── HERO PRODUCT IMAGE (large) ── */}
+            {primaryImage ? (
+              <View style={s.heroImageWrap}>
+                <Image
+                  source={{ uri: primaryImage }}
+                  style={s.heroImage}
+                  resizeMode="cover"
+                />
+                {/* overlay gradient label */}
+                <View style={s.heroImageOverlay}>
+                  <View style={s.heroShelfPill}>
+                    <MapPin size={11} color="#fff" />
+                    <Text style={s.heroShelfPillText} numberOfLines={1}>
+                      {awaitingPickup ? '📍 Đang dừng tại' : '➡ Đang đến'}: {currentShelf.name}
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <Text style={styles.mapCardSub}>
-                Robot: <Text style={{ fontWeight: '800', color: '#16a34a' }}>RB0001</Text> • Điểm đến:{' '}
-                <Text style={{ fontWeight: '800', color: '#2563eb' }}>{currentShelf.name}</Text>
+            ) : (
+              /* Fallback: emoji shelf card when no image */
+              <View style={s.heroFallbackCard}>
+                <Text style={{ fontSize: 52 }}>{currentShelf.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.heroFallbackShelf} numberOfLines={2}>{currentShelf.name}</Text>
+                  <View style={s.heroFallbackPill}>
+                    <MapPin size={11} color={awaitingPickup ? '#15803d' : '#0284c7'} />
+                    <Text style={[s.heroFallbackPillText, { color: awaitingPickup ? '#15803d' : '#0284c7' }]} numberOfLines={1}>
+                      {awaitingPickup ? 'Đang dừng tại đây' : 'Đang di chuyển tới'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* ── PRIMARY PRODUCT NAME + PRICE ── */}
+            <View style={s.productInfoBlock}>
+              <Text style={s.productPrimaryName} numberOfLines={3}>{primaryName}</Text>
+              {primaryPrice > 0 && (
+                <Text style={s.productPrice}>
+                  {primaryPrice.toLocaleString('vi-VN')}₫
+                </Text>
+              )}
+              <Text style={s.shelfLabel}>
+                {currentShelf.aisleCode} · {currentShelf.category}
               </Text>
             </View>
 
-            {/* Sơ đồ 2D SVG trực quan */}
-            <View style={styles.mapCanvasWrapper}>
-              <Store2DMapCanvas
-                robotPose={mapPose}
-                selectedShelfId={currentShelf.shelfId}
-                showDimensions={false}
-              />
-            </View>
-
-            {/* Chú thích bản đồ thân thiện */}
-            <View style={styles.mapLegendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#15803d' }]} />
-                <Text style={styles.legendText}>Robot AMR</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#2563eb' }]} />
-                <Text style={styles.legendText}>Kệ đang đến</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#f59e0b' }]} />
-                <Text style={styles.legendText}>Trạm sạc</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
-                <Text style={styles.legendText}>Quầy thu ngân</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* CỘT PHẢI (HERO BANNER & LỘ TRÌNH TỪNG CHẶNG) */}
-        {(isWide || viewMode === 'timeline') && (
-          <ScrollView
-            style={styles.scrollColumn}
-            contentContainerStyle={[styles.scrollContent, awaitingPickup && { paddingBottom: 110 }]}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* View Switcher trên Mobile (khi màn hình dọc) */}
-            {!isWide && (
-              <View style={styles.mobileTabSwitch}>
-                <TouchableOpacity
-                  style={[styles.tabButton, viewMode === 'timeline' && styles.tabButtonActive]}
-                  onPress={() => setViewMode('timeline')}
-                  activeOpacity={0.8}
-                >
-                  <Navigation size={15} color={viewMode === 'timeline' ? '#fff' : '#64748b'} />
-                  <Text style={[styles.tabButtonText, viewMode === 'timeline' && styles.tabButtonTextActive]}>
-                    Lộ Trình & Sản Phẩm
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.tabButton, viewMode === 'map' && styles.tabButtonActive]}
-                  onPress={() => setViewMode('map')}
-                  activeOpacity={0.8}
-                >
-                  <MapIcon size={15} color={viewMode === 'map' ? '#fff' : '#64748b'} />
-                  <Text style={[styles.tabButtonText, viewMode === 'map' && styles.tabButtonTextActive]}>
-                    Sơ Đồ Siêu Thị 2D
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* ── 3. HERO LIVE STATUS CARD (Bảng Điều Hướng Trực Tiếp) ── */}
-            <View
-              style={[
-                styles.heroCard,
-                awaitingPickup
-                  ? styles.heroArrived
-                  : status === 'COMPLETED'
-                  ? styles.heroCompleted
-                  : styles.heroMoving,
-              ]}
-            >
-              <View style={styles.heroHeaderRow}>
-                <View
-                  style={[
-                    styles.heroPill,
-                    awaitingPickup && { backgroundColor: '#dcfce7' },
-                    status === 'COMPLETED' && { backgroundColor: '#d1fae5' },
-                  ]}
-                >
-                  {awaitingPickup ? (
-                    <Sparkles size={16} color="#15803d" />
-                  ) : status === 'COMPLETED' ? (
-                    <CheckCircle2 size={16} color="#059669" />
-                  ) : (
-                    <Navigation size={16} color="#0284c7" />
-                  )}
-                  <Text
-                    style={[
-                      styles.heroPillText,
-                      awaitingPickup && { color: '#15803d' },
-                      status === 'COMPLETED' && { color: '#059669' },
-                    ]}
-                  >
-                    {awaitingPickup
-                      ? 'ĐÃ ĐẾN ĐIỂM HẸN — VUI LÒNG LẤY HÀNG'
-                      : status === 'COMPLETED'
-                      ? 'HOÀN TẤT HÀNH TRÌNH MUA SẮM 🎉'
-                      : 'ROBOT ĐANG DẪN ĐƯỜNG...'}
-                  </Text>
-                </View>
-
-                {totalStops > 0 && status !== 'COMPLETED' && (
-                  <View style={styles.stopCountTag}>
-                    <Text style={styles.stopCountTagText}>
-                      Chặng {Math.min(currentWaypointIndex + 1, totalStops)} / {totalStops}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Tên Kệ & Hướng dẫn chính */}
-              {status === 'COMPLETED' ? (
-                <View style={styles.heroCompletedContent}>
-                  <Text style={styles.heroCompletedTitle}>Mua sắm thành công!</Text>
-                  <Text style={styles.heroCompletedDesc}>
-                    Quý khách đã nhặt đủ toàn bộ sản phẩm trong giỏ hàng. Mời quý khách tiến về{' '}
-                    <Text style={{ fontWeight: '800', color: '#0f172a' }}>Quầy Thu Ngân</Text> để thanh toán.
-                  </Text>
-                  <Text style={styles.heroAutoHomeNote}>
-                    Robot sẽ tự động quay về trạm sạc trong vài giây tới...
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.finishHomeBtn}
-                    onPress={() => router.replace('/' as any)}
-                    activeOpacity={0.85}
-                  >
-                    <Home size={18} color="#fff" />
-                    <Text style={styles.finishHomeBtnText}>Về Màn Hình Chính Ngay</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.heroTargetBlock}>
-                    <Text style={styles.heroTargetSubtitle}>
-                      {awaitingPickup ? '📍 Bạn đang đứng tại:' : '🚀 Điểm đến tiếp theo:'}
-                    </Text>
-                    <View style={styles.heroShelfTitleRow}>
-                      <Text style={styles.heroShelfIcon}>{currentShelf.icon}</Text>
-                      <Text style={styles.heroShelfName}>{currentShelf.name}</Text>
-                    </View>
-                    <Text style={styles.heroAisleText}>
-                      {currentShelf.aisleCode} • Phân khu: {currentShelf.category}
-                    </Text>
-                  </View>
-
-                  {/* Danh sách sản phẩm cần lấy tại kệ này */}
-                  {currentShelf.products.length > 0 && (
-                    <View style={styles.heroProductListCard}>
-                      <View style={styles.heroProductHeaderRow}>
-                        <Package size={15} color="#15803d" />
-                        <Text style={styles.heroProductHeaderTitle}>
-                          {awaitingPickup
-                            ? 'Sản phẩm cần nhặt vào giỏ (Chạm để đánh dấu):'
-                            : 'Món hàng sẽ lấy tại kệ này:'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.heroProductsWrap}>
-                        {currentShelf.products.map((pName, pIdx) => {
-                          const itemKey = `${destination?.nodeId || 0}-${pIdx}-${pName}`;
-                          const isChecked = !!checkedProducts[itemKey];
-
-                          return (
-                            <TouchableOpacity
-                              key={pIdx}
-                              style={[
-                                styles.productCheckChip,
-                                isChecked && styles.productCheckChipDone,
-                                awaitingPickup && styles.productCheckChipInteractive,
-                              ]}
-                              onPress={() => toggleProductCheck(itemKey)}
-                              activeOpacity={awaitingPickup ? 0.7 : 1}
-                            >
-                              <View
-                                style={[
-                                  styles.checkboxBox,
-                                  isChecked && styles.checkboxBoxDone,
-                                ]}
-                              >
-                                {isChecked ? (
-                                  <Check size={12} color="#fff" strokeWidth={3} />
-                                ) : (
-                                  <View style={styles.checkboxInnerDot} />
-                                )}
-                              </View>
-                              <Text
-                                style={[
-                                  styles.productChipText,
-                                  isChecked && styles.productChipTextDone,
-                                ]}
-                              >
-                                {pName}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Khi robot đã đến kệ: Thanh đếm ngược & Nút hành động trực tiếp */}
-                  {awaitingPickup && (
-                    <View style={styles.heroPickupSection}>
-                      {autoCountdown !== null && (
-                        <View style={styles.countdownRow}>
-                          <Text style={styles.countdownText}>
-                            Tự động tiếp tục sau: <Text style={styles.countdownNumber}>{autoCountdown}s</Text>
-                          </Text>
-                          <View style={styles.countdownTrack}>
-                            <View
-                              style={[
-                                styles.countdownFill,
-                                { width: `${(autoCountdown / 30) * 100}%` },
-                              ]}
-                            />
-                          </View>
+            {/* ── MULTI-PRODUCT THUMBNAILS (if > 1 item) ── */}
+            {isMultiProduct && adNames.length > 1 && (
+              <View style={s.multiRow}>
+                <Text style={s.multiLabel}>Các sản phẩm trong hành trình:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.multiScroll}>
+                  {adNames.map((name, i) => (
+                    <View key={i} style={[s.thumbCard, i === 0 && s.thumbCardFirst]}>
+                      {adImages[i] ? (
+                        <Image source={{ uri: adImages[i] }} style={s.thumbImg} resizeMode="cover" />
+                      ) : (
+                        <View style={s.thumbImgFallback}>
+                          <Text style={{ fontSize: 20 }}>🛒</Text>
                         </View>
                       )}
-
-                      <TouchableOpacity
-                        style={styles.heroPickupButton}
-                        onPress={handleConfirmPickup}
-                        activeOpacity={0.88}
-                      >
-                        <CheckCircle2 size={22} color="#fff" />
-                        <Text style={styles.heroPickupButtonText}>
-                          {isFinalStop
-                            ? 'Tôi Đã Lấy Xong — Hoàn Tất Mua Sắm ✓'
-                            : 'Tôi Đã Lấy Hàng — Đi Kệ Tiếp Theo ➜'}
-                        </Text>
-                      </TouchableOpacity>
+                      <Text style={s.thumbName} numberOfLines={2}>{name}</Text>
+                      {adPrices[i] > 0 && (
+                        <Text style={s.thumbPrice}>{adPrices[i].toLocaleString('vi-VN')}₫</Text>
+                      )}
                     </View>
-                  )}
-                </>
-              )}
-            </View>
-
-            {/* ── 4. HÀNH TRÌNH TỪNG CHẶNG (Shopping Journey Stepper) ── */}
-            <View style={styles.stepperSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View>
-                  <Text style={styles.sectionTitle}>Hành Trình Mua Sắm Của Bạn</Text>
-                  <Text style={styles.sectionSub}>
-                    Robot đồng hành qua từng chặng để bạn thong thả nhặt sản phẩm
-                  </Text>
-                </View>
+                  ))}
+                </ScrollView>
               </View>
-
-              {/* 🟢 BƯỚC 1: Điểm Khởi Hành (Trạm đón khách) */}
-              <View style={styles.stepItem}>
-                <View style={styles.stepRail}>
-                  <View style={[styles.stepDot, styles.stepDotDone]}>
-                    <Check size={14} color="#fff" strokeWidth={3} />
-                  </View>
-                  <View style={[styles.stepLine, styles.stepLineDone]} />
-                </View>
-                <View style={styles.stepCardWrap}>
-                  <View style={styles.stepCard}>
-                    <View style={styles.stepHeaderRow}>
-                      <View style={styles.stepTitleGroup}>
-                        <Text style={styles.stepCategoryTag}>ĐIỂM XUẤT PHÁT</Text>
-                        <Text style={styles.stepTitleText}>Trạm Đón Khách Trung Tâm</Text>
-                        <Text style={styles.stepMetaText}>Robot nhận yêu cầu và bắt đầu dẫn đường</Text>
-                      </View>
-                      <View style={styles.stepBadgeDone}>
-                        <Text style={styles.stepBadgeDoneText}>Đã xuất phát ✓</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* 🛒 CÁC CHẶNG KỆ HÀNG TRONG GIỎ */}
-              {destinations.length === 0 ? (
-                <View style={styles.emptyCartCard}>
-                  <ShoppingBag size={32} color="#94a3b8" />
-                  <Text style={styles.emptyCartTitle}>Chưa có điểm dừng nào</Text>
-                  <Text style={styles.emptyCartSub}>
-                    Hãy chọn sản phẩm vào giỏ hàng và chọn "Robot dẫn đường" để bắt đầu lộ trình.
-                  </Text>
-                </View>
-              ) : (
-                destinations.map((dest, idx) => {
-                  const shelfInfo = getShelfData(dest);
-                  const isCompleted = idx < currentWaypointIndex || status === 'COMPLETED';
-                  const isCurrent =
-                    idx === currentWaypointIndex && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(status);
-                  const isArrived = isCurrent && awaitingPickup;
-
-                  return (
-                    <View key={`${dest.nodeId}-${idx}`} style={styles.stepItem}>
-                      <View style={styles.stepRail}>
-                        <View
-                          style={[
-                            styles.stepDot,
-                            isCompleted && styles.stepDotDone,
-                            isCurrent && styles.stepDotActive,
-                            isArrived && styles.stepDotArrived,
-                          ]}
-                        >
-                          {isCompleted ? (
-                            <Check size={14} color="#fff" strokeWidth={3} />
-                          ) : (
-                            <Text style={styles.stepDotNumber}>{idx + 1}</Text>
-                          )}
-                        </View>
-                        <View
-                          style={[
-                            styles.stepLine,
-                            (isCompleted || (isCurrent && awaitingPickup)) && styles.stepLineDone,
-                          ]}
-                        />
-                      </View>
-
-                      <View style={styles.stepCardWrap}>
-                        <View
-                          style={[
-                            styles.stepCard,
-                            isCompleted && styles.stepCardDone,
-                            isCurrent && styles.stepCardActive,
-                            isArrived && styles.stepCardArrived,
-                          ]}
-                        >
-                          <View style={styles.stepHeaderRow}>
-                            <View style={styles.stepTitleGroup}>
-                              <Text style={styles.stepCategoryTag}>
-                                {shelfInfo.aisleCode} • {shelfInfo.category}
-                              </Text>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={{ fontSize: 18 }}>{shelfInfo.icon}</Text>
-                                <Text
-                                  style={[
-                                    styles.stepTitleText,
-                                    isCurrent && { color: '#0f172a', fontWeight: '900' },
-                                  ]}
-                                >
-                                  {shelfInfo.name}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {/* Badge trạng thái chặng */}
-                            {isCompleted && (
-                              <View style={styles.stepBadgeDone}>
-                                <Text style={styles.stepBadgeDoneText}>Đã lấy xong ✓</Text>
-                              </View>
-                            )}
-                            {isArrived && (
-                              <View style={styles.stepBadgeArrived}>
-                                <Flame size={12} color="#15803d" />
-                                <Text style={styles.stepBadgeArrivedText}>Đang dừng tại kệ</Text>
-                              </View>
-                            )}
-                            {isCurrent && !isArrived && (
-                              <View style={styles.stepBadgeMoving}>
-                                <Navigation size={12} color="#0284c7" />
-                                <Text style={styles.stepBadgeMovingText}>Đang di chuyển tới</Text>
-                              </View>
-                            )}
-                            {!isCompleted && !isCurrent && (
-                              <View style={styles.stepBadgeUpcoming}>
-                                <Text style={styles.stepBadgeUpcomingText}>Chặng {idx + 1}</Text>
-                              </View>
-                            )}
-                          </View>
-
-                          {/* Sản phẩm cần lấy ở kệ này */}
-                          {shelfInfo.products.length > 0 && (
-                            <View style={styles.stepProductsList}>
-                              <Text style={styles.stepProductsLabel}>Món hàng cần nhặt:</Text>
-                              <View style={styles.stepProductBadgesRow}>
-                                {shelfInfo.products.map((pName, pIdx) => {
-                                  const key = `${dest.nodeId}-${pIdx}-${pName}`;
-                                  const isChecked = !!checkedProducts[key];
-                                  return (
-                                    <View
-                                      key={pIdx}
-                                      style={[
-                                        styles.stepProductPill,
-                                        isChecked && styles.stepProductPillDone,
-                                      ]}
-                                    >
-                                      {isChecked ? (
-                                        <PackageCheck size={13} color="#15803d" />
-                                      ) : (
-                                        <Package size={13} color="#64748b" />
-                                      )}
-                                      <Text
-                                        style={[
-                                          styles.stepProductPillText,
-                                          isChecked && styles.stepProductPillTextDone,
-                                        ]}
-                                      >
-                                        {pName}
-                                      </Text>
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-
-              {/* 🏁 BƯỚC CUỐI: Quầy Thu Ngân & Hoàn Tất */}
-              <View style={styles.stepItem}>
-                <View style={styles.stepRail}>
-                  <View
-                    style={[
-                      styles.stepDot,
-                      status === 'COMPLETED' ? styles.stepDotDone : styles.stepDotEnd,
-                    ]}
-                  >
-                    {status === 'COMPLETED' ? (
-                      <Check size={14} color="#fff" strokeWidth={3} />
-                    ) : (
-                      <CreditCard size={14} color="#64748b" />
-                    )}
-                  </View>
-                </View>
-                <View style={styles.stepCardWrap}>
-                  <View style={styles.stepCard}>
-                    <View style={styles.stepHeaderRow}>
-                      <View style={styles.stepTitleGroup}>
-                        <Text style={styles.stepCategoryTag}>ĐÍCH ĐẾN CUỐI CÙNG</Text>
-                        <Text style={styles.stepTitleText}>Quầy Thu Ngân & Hoàn Tất</Text>
-                        <Text style={styles.stepMetaText}>
-                          Quý khách thanh toán giỏ hàng · Robot sẽ tự động quay về trạm sạc
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.stepBadgeDone,
-                          {
-                            backgroundColor: status === 'COMPLETED' ? '#dcfce7' : '#f1f5f9',
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.stepBadgeDoneText,
-                            {
-                              color: status === 'COMPLETED' ? '#15803d' : '#64748b',
-                            },
-                          ]}
-                        >
-                          {status === 'COMPLETED' ? 'Đã hoàn thành ✓' : 'Kết thúc'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* Nút hủy phiên an toàn */}
-            {isBusy && status !== 'COMPLETED' && (
-              <TouchableOpacity
-                style={styles.cancelLinkButton}
-                onPress={handleCancelGuide}
-                activeOpacity={0.8}
-              >
-                <OctagonX size={16} color="#ef4444" />
-                <Text style={styles.cancelLinkText}>Tôi muốn tự đi tiếp (Dừng dẫn đường)</Text>
-              </TouchableOpacity>
             )}
-          </ScrollView>
-        )}
-      </View>
 
-      {/* ── 5. Fixed Bottom Action Bar khi đã đến nơi (Cho Mobile) ── */}
-      {awaitingPickup && !isWide && (
-        <View style={styles.bottomFixedBar}>
-          <TouchableOpacity
-            style={styles.bottomFixedButton}
-            onPress={handleConfirmPickup}
-            activeOpacity={0.88}
-          >
+            {/* ── DESTINATIONS LIST (compact chips, for multi-stop) ── */}
+            {destinations.length > 1 && (
+              <View style={s.destListBox}>
+                <Text style={s.destListLabel}>Lộ trình dừng:</Text>
+                <View style={s.destChipsRow}>
+                  {destinations.map((dest, idx) => {
+                    const si = getShelfData(dest);
+                    const isDone    = idx < currentWaypointIndex;
+                    const isCur     = idx === currentWaypointIndex && status !== 'FAILED' && status !== 'CANCELLED';
+                    return (
+                      <View key={idx} style={[
+                        s.destChip,
+                        isDone && s.destChipDone,
+                        isCur  && s.destChipActive,
+                      ]}>
+                        <Text style={{ fontSize: 13 }}>{isDone ? '✅' : isCur ? '📍' : si.icon}</Text>
+                        <Text style={[
+                          s.destChipText,
+                          isDone && s.destChipTextDone,
+                          isCur  && s.destChipTextActive,
+                        ]} numberOfLines={1}>{si.name}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* ── COUNTDOWN when awaiting pickup ── */}
+            {awaitingPickup && autoCountdown !== null && (
+              <View style={s.countdownBox}>
+                <Text style={s.countdownLabel}>
+                  Tự động tiếp tục sau <Text style={s.countdownNum}>{autoCountdown}s</Text>
+                </Text>
+                <View style={s.countdownTrack}>
+                  <View style={[s.countdownFill, { width: `${(autoCountdown / 30) * 100}%` as any }]} />
+                </View>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* ── FIXED BOTTOM CONFIRM BUTTON (only when awaiting pickup) ── */}
+      {awaitingPickup && (
+        <View style={s.bottomBar}>
+          <TouchableOpacity style={s.confirmBtn} onPress={handleConfirmPickup} activeOpacity={0.88}>
             <CheckCircle2 size={22} color="#fff" />
-            <Text style={styles.bottomFixedButtonText}>
+            <Text style={s.confirmBtnText}>
               {isFinalStop
-                ? `Đã lấy xong — Hoàn tất mua sắm ✓${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`
-                : `Đã lấy sản phẩm — Đi tiếp ➜${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`}
+                ? `Đã lấy xong — Hoàn tất ✓${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`
+                : `Đã lấy hàng — Đi tiếp ➜${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -863,755 +618,95 @@ export default function CartGuideMapScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
 
-  /* ── Header ── */
-  header: {
-    minHeight: 74,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  robotAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#dcfce7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  livePulseDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#22c55e',
-    borderWidth: 1.5,
-    borderColor: '#ffffff',
-  },
-  headerTitleWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerTitle: {
-    color: '#0f172a',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: -0.2,
-  },
-  headerSub: {
-    color: '#64748b',
-    fontSize: 12,
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  statusPillGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
 
-  /* Progress Bar */
-  progressBarBg: {
-    height: 4,
-    width: '100%',
-    backgroundColor: '#e2e8f0',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#16a34a',
-  },
+const s = StyleSheet.create({
+  safe:         { flex: 1, backgroundColor: '#f8fafc' },
 
-  /* ── Layout Container ── */
-  mainContainer: {
-    flex: 1,
-  },
-  mainContainerWide: {
-    flexDirection: 'row',
-    maxWidth: 1200,
-    width: '100%',
-    alignSelf: 'center',
-    padding: 16,
-    gap: 20,
-  },
+  /* Header */
+  header:       { height: 60, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  backBtn:      { width: 38, height: 38, borderRadius: 19, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  robotDot:     { width: 36, height: 36, borderRadius: 18, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  liveDot:      { position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#fff' },
+  headerTitle:  { fontSize: 13, fontWeight: '800', color: '#0f172a' },
+  headerSub:    { fontSize: 10, color: '#64748b', fontWeight: '600' },
+  batteryPill:  { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#fef9c3', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  batteryText:  { fontSize: 11, fontWeight: '700', color: '#92400e' },
 
-  /* ── Cột Bản Đồ (Map Column) ── */
-  mapColumn: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    margin: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  mapColumnWide: {
-    flex: 0.48,
-    margin: 0,
-    minHeight: 620,
-  },
-  mapCardHeader: {
-    marginBottom: 12,
-  },
-  mapCardTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  mapCardSub: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  mapCanvasWrapper: {
-    flex: 1,
-    minHeight: 380,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    backgroundColor: '#fafafa',
-  },
-  mapLegendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingTop: 12,
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
+  /* Progress */
+  progressBg:   { height: 3, backgroundColor: '#e2e8f0' },
+  progressFill: { height: 3, backgroundColor: '#16a34a', borderRadius: 2 },
 
-  /* ── Cột Cuộn (Scroll Column) ── */
-  scrollColumn: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 16,
-    paddingBottom: 40,
-  },
+  /* Scroll */
+  scroll: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 40, gap: 14 },
 
-  /* ── Mobile Tab Switcher ── */
-  mobileTabSwitch: {
-    flexDirection: 'row',
-    backgroundColor: '#e2e8f0',
-    padding: 4,
-    borderRadius: 16,
-    gap: 4,
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 12,
-  },
-  tabButtonActive: {
-    backgroundColor: '#16a34a',
-    shadowColor: '#16a34a',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  tabButtonTextActive: {
-    color: '#ffffff',
-    fontWeight: '900',
-  },
+  /* Status chip */
+  statusChipRow: { alignItems: 'flex-start' },
+  statusChip:    { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: '#e0f2fe' },
+  chipMoving:    { backgroundColor: '#e0f2fe' },
+  chipArrived:   { backgroundColor: '#dcfce7' },
+  chipDone:      { backgroundColor: '#d1fae5' },
+  statusChipText:{ fontSize: 12, fontWeight: '700' },
 
-  /* ── HERO LIVE STATUS CARD ── */
-  heroCard: {
-    borderRadius: 24,
-    padding: 20,
-    gap: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  heroMoving: {
-    backgroundColor: '#f0f9ff',
-    borderWidth: 1.5,
-    borderColor: '#7dd3fc',
-  },
-  heroArrived: {
-    backgroundColor: '#f0fdf4',
-    borderWidth: 2,
-    borderColor: '#22c55e',
-  },
-  heroCompleted: {
-    backgroundColor: '#ecfdf5',
-    borderWidth: 1.5,
-    borderColor: '#34d399',
-  },
-  heroHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: '#e0f2fe',
-  },
-  heroPillText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#0369a1',
-    letterSpacing: 0.3,
-  },
-  stopCountTag: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  stopCountTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#475569',
-  },
+  /* Hero image */
+  heroImageWrap:    { borderRadius: 20, overflow: 'hidden', height: 260, backgroundColor: '#e2e8f0' },
+  heroImage:        { width: '100%', height: '100%' },
+  heroImageOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 14, paddingTop: 40, backgroundColor: 'rgba(0,0,0,0.35)' },
+  heroShelfPill:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  heroShelfPillText:{ color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  heroTargetBlock: {
-    gap: 4,
-  },
-  heroTargetSubtitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  heroShelfTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  heroShelfIcon: {
-    fontSize: 26,
-  },
-  heroShelfName: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0f172a',
-    letterSpacing: -0.3,
-  },
-  heroAisleText: {
-    fontSize: 13,
-    color: '#475569',
-    fontWeight: '600',
-    marginTop: 2,
-  },
+  /* Fallback hero (no image) */
+  heroFallbackCard:   { backgroundColor: '#fff', borderRadius: 20, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  heroFallbackShelf:  { fontSize: 17, fontWeight: '800', color: '#0f172a', marginBottom: 6 },
+  heroFallbackPill:   { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#e0f2fe', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14 },
+  heroFallbackPillText:{ fontSize: 11, fontWeight: '700' },
 
-  /* Product Pick List in Hero */
-  heroProductListCard: {
-    backgroundColor: '#ffffff',
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 10,
-  },
-  heroProductHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  heroProductHeaderTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#15803d',
-  },
-  heroProductsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  productCheckChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-  },
-  productCheckChipInteractive: {
-    borderColor: '#cbd5e1',
-  },
-  productCheckChipDone: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#86efac',
-  },
-  checkboxBox: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#94a3b8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  checkboxBoxDone: {
-    backgroundColor: '#16a34a',
-    borderColor: '#16a34a',
-  },
-  checkboxInnerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#cbd5e1',
-  },
-  productChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  productChipTextDone: {
-    color: '#15803d',
-    textDecorationLine: 'line-through',
-  },
+  /* Product info */
+  productInfoBlock: { gap: 4 },
+  productPrimaryName:{ fontSize: 20, fontWeight: '900', color: '#0f172a', lineHeight: 27 },
+  productPrice:      { fontSize: 16, fontWeight: '800', color: '#dc2626' },
+  shelfLabel:        { fontSize: 12, fontWeight: '600', color: '#64748b' },
 
-  /* Pickup Actions in Hero */
-  heroPickupSection: {
-    gap: 10,
-    marginTop: 4,
-  },
-  countdownRow: {
-    gap: 4,
-  },
-  countdownText: {
-    fontSize: 12,
-    color: '#15803d',
-    fontWeight: '700',
-  },
-  countdownNumber: {
-    fontWeight: '900',
-    color: '#166534',
-  },
-  countdownTrack: {
-    height: 4,
-    width: '100%',
-    backgroundColor: '#bbf7d0',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  countdownFill: {
-    height: '100%',
-    backgroundColor: '#16a34a',
-  },
-  heroPickupButton: {
-    backgroundColor: '#16a34a',
-    borderRadius: 18,
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    shadowColor: '#16a34a',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  heroPickupButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-  },
+  /* Multi-product thumbnails */
+  multiRow:    { gap: 8 },
+  multiLabel:  { fontSize: 12, fontWeight: '700', color: '#475569' },
+  multiScroll: { gap: 10, paddingVertical: 4 },
+  thumbCard:   { width: 100, backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2, padding: 0 },
+  thumbCardFirst:{ borderWidth: 2, borderColor: '#16a34a' },
+  thumbImg:    { width: '100%', height: 72 },
+  thumbImgFallback: { width: '100%', height: 72, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  thumbName:   { fontSize: 10, fontWeight: '700', color: '#0f172a', padding: 6, lineHeight: 13 },
+  thumbPrice:  { fontSize: 10, fontWeight: '800', color: '#dc2626', paddingHorizontal: 6, paddingBottom: 6 },
 
-  /* Hero Completed State */
-  heroCompletedContent: {
-    gap: 8,
-    paddingVertical: 6,
-  },
-  heroCompletedTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#065f46',
-  },
-  heroCompletedDesc: {
-    fontSize: 14,
-    color: '#047857',
-    lineHeight: 20,
-  },
-  heroAutoHomeNote: {
-    fontSize: 12,
-    color: '#64748b',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  finishHomeBtn: {
-    backgroundColor: '#10b981',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignSelf: 'flex-start',
-    marginTop: 8,
-  },
-  finishHomeBtnText: {
-    color: '#ffffff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
+  /* Destinations chips */
+  destListBox:   { gap: 8 },
+  destListLabel: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  destChipsRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  destChip:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  destChipActive:{ backgroundColor: '#dbeafe', borderColor: '#93c5fd' },
+  destChipDone:  { backgroundColor: '#f0fdf4', borderColor: '#86efac' },
+  destChipText:  { fontSize: 11, fontWeight: '700', color: '#475569' },
+  destChipTextActive:{ color: '#1d4ed8' },
+  destChipTextDone:  { color: '#15803d' },
 
-  /* ── 4. STEPPING TIMELINE ── */
-  stepperSection: {
-    marginTop: 4,
-    gap: 12,
-  },
-  sectionHeaderRow: {
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  sectionSub: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
+  /* Countdown */
+  countdownBox:   { backgroundColor: '#fff', borderRadius: 16, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  countdownLabel: { fontSize: 13, fontWeight: '600', color: '#475569', textAlign: 'center' },
+  countdownNum:   { fontSize: 16, fontWeight: '900', color: '#0f172a' },
+  countdownTrack: { height: 6, backgroundColor: '#e2e8f0', borderRadius: 3, overflow: 'hidden' },
+  countdownFill:  { height: 6, backgroundColor: '#16a34a', borderRadius: 3 },
 
-  stepItem: {
-    flexDirection: 'row',
-    minHeight: 70,
-  },
-  stepRail: {
-    width: 38,
-    alignItems: 'center',
-  },
-  stepDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#cbd5e1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  stepDotDone: {
-    backgroundColor: '#16a34a',
-  },
-  stepDotActive: {
-    backgroundColor: '#0284c7',
-    borderWidth: 2,
-    borderColor: '#bae6fd',
-  },
-  stepDotArrived: {
-    backgroundColor: '#16a34a',
-    borderWidth: 2,
-    borderColor: '#bbf7d0',
-  },
-  stepDotEnd: {
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-  },
-  stepDotNumber: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#ffffff',
-  },
-  stepLine: {
-    flex: 1,
-    width: 2.5,
-    backgroundColor: '#e2e8f0',
-    marginVertical: 4,
-  },
-  stepLineDone: {
-    backgroundColor: '#86efac',
-  },
+  /* Completed */
+  completedBox:   { alignItems: 'center', paddingVertical: 40, gap: 12 },
+  completedEmoji: { fontSize: 56 },
+  completedTitle: { fontSize: 22, fontWeight: '900', color: '#0f172a' },
+  completedSub:   { fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 21 },
+  homeBtn:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, backgroundColor: '#16a34a', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16 },
+  homeBtnText:    { color: '#fff', fontWeight: '800', fontSize: 14 },
 
-  stepCardWrap: {
-    flex: 1,
-    paddingBottom: 14,
-  },
-  stepCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  stepCardDone: {
-    backgroundColor: '#f8fafc',
-    opacity: 0.85,
-  },
-  stepCardActive: {
-    backgroundColor: '#f0f9ff',
-    borderColor: '#7dd3fc',
-    borderWidth: 1.5,
-  },
-  stepCardArrived: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#86efac',
-    borderWidth: 1.5,
-  },
-  stepHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  stepTitleGroup: {
-    flex: 1,
-    gap: 2,
-  },
-  stepCategoryTag: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748b',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  stepTitleText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  stepMetaText: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-
-  stepBadgeDone: {
-    backgroundColor: '#dcfce7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  stepBadgeDoneText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#15803d',
-  },
-  stepBadgeArrived: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#dcfce7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  stepBadgeArrivedText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#15803d',
-  },
-  stepBadgeMoving: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#e0f2fe',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  stepBadgeMovingText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#0284c7',
-  },
-  stepBadgeUpcoming: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  stepBadgeUpcomingText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#64748b',
-  },
-
-  stepProductsList: {
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 8,
-    gap: 6,
-  },
-  stepProductsLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  stepProductBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  stepProductPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  stepProductPillDone: {
-    backgroundColor: '#dcfce7',
-  },
-  stepProductPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  stepProductPillTextDone: {
-    color: '#15803d',
-    textDecorationLine: 'line-through',
-  },
-
-  /* Empty Cart State */
-  emptyCartCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-    borderStyle: 'dashed',
-    gap: 8,
-    marginVertical: 8,
-  },
-  emptyCartTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#475569',
-  },
-  emptyCartSub: {
-    fontSize: 12,
-    color: '#94a3b8',
-    textAlign: 'center',
-  },
-
-  /* Cancel Link */
-  cancelLinkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  cancelLinkText: {
-    color: '#ef4444',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  /* Fixed Bottom Bar on Mobile */
-  bottomFixedBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 14,
-    paddingBottom: 22,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 12,
-  },
-  bottomFixedButton: {
-    minHeight: 56,
-    borderRadius: 18,
-    backgroundColor: '#16a34a',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-  },
-  bottomFixedButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '900',
-  },
+  /* Bottom confirm bar */
+  bottomBar:  { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -2 }, elevation: 10 },
+  confirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16a34a', borderRadius: 18, paddingVertical: 17, paddingHorizontal: 24 },
+  confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
 });

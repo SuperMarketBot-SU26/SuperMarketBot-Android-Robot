@@ -128,8 +128,16 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
           const incomingRobot = String(assignedMission?.robotCode ?? assignedMission?.RobotCode ?? '');
           const incomingMission = String(assignedMission?.missionId ?? assignedMission?.MissionId ?? '');
           if (flowType === 'guide' && matchRobot(incomingRobot) && incomingMission) {
-            const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
             const recoveredStatus = String(assignedMission?.status ?? assignedMission?.Status ?? 'NAVIGATING').toUpperCase() as GuideStatus;
+            const terminalStatuses: GuideStatus[] = ['COMPLETED', 'FAILED', 'CANCELLED', 'ESTOP', 'TIMEOUT'];
+            if (terminalStatuses.includes(recoveredStatus)) return;
+
+            const assignedTime = assignedMission?.dispatchedAt || assignedMission?.DispatchedAt || assignedMission?.createdAt || assignedMission?.CreatedAt;
+            if (assignedTime && (Date.now() - new Date(assignedTime).getTime()) > 30 * 60 * 1000) return;
+
+            const recoveredDestinations = normalizeDestinations(assignedMission?.waypoints ?? assignedMission?.Waypoints ?? []);
+            if (recoveredDestinations.length === 0) return;
+
             missionRef.current = incomingMission;
             setMissionId(incomingMission);
             setStatus(recoveredStatus);
@@ -407,6 +415,11 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     setDestinations(confirmedDestinations);
     destinationRef.current = confirmedDestinations[0];
     setDestination(confirmedDestinations[0]);
+    currentWaypointIndexRef.current = 0;
+    setCurrentWaypointIndex(0);
+    setStatus('NAVIGATING');
+    awaitingPickupRef.current = false;
+    setAwaitingPickup(false);
     if (acknowledgedMissionRef.current !== confirmedMissionId) {
       timeoutRef.current = setTimeout(() => {
         if (missionRef.current !== confirmedMissionId) return;

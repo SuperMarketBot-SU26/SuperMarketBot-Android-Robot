@@ -51,6 +51,7 @@ export interface AdMissionOverlayProps {
   activePlaylist: any[];
   onStartGuide?: (item: any) => void | Promise<void>;
   onSearchOther?: () => void | Promise<void>;
+  onOpenCatalog?: () => void;
   onDismiss?: () => void;
 }
 
@@ -61,16 +62,28 @@ export function AdMissionOverlay({
   activePlaylist,
   onStartGuide,
   onSearchOther,
+  onOpenCatalog,
   onDismiss,
 }: AdMissionOverlayProps) {
+  const [isDismissed, setIsDismissed] = React.useState(false);
+
+  // Khi robot di chuyển đến waypoint mới, hiển thị lại overlay quảng cáo
+  React.useEffect(() => {
+    setIsDismissed(false);
+  }, [activeWaypoint?.nodeId]);
+
   if (!mission || mission.flowType !== 'ad') return null;
 
   const isFreeRoam = mission.isFreeRoam
     || mission.adMode === 'freeroam'
     || (mission.isFreeRoam === undefined && mission.adMode === undefined && mission.waypoints?.every((w: any) => (w.dwellTimeSeconds ?? 0) === 0 || w.nodeRole === 'transit'));
 
-  // Luôn hiển thị quảng cáo liên tục trong suốt mission, trừ khi bị ESTOP
-  const shouldShow = status !== 'ESTOP';
+  // Với quảng cáo tuần tra tự do (free-roam): phát liên tục khi di chuyển.
+  // Với dẫn đường đến kệ (adMode='shelf' hoặc !isFreeRoam):
+  // - Khi robot đang di chuyển (MOVING/NAVIGATING): ẨN quảng cáo để khách quan sát bản đồ 2D và hướng dẫn "Mời bạn đi theo tôi".
+  // - Khi robot ĐÃ ĐẾN KỆ (ARRIVED hoặc PLAYLIST_PLAYING): MỚI HIỂN THỊ banner quảng cáo của kệ đó!
+  const isArrivedAtShelf = status === 'ARRIVED' || status === 'PLAYLIST_PLAYING';
+  const shouldShow = status !== 'ESTOP' && !isDismissed && (isFreeRoam || isArrivedAtShelf);
 
   // Luôn đảm bảo playlist có sản phẩm (nếu activePlaylist tạm thời rỗng thì lấy từ cache hoặc từ mission waypoints)
   const rawPlaylist = (activePlaylist && activePlaylist.length > 0)
@@ -100,6 +113,11 @@ export function AdMissionOverlay({
     });
   }, [rawPlaylist]);
 
+  const handleDismiss = React.useCallback(() => {
+    setIsDismissed(true);
+    if (onDismiss) onDismiss();
+  }, [onDismiss]);
+
   if (!shouldShow || !effectivePlaylist || effectivePlaylist.length === 0) return null;
 
   return (
@@ -113,7 +131,8 @@ export function AdMissionOverlay({
           activeWaypoint={activeWaypoint}
           onStartGuide={onStartGuide}
           onSearchOther={onSearchOther}
-          onDismiss={onDismiss}
+          onOpenCatalog={onOpenCatalog}
+          onDismiss={handleDismiss}
         />
       </View>
     </Modal>
@@ -128,6 +147,7 @@ function AdInteractiveCarousel({
   activeWaypoint,
   onStartGuide,
   onSearchOther,
+  onOpenCatalog,
   onDismiss,
 }: {
   mission?: any;
@@ -137,6 +157,7 @@ function AdInteractiveCarousel({
   activeWaypoint: any;
   onStartGuide?: (item: any) => void | Promise<void>;
   onSearchOther?: () => void | Promise<void>;
+  onOpenCatalog?: () => void;
   onDismiss?: () => void;
 }) {
   const router = useRouter();
@@ -419,11 +440,15 @@ function AdInteractiveCarousel({
     refreshSession();
     if (isStartingGuide || !onStartGuide || !currentItem) return;
     setIsStartingGuide(true);
+    // Safety timeout: reset spinner after 5s in case the component unmounts before catch fires
+    const safetyTimer = setTimeout(() => setIsStartingGuide(false), 5000);
     try {
       await onStartGuide(currentItem);
     } catch (err) {
       console.warn('[AdMissionOverlay] handleGuide error:', err);
       setIsStartingGuide(false);
+    } finally {
+      clearTimeout(safetyTimer);
     }
   };
 
@@ -441,9 +466,9 @@ function AdInteractiveCarousel({
       AdInterruptionService.setCachedAdPlaylist(playlist);
     }
 
-    // 3. Đóng ngay Modal Overlay thông qua onDismiss của RuntimeContext
-    if (onDismiss) {
-      onDismiss();
+    // 3. Mở màn hình chọn nhiều sản phẩm
+    if (onOpenCatalog) {
+      onOpenCatalog();
     } else {
       router.push('/ad-multi-select' as any);
     }

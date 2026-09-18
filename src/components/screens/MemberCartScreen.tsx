@@ -69,6 +69,14 @@ export default function MemberCartScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    if (guideStatus === 'COMPLETED' && token) {
+      CartService.clearCart(token)
+        .then((res) => setCart(res))
+        .catch(() => undefined);
+    }
+  }, [guideStatus, token]);
+
   const budget = member?.shoppingBudget ?? 1000000;
   const currentSpending = cart?.totalPrice || 0;
   const isOverBudget = currentSpending > budget;

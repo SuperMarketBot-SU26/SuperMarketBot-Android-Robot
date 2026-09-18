@@ -34,6 +34,7 @@ import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 import { useCustomerSession } from '../../context/CustomerSessionContext';
+import { useRobotMissionRuntime } from '../../context/RobotMissionRuntimeContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
@@ -61,6 +62,7 @@ export default function ZoneAdOverlay() {
   const { member, token } = useRobotAuth();
   const { dispatchCart, status: guideStatus, isBusy: isGuideBusy } = useRobotGuide();
   const { sessionId, refreshSession, markProductFraud, isProductFraud } = useCustomerSession();
+  const { mission } = useRobotMissionRuntime();
   const router = useRouter();
 
   // Stable refs for speak/stop (không gây re-run effect)
@@ -275,6 +277,21 @@ export default function ZoneAdOverlay() {
 
   // ─── Mở overlay khi có zone/playlist mới ──────────────────────────────────
   useEffect(() => {
+    // Nếu là quảng cáo lộ trình nhưng mission ad trên backend đã kết thúc hoặc không còn active
+    if (currentZone?.isRouteAd && (!mission || mission.flowType !== 'ad')) {
+      void stopRef.current();
+      clearZone();
+      setVisible(false);
+      return;
+    }
+
+    // Nếu đang có mission ad chính thức chạy, nhường hoàn toàn cho AdMissionOverlay
+    if (mission?.flowType === 'ad') {
+      void stopRef.current();
+      setVisible(false);
+      return;
+    }
+
     if (isInZone && currentPlaylist.length > 0) {
       console.log(`[ZoneAdOverlay] Mở màn hình Kiosk Ad cho ${currentPlaylist.length} quảng cáo`);
       setCurrentAdIndex(0);
@@ -288,7 +305,7 @@ export default function ZoneAdOverlay() {
       void stopRef.current();
       setVisible(false);
     }
-  }, [isInZone, currentPlaylist]);
+  }, [isInZone, currentPlaylist, currentZone?.isRouteAd, mission, clearZone, translateY, overlayOpacity]);
 
   // ─── Effect chính: TTS + Impression + Countdown ────────────────────────────
   useEffect(() => {
@@ -431,6 +448,14 @@ export default function ZoneAdOverlay() {
               </Text>
             </View>
 
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={handleClose}
+              activeOpacity={0.7}
+              accessibilityLabel="Đóng quảng cáo"
+            >
+              <X size={18} color="#475569" strokeWidth={2.5} />
+            </TouchableOpacity>
           </View>
         </View>
 
