@@ -205,6 +205,10 @@ class RobotControlServiceClass {
     fullZoneMap?: boolean;
     floorId?: number;
     startNodeId?: number;
+    adMode?: string;
+    source?: string;
+    dispatchedBy?: string;
+    targetSummary?: string;
     dwellTimeSeconds?: number;
     durationMinutes?: number;
     loopCount?: number;
@@ -236,9 +240,13 @@ class RobotControlServiceClass {
           fullZoneMap: payload.fullZoneMap,
           floorId: payload.floorId,
           startNodeId: payload.startNodeId,
+          adMode: payload.adMode,
           dwellTimeSeconds: payload.dwellTimeSeconds,
           durationMinutes: payload.durationMinutes,
           loopCount: payload.loopCount,
+          source: payload.source,
+          dispatchedBy: payload.dispatchedBy,
+          targetSummary: payload.targetSummary,
         }),
       });
       const raw = await res.text();
@@ -254,6 +262,24 @@ class RobotControlServiceClass {
         status: 0,
         data: { detail: 'Không kết nối được Backend để gửi nhiệm vụ.' },
       };
+    }
+  }
+
+  /**
+   * Hủy lộ trình tự hành của robot
+   */
+  async cancelAutonomous(robotCode = ROBOT_CODE_DEFAULT, reason = 'User cancelled on tablet'): Promise<{ ok: boolean }> {
+    if (!API_BASE) return { ok: false };
+    const url = `${API_BASE}/api/v1/navigation/robots/${encodeURIComponent(robotCode)}/cancel?reason=${encodeURIComponent(reason)}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      });
+      return { ok: res.ok };
+    } catch (e) {
+      console.warn('[RobotControl.cancelAutonomous] Lỗi:', e);
+      return { ok: false };
     }
   }
 }

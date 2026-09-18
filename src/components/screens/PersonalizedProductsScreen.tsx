@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Spinner } from 'tamagui';
-import { ArrowLeft, Sparkles, ShoppingCart, ArrowRight } from 'lucide-react-native';
+import { ArrowLeft, Sparkles, ShoppingCart, ArrowRight, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
@@ -9,7 +9,8 @@ import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { CartService } from '../../services/CartService';
 import { MemberService } from '../../services/MemberService';
-
+import { RobotControlService } from '../../services/RobotControlService';
+import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 
 export default function PersonalizedProductsScreen() {
   const insets = useSafeAreaInsets();
@@ -21,6 +22,40 @@ export default function PersonalizedProductsScreen() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<any>(null);
+  const [guidingId, setGuidingId] = useState<number | null>(null);
+
+  const handleGuideToProduct = async (product: { productId: number; productName: string }) => {
+    if (guidingId !== null) return;
+    setGuidingId(product.productId);
+    try {
+      speak(`Dạ vâng! Robot sẽ dẫn bạn đến quầy ${product.productName}. Xin mời bạn đi theo tôi!`);
+      showNotification({
+        title: '🤖 DẪN ĐƯỜNG MUA SẮM',
+        message: `Đang lập lộ trình đến sản phẩm ${product.productName}`,
+        type: 'info',
+      });
+      await RobotControlService.dispatchAutonomous({
+        robotCode: ROBOT_CODE,
+        flowType: 'guide',
+        productId: product.productId,
+        productIds: [product.productId],
+        floorId: 1,
+        source: 'RobotKiosk',
+        dispatchedBy: member?.fullName ? `${member.fullName} (VIP)` : 'Thành viên VIP',
+        targetSummary: `Gợi ý cá nhân: ${product.productName}`,
+      });
+      router.push('/cart-guide-map' as any);
+    } catch (err: any) {
+      speak('Không thể khởi tạo dẫn đường lúc này.');
+      showNotification({
+        title: 'LỖI DẪN ĐƯỜNG',
+        message: err?.message || 'Không thể kết nối robot',
+        type: 'error',
+      });
+    } finally {
+      setGuidingId(null);
+    }
+  };
 
 
   // Helper cho hạng thành viên
@@ -262,26 +297,45 @@ export default function PersonalizedProductsScreen() {
                     </XStack>
                   </YStack>
 
-                  {/* Add to Cart Action */}
-                  <Button
-                    backgroundColor="#00A550"
-                    size="$2.5"
-                    borderRadius={14}
-                    paddingHorizontal="$2.5"
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleAddToCart(p.productName, p.productId);
-                    }}
-                    pressStyle={{ backgroundColor: '#008740', scale: 0.95 }}
-                    style={{ elevation: 2 }}
-                  >
-                    <XStack alignItems="center" gap="$1">
-                      <ShoppingCart size={13} color="white" />
-                      <Text color="white" fontSize={11} fontWeight="bold">
-                        Thêm giỏ
-                      </Text>
-                    </XStack>
-                  </Button>
+                  {/* Action Buttons: Dẫn đường + Thêm giỏ */}
+                  <YStack gap="$1.5" alignItems="flex-end">
+                    <Button
+                      size="$2"
+                      paddingHorizontal="$2"
+                      backgroundColor="#eff6ff"
+                      borderWidth={1}
+                      borderColor="#bfdbfe"
+                      borderRadius={12}
+                      pressStyle={{ backgroundColor: '#dbeafe' }}
+                      icon={<Navigation size={12} color="#2563eb" />}
+                      disabled={guidingId === p.productId}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleGuideToProduct({ productId: p.productId, productName: p.productName });
+                      }}
+                    >
+                      <Text fontSize={10.5} fontWeight="700" color="#2563eb">Dẫn đường</Text>
+                    </Button>
+                    <Button
+                      backgroundColor="#00A550"
+                      size="$2"
+                      borderRadius={12}
+                      paddingHorizontal="$2"
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleAddToCart(p.productName, p.productId);
+                      }}
+                      pressStyle={{ backgroundColor: '#008740', scale: 0.95 }}
+                      style={{ elevation: 2 }}
+                    >
+                      <XStack alignItems="center" gap="$1">
+                        <ShoppingCart size={12} color="white" />
+                        <Text color="white" fontSize={10.5} fontWeight="bold">
+                          Thêm giỏ
+                        </Text>
+                      </XStack>
+                    </Button>
+                  </YStack>
                 </XStack>
               </Card>
             ))

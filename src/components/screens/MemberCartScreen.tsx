@@ -189,7 +189,7 @@ export default function MemberCartScreen() {
         </YStack>
       )}
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
         {loading ? (
           <YStack alignItems="center" justifyContent="center" padding="$10" gap="$4">
             <Spinner size="large" color="#00A550" />
@@ -206,66 +206,66 @@ export default function MemberCartScreen() {
             </Button>
           </YStack>
         ) : (
-          <YStack gap="$4">
+          <YStack gap="$3">
             {cart.items.map((item, index) => (
               <Animated.View key={`cart-item-${item.productId}-${index}`} entering={FadeInUp.delay(index * 50).duration(400)}>
                 <Card size="$4" borderWidth={1} borderRadius={16} overflow="hidden" backgroundColor="white" borderColor={item.alertType === 'Allergy' ? '#ef4444' : item.alertType === 'Avoid' ? '#f59e0b' : '#f0f0f0'} padding="$3" onPress={() => router.push(`/product/${item.productId}?isRecipe=false` as any)} pressStyle={{ scale: 0.98 }}>
                   <XStack gap="$3" alignItems="center">
                     <Image 
                       src={item.imageUrl || "https://via.placeholder.com/150"} 
-                      width={70} 
-                      height={70} 
+                      width={65} 
+                      height={65} 
                       borderRadius={12} 
                       backgroundColor="#f9f9f9"
                     />
                     <YStack flex={1} gap="$1">
-                      <Text fontSize={15} fontWeight="bold" color="$textPrimary" numberOfLines={2}>
+                      <Text fontSize={14.5} fontWeight="bold" color="$textPrimary" numberOfLines={2}>
                         {item.productName}
                       </Text>
-                      <Text fontSize={13} color="$textSecondary">
+                      <Text fontSize={12} color="$textSecondary">
                         Đơn giá: {(item?.unitPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>
                       {item.alertType && (
                         <View backgroundColor={item.alertType === 'Allergy' ? '#fef2f2' : '#fffbeb'} paddingHorizontal="$2" paddingVertical="$1" borderRadius={6} alignSelf="flex-start" marginTop="$1">
-                          <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={10} fontWeight="bold">
+                          <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={9.5} fontWeight="bold">
                             {item.alertType === 'Allergy' ? 'CẢNH BÁO DỊ ỨNG' : 'CẦN TRÁNH'}
                           </Text>
                         </View>
                       )}
-                      <XStack alignItems="center" gap="$3" marginTop="$1">
+                      <XStack alignItems="center" gap="$2.5" marginTop="$1">
                         <Button
                           size="$2"
                           circular
-                          icon={<Minus size={14} color="#005b2b" />}
+                          icon={<Minus size={13} color="#005b2b" />}
                           backgroundColor="#f0fdf4"
                           onPress={(e) => { e.stopPropagation(); handleUpdateQuantity(item.productId, item.quantity - 1); }}
                         />
-                        <Text fontSize={15} fontWeight="bold" color="#1e293b">{item.quantity}</Text>
+                        <Text fontSize={14.5} fontWeight="bold" color="#1e293b">{item.quantity}</Text>
                         <Button
                           size="$2"
                           circular
-                          icon={<Plus size={14} color="#005b2b" />}
+                          icon={<Plus size={13} color="#005b2b" />}
                           backgroundColor="#f0fdf4"
                           onPress={(e) => { e.stopPropagation(); handleUpdateQuantity(item.productId, item.quantity + 1); }}
                         />
                       </XStack>
                     </YStack>
-                    <YStack alignItems="flex-end" justifyContent="space-between" height={70}>
+                    <YStack alignItems="flex-end" justifyContent="space-between" height={65}>
                       <Button
                         size="$2"
                         circular
                         chromeless
-                        icon={<Trash2 size={18} color="#ef4444" />}
+                        icon={<Trash2 size={17} color="#ef4444" />}
                         onPress={(e) => { e.stopPropagation(); handleUpdateQuantity(item.productId, 0); }}
                       />
-                      <Text fontSize={16} fontWeight="900" color="#00A550">
+                      <Text fontSize={15} fontWeight="900" color="#00A550">
                         {(item?.totalPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>
                     </YStack>
                   </XStack>
                   
                   {item.alertMessage && (
-                    <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={12} marginTop="$2" fontWeight="600">
+                    <Text color={item.alertType === 'Allergy' ? '#ef4444' : '#d97706'} fontSize={11.5} marginTop="$2" fontWeight="600">
                       {item.alertMessage}
                     </Text>
                   )}
@@ -276,7 +276,7 @@ export default function MemberCartScreen() {
         )}
       </ScrollView>
 
-      {/* FIXED BOTTOM BAR */}
+      {/* FIXED 2-TIER BOTTOM BAR */}
       {cart && cart.items.length > 0 && (
         <View 
           position="absolute" 
@@ -284,73 +284,77 @@ export default function MemberCartScreen() {
           left={0} 
           right={0} 
           backgroundColor="white" 
-          padding="$4" 
-          paddingBottom={Math.max(insets.bottom, 20)}
+          paddingHorizontal="$4" 
+          paddingTop="$3"
+          paddingBottom={Math.max(insets.bottom, 16)}
           borderTopWidth={1} 
           borderTopColor="#f0f0f0"
           shadowColor="black"
-          shadowOpacity={0.05}
+          shadowOpacity={0.06}
           shadowRadius={10}
-          shadowOffset={{ width: 0, height: -5 }}
+          shadowOffset={{ width: 0, height: -4 }}
           style={{ elevation: 10 }}
+          gap="$2.5"
         >
-          <XStack justifyContent="space-between" alignItems="center">
-            <YStack>
-              <Text fontSize={13} color="$textSecondary">Tổng cộng</Text>
-              <Text fontSize={22} fontWeight="900" color="#00A550">
-                {(currentSpending ?? 0).toLocaleString('vi-VN')}đ
-              </Text>
-            </YStack>
-            <Button
-              size="$4"
-              backgroundColor="#00A550"
-              borderRadius={30}
-              disabled={navigating || isRobotBusy}
-              opacity={navigating || isRobotBusy ? 0.5 : 1}
-              iconAfter={navigating ? <Spinner color="white" /> : <MapPin size={18} color="white" />}
-              onPress={async () => {
-                if (!cart || cart.items.length === 0) return;
-                if (!isHubConnected) {
-                  Alert.alert(
-                    'Đang kết nối với robot',
-                    'Kênh trạng thái thời gian thực đang kết nối lại. Vui lòng chờ vài giây rồi thử lại.',
-                  );
-                  return;
-                }
-                Alert.alert(
-                  'Robot dẫn theo giỏ hàng',
-                  `RB001 sẽ lập một lộ trình qua các kệ chứa ${cart.items.length} loại sản phẩm. Bắt đầu ngay?`,
-                  [
-                    { text: 'Chưa', style: 'cancel' },
-                    {
-                      text: 'Bắt đầu',
-                      onPress: async () => {
-                        setNavigating(true);
-                        speak('Đang kiểm tra tồn kho và tính lộ trình tối ưu qua các kệ trong giỏ hàng.');
-                        try {
-                          const mission = await dispatchCart(cart.items.map(item => ({
-                            productId: item.productId,
-                            productName: item.productName,
-                          })));
-                          speak(`Hãy đi theo tôi. Lộ trình có ${mission?.targetNodeCount || 0} điểm kệ.`);
-                          router.push('/cart-guide-map' as any);
-                        } catch (error: any) {
-                          Alert.alert('Không thể bắt đầu', error?.message || 'Robot chưa nhận được nhiệm vụ.');
-                          speak('Xin lỗi, chưa thể tạo lộ trình cho giỏ hàng này.');
-                        } finally {
-                          setNavigating(false);
-                        }
-                      },
-                    },
-                  ],
-                );
-              }}
-            >
-              <Text color="white" fontWeight="bold">
-                {isHubConnected ? 'Robot dẫn theo giỏ hàng' : 'Đang kết nối robot...'}
-              </Text>
-            </Button>
+          <XStack justifyContent="space-between" alignItems="baseline">
+            <Text fontSize={13} color="$textSecondary" fontWeight="600">
+              Tổng cộng ({cart.items.reduce((sum, item) => sum + item.quantity, 0)} món):
+            </Text>
+            <Text fontSize={20} fontWeight="900" color="#00A550">
+              {(currentSpending ?? 0).toLocaleString('vi-VN')}đ
+            </Text>
           </XStack>
+
+          <Button
+            size="$4.5"
+            width="100%"
+            backgroundColor="#00A550"
+            borderRadius={16}
+            disabled={navigating || isRobotBusy}
+            opacity={navigating || isRobotBusy ? 0.5 : 1}
+            iconAfter={navigating ? <Spinner color="white" /> : <MapPin size={18} color="white" />}
+            onPress={async () => {
+              if (!cart || cart.items.length === 0) return;
+              if (!isHubConnected) {
+                Alert.alert(
+                  'Đang kết nối với robot',
+                  'Kênh trạng thái thời gian thực đang kết nối lại. Vui lòng chờ vài giây rồi thử lại.',
+                );
+                return;
+              }
+              Alert.alert(
+                'Robot dẫn theo giỏ hàng',
+                `RB001 sẽ lập một lộ trình qua các kệ chứa ${cart.items.length} loại sản phẩm. Bắt đầu ngay?`,
+                [
+                  { text: 'Chưa', style: 'cancel' },
+                  {
+                    text: 'Bắt đầu',
+                    onPress: async () => {
+                      setNavigating(true);
+                      speak('Đang kiểm tra tồn kho và tính lộ trình tối ưu qua các kệ trong giỏ hàng.');
+                      try {
+                        const mission = await dispatchCart(cart.items.map(item => ({
+                          productId: item.productId,
+                          productName: item.productName,
+                        })));
+                        speak(`Hãy đi theo tôi. Lộ trình có ${mission?.targetNodeCount || 0} điểm kệ.`);
+                        router.push('/cart-guide-map' as any);
+                      } catch (error: any) {
+                        Alert.alert('Không thể bắt đầu', error?.message || 'Robot chưa nhận được nhiệm vụ.');
+                        speak('Xin lỗi, chưa thể tạo lộ trình cho giỏ hàng này.');
+                      } finally {
+                        setNavigating(false);
+                      }
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            <Text color="white" fontWeight="800" fontSize={14}>
+              {isHubConnected ? '🚀 Robot dẫn theo giỏ hàng' : 'Đang kết nối robot...'}
+            </Text>
+          </Button>
         </View>
       )}
 

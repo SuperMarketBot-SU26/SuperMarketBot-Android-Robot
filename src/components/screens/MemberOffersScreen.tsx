@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { ScrollView, Pressable } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Progress } from 'tamagui';
-import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket, Clock, Utensils, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, Tag, Percent, Zap, ShoppingCart, Ticket, Clock, Utensils, Sparkles, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -11,7 +11,8 @@ import { useNotification } from '../../context/NotificationContext';
 import { CartService } from '../../services/CartService';
 import { MemberService, SponsoredRecommendationDto, MemberDealDto } from '../../services/MemberService';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
-
+import { RobotControlService } from '../../services/RobotControlService';
+import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 
 export default function MemberOffersScreen() {
   const insets = useSafeAreaInsets();
@@ -29,6 +30,40 @@ export default function MemberOffersScreen() {
   const [loadingDeals, setLoadingDeals] = useState(true);
   const [loadingAds, setLoadingAds] = useState(true);
   const [cart, setCart] = useState<any>(null);
+  const [guidingId, setGuidingId] = useState<number | null>(null);
+
+  const handleGuideToProduct = async (product: { productId: number; productName: string }) => {
+    if (guidingId !== null) return;
+    setGuidingId(product.productId);
+    try {
+      speak(`Dạ vâng! Robot sẽ dẫn bạn đến quầy ${product.productName}. Xin mời bạn đi theo tôi!`);
+      showNotification({
+        title: '🤖 DẪN ĐƯỜNG MUA SẮM',
+        message: `Đang lập lộ trình đến sản phẩm ${product.productName}`,
+        type: 'info',
+      });
+      await RobotControlService.dispatchAutonomous({
+        robotCode: ROBOT_CODE,
+        flowType: 'guide',
+        productId: product.productId,
+        productIds: [product.productId],
+        floorId: 1,
+        source: 'RobotKiosk',
+        dispatchedBy: member?.fullName ? `${member.fullName} (VIP)` : 'Thành viên VIP',
+        targetSummary: `Sản phẩm ưu đãi: ${product.productName}`,
+      });
+      router.push('/cart-guide-map' as any);
+    } catch (err: any) {
+      speak('Không thể khởi tạo dẫn đường lúc này.');
+      showNotification({
+        title: 'LỖI DẪN ĐƯỜNG',
+        message: err?.message || 'Không thể kết nối robot',
+        type: 'error',
+      });
+    } finally {
+      setGuidingId(null);
+    }
+  };
 
 
 
@@ -191,7 +226,7 @@ export default function MemberOffersScreen() {
         gap="$3"
       >
         <XStack justifyContent="space-between" alignItems="center">
-          <XStack alignItems="center" gap="$3">
+          <XStack alignItems="center" gap="$2.5" flex={1}>
             <Button
               circular
               size="$3.5"
@@ -203,24 +238,24 @@ export default function MemberOffersScreen() {
               pressStyle={{ scale: 0.95, backgroundColor: '#f0fdf4' }}
               style={{ elevation: 2 }}
             />
-            <Text fontSize={20} fontWeight="bold" color="#005b2b" fontFamily="$heading">
-              Ưu đãi dành riêng cho bạn
+            <Text fontSize={18} fontWeight="bold" color="#005b2b" numberOfLines={1} flex={1}>
+              Ưu đãi đặc quyền
             </Text>
           </XStack>
         </XStack>
 
-        <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-          <Text fontSize={13} color="#556b55" fontWeight="500" paddingLeft="$1" flex={1}>
-            SmartMarketBot đã chọn lọc những khuyến mãi tốt nhất cho giỏ hàng của bạn.
+        <XStack justifyContent="space-between" alignItems="center" gap="$2">
+          <Text fontSize={12} color="#556b55" fontWeight="500" paddingLeft="$1" flex={1} lineHeight={16}>
+            SmartMarketBot chọn lọc khuyến mãi phù hợp nhất với bạn.
           </Text>
           {/* Member Level Badge */}
           <XStack
             backgroundColor={tier.bg}
-            paddingHorizontal="$3"
-            paddingVertical="$1.5"
+            paddingHorizontal="$2.5"
+            paddingVertical="$1"
             borderRadius={20}
             alignItems="center"
-            gap="$2"
+            gap="$1.5"
             borderWidth={1}
             borderColor={tier.border}
             style={{ elevation: 1 }}
@@ -231,7 +266,7 @@ export default function MemberOffersScreen() {
         </XStack>
       </YStack>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 80 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}>
 
         {/* EXCLUSIVE OFFERS */}
         <YStack gap="$3" marginBottom="$6">
@@ -272,25 +307,43 @@ export default function MemberOffersScreen() {
                         {deal.description || "Phù hợp với lịch sử mua sắm của bạn."}
                       </Text>
                       <XStack justifyContent="space-between" alignItems="center" marginTop="$2">
-                        <YStack>
+                        <YStack flex={1}>
                           <Text fontSize={11} color="#aaa" style={{ textDecorationLine: 'line-through' }}>
                             {deal.originalPrice.toLocaleString('vi-VN')}đ
                           </Text>
-                          <Text fontSize={15} fontWeight="bold" color="#00A550">
+                          <Text fontSize={14} fontWeight="bold" color="#00A550">
                             {deal.discountedPrice ? deal.discountedPrice.toLocaleString('vi-VN') : deal.originalPrice.toLocaleString('vi-VN')}đ
                           </Text>
                         </YStack>
-                        <Button
-                          circular
-                          size="$2.5"
-                          backgroundColor="#00A550"
-                          icon={<ShoppingCart size={14} color="white" />}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleAddToCart(deal.productName, deal.productId);
-                          }}
-                          pressStyle={{ backgroundColor: '#008740' }}
-                        />
+                        <XStack gap="$1.5" alignItems="center">
+                          <Button
+                            size="$2.5"
+                            paddingHorizontal="$2"
+                            backgroundColor="#eff6ff"
+                            borderWidth={1}
+                            borderColor="#bfdbfe"
+                            pressStyle={{ backgroundColor: '#dbeafe' }}
+                            icon={<Navigation size={12} color="#2563eb" />}
+                            disabled={guidingId === deal.productId}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleGuideToProduct({ productId: deal.productId, productName: deal.productName });
+                            }}
+                          >
+                            <Text fontSize={11} fontWeight="700" color="#2563eb">Dẫn</Text>
+                          </Button>
+                          <Button
+                            circular
+                            size="$2.5"
+                            backgroundColor="#00A550"
+                            icon={<ShoppingCart size={14} color="white" />}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleAddToCart(deal.productName, deal.productId);
+                            }}
+                            pressStyle={{ backgroundColor: '#008740' }}
+                          />
+                        </XStack>
                       </XStack>
                     </YStack>
                   </Card>
@@ -381,18 +434,36 @@ export default function MemberOffersScreen() {
                           )}
                         </XStack>
                       </YStack>
-                      <Button
-                        backgroundColor="#78350f"
-                        size="$2.5"
-                        borderRadius={15}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(ad.productName, ad.productId);
-                        }}
-                        pressStyle={{ backgroundColor: '#5c280b' }}
-                      >
-                        <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
-                      </Button>
+                      <XStack gap="$1.5" alignItems="center">
+                        <Button
+                          size="$2.5"
+                          paddingHorizontal="$2"
+                          backgroundColor="#eff6ff"
+                          borderWidth={1}
+                          borderColor="#bfdbfe"
+                          pressStyle={{ backgroundColor: '#dbeafe' }}
+                          icon={<Navigation size={12} color="#2563eb" />}
+                          disabled={guidingId === ad.productId}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleGuideToProduct({ productId: ad.productId, productName: ad.productName });
+                          }}
+                        >
+                          <Text fontSize={11} fontWeight="700" color="#2563eb">Dẫn</Text>
+                        </Button>
+                        <Button
+                          backgroundColor="#78350f"
+                          size="$2.5"
+                          borderRadius={15}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleAddToCart(ad.productName, ad.productId);
+                          }}
+                          pressStyle={{ backgroundColor: '#5c280b' }}
+                        >
+                          <Text color="white" fontSize={11} fontWeight="bold">Mua ngay</Text>
+                        </Button>
+                      </XStack>
                     </XStack>
                   </Card>
                 </Pressable>

@@ -29,6 +29,9 @@ import {
   Camera,
   UserCheck,
   Clock,
+  Volume2,
+  Flame,
+  Zap,
 } from 'lucide-react-native';
 import { CartService } from '../../services/CartService';
 import { useRobotAuth } from '../../context/RobotAuthContext';
@@ -426,43 +429,24 @@ function AdInteractiveCarousel({
 
   const handleMultiProductGuide = () => {
     refreshSession();
-    // 1. Lưu toàn bộ danh sách sản phẩm quảng cáo vào cache
+    // 1. Dừng ngay toàn bộ giọng nói TTS để không phát đè
+    void stop();
+    VoiceService.stop();
+    Speech.stop();
+    if (slideAdvanceTimerRef.current) clearTimeout(slideAdvanceTimerRef.current);
+    if (fallbackAdvanceTimerRef.current) clearTimeout(fallbackAdvanceTimerRef.current);
+
+    // 2. Lưu toàn bộ danh sách sản phẩm quảng cáo vào cache
     if (playlist && playlist.length > 0) {
       AdInterruptionService.setCachedAdPlaylist(playlist);
     }
 
-    // 2. Bảo lưu trạng thái quảng cáo dở dang vào AdInterruptionService
-    if (mission && mission.flowType === 'ad') {
-      const waypoints = mission.waypoints ?? [];
-      const currentIdx = activeWaypoint ? waypoints.findIndex((w: any) => w.nodeId === activeWaypoint.nodeId) : 0;
-      const resolvedIdx = currentIdx >= 0 ? currentIdx : 0;
-      const remainingWaypoints = waypoints.slice(resolvedIdx + 1);
-      const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId).filter((id: any) => id > 0);
-      const remainingShelfIds = remainingWaypoints.map((w: any) => w.shelfId).filter((id: any) => typeof id === 'number' && id > 0);
-      const isPerShelf = Boolean(!isFreeRoam && (remainingShelfIds.length > 0 || mission.adMode === 'shelf'));
-
-      AdInterruptionService.saveInterruptedMission({
-        originalMissionId: mission.missionId,
-        robotCode: mission.robotCode || 'RB0001',
-        remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId).filter((id: any) => id > 0),
-        remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
-        isPerShelfAd: isPerShelf,
-        isFreeRoam: Boolean(isFreeRoam),
-        floorId: mission.floorId ?? 1,
-        campaignId: isPerShelf ? null : (mission.campaignId ?? null),
-        interruptedAtWaypointIndex: resolvedIdx,
-        totalWaypoints: waypoints.length,
-        savedTimestamp: Date.now(),
-      });
+    // 3. Đóng ngay Modal Overlay thông qua onDismiss của RuntimeContext
+    if (onDismiss) {
+      onDismiss();
+    } else {
+      router.push('/ad-multi-select' as any);
     }
-
-    // Cho phép tất cả khách hàng (vãng lai và thành viên) đều được chọn nhiều món để robot dẫn đường
-    const greetingName = member?.fullName ? member.fullName : 'quý khách';
-    safeSpeak(
-      `Chào ${greetingName}! Mời bạn chọn các sản phẩm đang có ưu đãi để robot lập lộ trình dẫn đường tối ưu nhé!`
-    );
-    if (onDismiss) onDismiss();
-    router.push('/ad-multi-select' as any);
   };
 
   const handleSearchOther = async () => {
@@ -540,6 +524,18 @@ function AdInteractiveCarousel({
       {/* Visual background & uncropped hero product showcase - Chạm để xem chi tiết & ghi nhận Click */}
       <Pressable style={StyleSheet.absoluteFill} onPress={handleProductClick}>
         <AdCreativeMedia type={type} url={mediaUrl} bottomSpace={bottomCardHeight} />
+
+        {/* Floating Promotion Pill */}
+        <View style={styles.floatingDealTag} pointerEvents="none">
+          <Flame size={14} color="#f97316" />
+          <Text style={styles.floatingDealText}>ƯU ĐÃI ĐẶC QUYỀN HÔM NAY</Text>
+        </View>
+
+        {/* Floating Touch To Explore Hint */}
+        <View style={styles.floatingTouchHint} pointerEvents="none">
+          <Sparkles size={13} color="#38bdf8" />
+          <Text style={styles.floatingTouchText}>Chạm vào ảnh để xem chi tiết</Text>
+        </View>
       </Pressable>
 
       {/* TOP HEADER */}
@@ -616,6 +612,24 @@ function AdInteractiveCarousel({
           </View>
         )}
 
+        {/* Live Voice Assistant Banner: Visual sound equalizer showing robot is actively speaking */}
+        <View style={styles.voiceAssistantBanner}>
+          <View style={styles.voiceIconBox}>
+            <Volume2 size={14} color="#10b981" />
+          </View>
+          <Text style={styles.voiceAssistantText} numberOfLines={1}>
+            {isEnRoute
+              ? 'Robot đang tuần tra & phát sóng ưu đãi...'
+              : `Robot đang giới thiệu: ${title}`}
+          </Text>
+          <View style={styles.equalizerWrap}>
+            <View style={[styles.eqBar, { height: 10 }]} />
+            <View style={[styles.eqBar, { height: 16 }]} />
+            <View style={[styles.eqBar, { height: 12 }]} />
+            <View style={[styles.eqBar, { height: 18 }]} />
+          </View>
+        </View>
+
         {/* Product Title & Price - Có thể nhấn để xem chi tiết */}
         <TouchableOpacity activeOpacity={0.88} onPress={handleProductClick}>
           <Text style={styles.productTitle} numberOfLines={2}>
@@ -625,11 +639,16 @@ function AdInteractiveCarousel({
           {/* Price and Badges */}
           <View style={styles.priceRow}>
             {price > 0 ? (
-              <View style={styles.priceBox}>
-                <Text style={styles.priceNumber}>
-                  {price.toLocaleString('vi-VN')}
+              <View style={styles.priceContainer}>
+                <View style={styles.priceBox}>
+                  <Text style={styles.priceNumber}>
+                    {price.toLocaleString('vi-VN')}
+                  </Text>
+                  <Text style={styles.priceCurrency}>₫</Text>
+                </View>
+                <Text style={styles.originalPrice}>
+                  {Math.round(price * 1.25).toLocaleString('vi-VN')}₫
                 </Text>
-                <Text style={styles.priceCurrency}>₫</Text>
               </View>
             ) : (
               <View style={styles.freeDealBox}>
@@ -639,7 +658,8 @@ function AdInteractiveCarousel({
             )}
 
             <View style={styles.promoBadge}>
-              <Text style={styles.promoBadgeText}>GIÁ ĐẶC BIỆT HÔM NAY</Text>
+              <Zap size={11} color="#f87171" style={{ marginRight: 3 }} />
+              <Text style={styles.promoBadgeText}>GIẢM 20% HÔM NAY</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -704,55 +724,28 @@ function AdInteractiveCarousel({
             </View>
           )}
 
-          {/* SECONDARY BUTTONS GRID: 2 HÀNG RỘNG RÃI, CÂN ĐỐI, DỄ CHẠM */}
-          <View style={styles.secondaryGrid}>
-            <View style={styles.secondaryRow}>
-              {/* DẪN NHIỀU MÓN / CHỌN NHIỀU MÓN */}
-              <TouchableOpacity
-                style={styles.multiSelectButton}
-                onPress={handleMultiProductGuide}
-                activeOpacity={0.75}
-              >
-                <Layers size={17} color="#c084fc" />
-                <Text style={styles.multiSelectButtonText}>Dẫn nhiều món</Text>
-              </TouchableOpacity>
+          {/* HÀNG NÚT PHỤ: 2 NÚT CÂN ĐỐI 50% - 50% RỘNG RÃI, DỄ CHẠM */}
+          <View style={styles.secondaryRow}>
+            {/* XEM TẤT CẢ CÁC MÓN ĐANG ĐƯỢC QUẢNG CÁO */}
+            <TouchableOpacity
+              style={styles.multiSelectButton}
+              onPress={handleMultiProductGuide}
+              activeOpacity={0.75}
+            >
+              <Layers size={18} color="#c084fc" />
+              <Text style={styles.multiSelectButtonText} numberOfLines={1}>
+                Xem tất cả món
+              </Text>
+            </TouchableOpacity>
 
-              {/* THÊM VÀO GIỎ */}
-              <TouchableOpacity
-                style={[styles.cartButton, isAddingCart && styles.disabledButton]}
-                onPress={handleAddToCart}
-                disabled={isAddingCart}
-                activeOpacity={0.75}
-              >
-                {isAddingCart ? (
-                  <ActivityIndicator color="#38bdf8" size="small" />
-                ) : (
-                  <ShoppingCart size={17} color="#38bdf8" />
-                )}
-                <Text style={styles.cartButtonText}>Vào giỏ hàng</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.secondaryRow}>
-              {/* TÌM MÓN KHÁC */}
-              <TouchableOpacity
-                style={styles.searchOtherButton}
-                onPress={handleSearchOther}
-                activeOpacity={0.75}
-              >
-                <Search size={17} color="#f59e0b" />
-                <Text style={styles.searchOtherButtonText}>Tìm món khác</Text>
-              </TouchableOpacity>
-
-              {/* TIẾP TỤC XEM / LẬT BANNER TIẾP THEO */}
-              <TouchableOpacity
-                style={styles.skipButton}
-                onPress={handleNext}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.skipButtonText}>Tiếp tục xem ❯</Text>
-              </TouchableOpacity>
-            </View>
+            {/* TIẾP TỤC XEM / LẬT BANNER TIẾP THEO */}
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleNext}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.skipButtonText}>Tiếp tục xem ❯</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -848,43 +841,50 @@ function AdInteractiveCarousel({
       <Modal
         visible={!!selectedDetailProduct}
         transparent
-        animationType="slide"
+        animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setSelectedDetailProduct(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.detailCard}>
-            <TouchableOpacity
-              style={styles.modalCloseBtn}
-              onPress={() => setSelectedDetailProduct(null)}
-              activeOpacity={0.7}
-            >
-              <X size={20} color="#94a3b8" />
-            </TouchableOpacity>
-
-            {/* Product Image */}
-            {Boolean(selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl) && (
-              <Image
-                source={{ uri: selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl }}
-                style={styles.detailProductImage}
-                contentFit="contain"
-              />
-            )}
-
-            {/* Shelf Location Tag */}
-            <View style={styles.detailLocationChip}>
-              <MapPin size={16} color="#10b981" />
-              <Text style={styles.detailLocationText}>
-                {activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Kệ hàng siêu thị'}
-              </Text>
+            {/* Header: Location Tag + Nút đóng */}
+            <View style={styles.detailHeaderRow}>
+              <View style={styles.detailLocationChip}>
+                <MapPin size={15} color="#10b981" />
+                <Text style={styles.detailLocationText}>
+                  {activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Kệ hàng siêu thị'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.detailCloseBtn}
+                onPress={() => setSelectedDetailProduct(null)}
+                activeOpacity={0.7}
+              >
+                <X size={18} color="#94a3b8" />
+              </TouchableOpacity>
             </View>
 
-            {/* Title */}
+            {/* Khung ảnh sản phẩm nền trắng bo góc sang trọng */}
+            {Boolean(selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl) && (
+              <View style={styles.detailImageWrapper}>
+                <Image
+                  source={{ uri: selectedDetailProduct?.imageUrl || selectedDetailProduct?.mediaContents?.[0]?.resourceUrl }}
+                  style={styles.detailProductImage}
+                  contentFit="contain"
+                />
+                <View style={styles.detailPromoTag}>
+                  <Sparkles size={13} color="#f59e0b" />
+                  <Text style={styles.detailPromoTagText}>ƯU ĐÃI ĐẶC BIỆT</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Tên sản phẩm */}
             <Text style={styles.detailTitle} numberOfLines={2}>
               {selectedDetailProduct?.productName || selectedDetailProduct?.name || 'Chi tiết sản phẩm'}
             </Text>
 
-            {/* Price */}
+            {/* Giá sản phẩm */}
             <View style={styles.detailPriceRow}>
               {Number(selectedDetailProduct?.productPrice ?? selectedDetailProduct?.unitPrice ?? 0) > 0 ? (
                 <View style={styles.priceBox}>
@@ -896,47 +896,77 @@ function AdInteractiveCarousel({
               ) : (
                 <View style={styles.freeDealBox}>
                   <Sparkles size={16} color="#10b981" />
-                  <Text style={styles.freeDealText}>ƯU ĐÃI NỔI BẬT</Text>
+                  <Text style={styles.freeDealText}>GIÁ ĐẶC BIỆT HÔM NAY</Text>
                 </View>
               )}
             </View>
 
-            {/* Description */}
-            <Text style={styles.detailDescription} numberOfLines={4}>
+            {/* Mô tả sản phẩm */}
+            <Text style={styles.detailDescription} numberOfLines={3}>
               {selectedDetailProduct?.description || selectedDetailProduct?.mediaContents?.[0]?.contentText || 'Sản phẩm chính hãng với mức giá ưu đãi đặc biệt hôm nay tại siêu thị.'}
             </Text>
 
-            {/* Action Buttons */}
+            {/* Thông báo vị trí kệ hàng thực tế (khi robot đang đỗ tại kệ) */}
+            {!isFreeRoam && (
+              <View style={styles.detailAtShelfBanner}>
+                <MapPin size={17} color="#10b981" />
+                <Text style={styles.detailAtShelfBannerText}>
+                  Sản phẩm đang có sẵn trên Kệ trước mặt bạn · Quý khách có thể chọn lấy ngay!
+                </Text>
+              </View>
+            )}
+
+            {/* Hàng nút hành động cân đối, không bị đè */}
             <View style={styles.detailActionsRow}>
               {isFreeRoam ? (
-                <TouchableOpacity
-                  style={styles.detailGuideBtn}
-                  onPress={() => {
-                    setSelectedDetailProduct(null);
-                    void handleGuide();
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Navigation size={18} color="white" />
-                  <Text style={styles.detailGuideBtnText}>Dẫn tôi đến kệ này</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.detailAtShelfNote}>
-                  <MapPin size={16} color="#10b981" />
-                  <Text style={styles.detailAtShelfNoteText}>Sản phẩm có sẵn tại kệ trước mặt bạn</Text>
-                </View>
-              )}
+                <>
+                  <TouchableOpacity
+                    style={styles.detailPrimaryGuideBtn}
+                    onPress={() => {
+                      setSelectedDetailProduct(null);
+                      void handleGuide();
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Navigation size={18} color="white" />
+                    <Text style={styles.detailPrimaryGuideBtnText}>Dẫn tôi đến kệ này</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.detailCartBtn}
-                onPress={() => {
-                  void handleAddToCart();
-                }}
-                activeOpacity={0.85}
-              >
-                <ShoppingCart size={18} color="#38bdf8" />
-                <Text style={styles.detailCartBtnText}>Thêm vào giỏ</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.detailSecondaryCatalogBtn}
+                    onPress={() => {
+                      setSelectedDetailProduct(null);
+                      handleMultiProductGuide();
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Layers size={17} color="#c084fc" />
+                    <Text style={styles.detailSecondaryCatalogBtnText}>Xem tất cả món</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.detailPrimaryCatalogBtn}
+                    onPress={() => {
+                      setSelectedDetailProduct(null);
+                      handleMultiProductGuide();
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Layers size={18} color="white" />
+                    <Text style={styles.detailPrimaryCatalogBtnText}>Xem tất cả món đang quảng cáo</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.detailCloseActionBtn}
+                    onPress={() => setSelectedDetailProduct(null)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.detailCloseActionBtnText}>Tiếp tục xem ❯</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         </View>
@@ -1158,8 +1188,97 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 36,
     padding: 24,
     paddingBottom: 36,
-    borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  floatingDealTag: {
+    position: 'absolute',
+    top: 96,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.6)',
+    shadowColor: '#f97316',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  floatingDealText: {
+    color: '#ffedd5',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  floatingTouchHint: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  floatingTouchText: {
+    color: '#bae6fd',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  voiceAssistantBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    marginBottom: 10,
+  },
+  voiceIconBox: {
+    marginRight: 8,
+  },
+  voiceAssistantText: {
+    flex: 1,
+    color: '#6ee7b7',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  equalizerWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    marginLeft: 8,
+  },
+  eqBar: {
+    width: 3,
+    backgroundColor: '#10b981',
+    borderRadius: 1.5,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  originalPrice: {
+    color: '#64748b',
+    fontSize: 16,
+    fontWeight: '700',
+    textDecorationLine: 'line-through',
   },
   dotsRow: {
     flexDirection: 'row',
@@ -1542,25 +1661,71 @@ const styles = StyleSheet.create({
   },
   detailCard: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 500,
     backgroundColor: '#0f172a',
     borderRadius: 28,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
-    alignItems: 'center',
+    padding: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  detailHeaderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  detailCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  detailImageWrapper: {
+    width: '100%',
+    height: 185,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginBottom: 14,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   detailProductImage: {
     width: '100%',
-    height: 180,
-    borderRadius: 16,
-    backgroundColor: 'rgba(2, 6, 23, 0.5)',
-    marginBottom: 16,
+    height: '100%',
+  },
+  detailPromoTag: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0f172a',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  detailPromoTagText: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   detailLocationChip: {
     flexDirection: 'row',
@@ -1572,7 +1737,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
-    marginBottom: 10,
     alignSelf: 'flex-start',
   },
   detailLocationText: {
@@ -1582,18 +1746,18 @@ const styles = StyleSheet.create({
   },
   detailTitle: {
     color: '#ffffff',
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '900',
     letterSpacing: -0.3,
     alignSelf: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   detailPriceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     alignSelf: 'flex-start',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   detailPriceNumber: {
     color: '#10b981',
@@ -1608,10 +1772,30 @@ const styles = StyleSheet.create({
   },
   detailDescription: {
     color: '#94a3b8',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13.5,
+    lineHeight: 19,
     alignSelf: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 14,
+  },
+  detailAtShelfBanner: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    marginBottom: 16,
+  },
+  detailAtShelfBannerText: {
+    color: '#34d399',
+    fontSize: 12.5,
+    fontWeight: '700',
+    flex: 1,
+    lineHeight: 17,
   },
   detailActionsRow: {
     width: '100%',
@@ -1619,7 +1803,45 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: 'center',
   },
-  detailGuideBtn: {
+  detailPrimaryCatalogBtn: {
+    flex: 1.5,
+    backgroundColor: '#7c3aed',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#a78bfa',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  detailPrimaryCatalogBtnText: {
+    color: '#ffffff',
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  detailCloseActionBtn: {
+    flex: 0.85,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  detailCloseActionBtnText: {
+    color: '#cbd5e1',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  detailPrimaryGuideBtn: {
     flex: 1.2,
     backgroundColor: '#059669',
     flexDirection: 'row',
@@ -1636,32 +1858,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  detailGuideBtnText: {
+  detailPrimaryGuideBtnText: {
     color: '#ffffff',
-    fontSize: 14.5,
+    fontSize: 14,
     fontWeight: '800',
   },
-  detailAtShelfNote: {
-    flex: 1.2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  detailAtShelfNoteText: {
-    color: '#10b981',
-    fontSize: 12.5,
-    fontWeight: '700',
+  detailSecondaryCatalogBtn: {
     flex: 1,
-  },
-  detailCartBtn: {
-    flex: 1,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    backgroundColor: 'rgba(192, 132, 252, 0.12)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1669,11 +1873,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
+    borderColor: 'rgba(192, 132, 252, 0.35)',
   },
-  detailCartBtnText: {
-    color: '#38bdf8',
-    fontSize: 14,
+  detailSecondaryCatalogBtnText: {
+    color: '#c084fc',
+    fontSize: 13.5,
     fontWeight: '700',
   },
 });

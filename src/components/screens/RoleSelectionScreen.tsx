@@ -109,22 +109,22 @@ export default function RoleSelectionScreen() {
 
             {/* Tiêu đề trang (Animation trượt xuống) */}
             <Animated.View entering={FadeInDown.duration(800).springify()}>
-              <Text fontSize={28} fontWeight="900" color="#1a1a1a" textAlign="center" paddingHorizontal="$4" letterSpacing={0.5}>
+              <Text fontSize={23} fontWeight="900" color="#1a1a1a" textAlign="center" paddingHorizontal="$4" letterSpacing={0.3}>
                 Vui lòng chọn vai trò
               </Text>
             </Animated.View>
 
             {/* Hai tấm thẻ chọn vai trò */}
-            <YStack gap="$5" justifyContent="center" width="100%" paddingHorizontal="$4" marginTop={16} alignItems="center">
+            <YStack gap="$5" justifyContent="center" width="100%" paddingHorizontal="$3" marginTop={10} alignItems="center">
 
             {/* Card 1: Khách vãng lai */}
-            <Animated.View entering={FadeInUp.delay(200).duration(600).springify()} style={{ width: '100%', maxWidth: 380 }}>
+            <Animated.View entering={FadeInUp.delay(200).duration(600).springify()} style={{ width: '100%', maxWidth: 360 }}>
               <Animated.View style={floatStyle1}>
                 <YStack
                   backgroundColor="white"
-                  borderRadius={32}
-                  paddingVertical="$5"
-                  paddingHorizontal="$5"
+                  borderRadius={28}
+                  paddingVertical="$4.5"
+                  paddingHorizontal="$4.5"
                   shadowColor="rgba(0,0,0,0.06)"
                   shadowOffset={{ width: 0, height: 15 }}
                   shadowOpacity={1}
@@ -180,17 +180,17 @@ export default function RoleSelectionScreen() {
             </Animated.View>
 
             {/* Card 2: Khách hàng thành viên */}
-            <Animated.View entering={FadeInUp.delay(400).duration(600).springify()} style={{ width: '100%', maxWidth: 380 }}>
+            <Animated.View entering={FadeInUp.delay(400).duration(600).springify()} style={{ width: '100%', maxWidth: 360 }}>
               <Animated.View style={floatStyle2}>
                 
                 {/* Badge Khuyên dùng */}
                 <View
                   position="absolute"
-                  top={-16}
-                  right={24}
+                  top={-14}
+                  right={20}
                   backgroundColor="#FFD700"
-                  paddingHorizontal="$4"
-                  paddingVertical="$2"
+                  paddingHorizontal="$3.5"
+                  paddingVertical="$1.5"
                   borderRadius={20}
                   zIndex={100}
                   shadowColor="#FFD700"
@@ -200,8 +200,8 @@ export default function RoleSelectionScreen() {
                   style={{ elevation: 6 }}
                 >
                   <XStack alignItems="center" gap="$1.5">
-                    <Crown size={14} color="#8B6508" fill="#8B6508" />
-                    <Text color="#8B6508" fontWeight="900" fontSize={11} textTransform="uppercase" letterSpacing={1}>
+                    <Crown size={13} color="#8B6508" fill="#8B6508" />
+                    <Text color="#8B6508" fontWeight="900" fontSize={10.5} textTransform="uppercase" letterSpacing={0.8}>
                       Khuyên dùng
                     </Text>
                   </XStack>
@@ -209,9 +209,9 @@ export default function RoleSelectionScreen() {
 
                 <YStack
                   backgroundColor="#00A550"
-                  borderRadius={32}
-                  paddingVertical="$5"
-                  paddingHorizontal="$5"
+                  borderRadius={28}
+                  paddingVertical="$4.5"
+                  paddingHorizontal="$4.5"
                   shadowColor="#00A550"
                   shadowOffset={{ width: 0, height: 15 }}
                   shadowOpacity={0.4}
@@ -225,7 +225,7 @@ export default function RoleSelectionScreen() {
                     position="absolute"
                     top={0} left={0} right={0} bottom={0}
                     overflow="hidden"
-                    borderRadius={32}
+                    borderRadius={28}
                   >
 
                     {/* Lớp bóng Glossy chéo */}
@@ -266,18 +266,18 @@ export default function RoleSelectionScreen() {
                     />
                   </YStack>
 
-                  <YStack alignItems="center" gap="$3" justifyContent="center" zIndex={2}>
+                  <YStack alignItems="center" gap="$2.5" justifyContent="center" zIndex={2}>
                     {/* Icon */}
-                    <View width={64} height={64} borderRadius={32} backgroundColor="rgba(255,255,255,0.2)" justifyContent="center" alignItems="center" borderWidth={1.5} borderColor="rgba(255,255,255,0.3)">
-                      <Star size={30} color="white" fill="white" />
+                    <View width={60} height={60} borderRadius={30} backgroundColor="rgba(255,255,255,0.2)" justifyContent="center" alignItems="center" borderWidth={1.5} borderColor="rgba(255,255,255,0.3)">
+                      <Star size={28} color="white" fill="white" />
                     </View>
 
                     {/* Content */}
                     <YStack alignItems="center" gap="$1" paddingHorizontal="$2">
-                      <Text fontSize={20} fontWeight="800" color="white" textShadowColor="rgba(0,0,0,0.1)" textShadowOffset={{width:0, height:2}} textShadowRadius={4}>
+                      <Text fontSize={19} fontWeight="800" color="white" textShadowColor="rgba(0,0,0,0.1)" textShadowOffset={{width:0, height:2}} textShadowRadius={4}>
                         Khách hàng thành viên
                       </Text>
-                      <Text fontSize={13} color="rgba(255,255,255,0.9)" textAlign="center" lineHeight={18} fontWeight="500">
+                      <Text fontSize={12.5} color="rgba(255,255,255,0.9)" textAlign="center" lineHeight={17} fontWeight="500">
                         Tích điểm đổi quà, tư vấn dinh dưỡng và nhận nhiều ưu đãi đặc quyền.
                       </Text>
                     </YStack>
@@ -286,7 +286,7 @@ export default function RoleSelectionScreen() {
                   <Button
                     backgroundColor="white"
                     borderRadius={30}
-                    paddingHorizontal="$5"
+                    paddingHorizontal="$4"
                     size="$4"
                     width="100%"
                     pressStyle={{ scale: 0.96, opacity: 0.9 }}
@@ -298,8 +298,19 @@ export default function RoleSelectionScreen() {
                     shadowOpacity={1}
                     shadowRadius={10}
                   >
-                    <Text color="#00A550" fontWeight="900" fontSize={14} letterSpacing={0.5}>
+                    <Text color="#00A550" fontWeight="900" fontSize={13.5} letterSpacing={0.5}>
                       QUÉT FACE ID ĐĂNG NHẬP
+                    </Text>
+                  </Button>
+
+                  <Button
+                    chromeless
+                    paddingVertical="$1"
+                    onPress={() => router.push('/login' as any)}
+                    zIndex={2}
+                  >
+                    <Text color="rgba(255,255,255,0.95)" fontWeight="700" fontSize={12} textDecorationLine="underline">
+                      Hoặc đăng nhập với Email & Mật khẩu
                     </Text>
                   </Button>
                 </YStack>

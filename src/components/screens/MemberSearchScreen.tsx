@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TextInput, ScrollView, Pressable, Image as RNImage } from 'react-native';
+import { TextInput, ScrollView, Pressable, Image as RNImage, Alert, TouchableOpacity } from 'react-native';
 import { View, Text, XStack, YStack, Button, Input, Image, Card } from 'tamagui';
-import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick } from 'lucide-react-native';
+import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -71,90 +71,79 @@ const getCategoryImage = (typeName: string): string => {
   return 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=600&auto=format&fit=crop';
 }
 
-const getCategoryStyle = (typeName: string) => {
-  const lowerName = typeName.toLowerCase();
-  
-  if (lowerName.includes('trứng')) return { icon: Egg, bgColor: '#FEF08A', textColor: '#854D0E', iconColor: '#EAB308' };
-  if (lowerName.includes('thịt gà') || lowerName.includes('gia cầm')) return { icon: Drumstick, bgColor: '#FFEDD5', textColor: '#9A3412', iconColor: '#F97316' };
-  if (lowerName.includes('thịt')) return { icon: Beef, bgColor: '#FEE2E2', textColor: '#991B1B', iconColor: '#EF4444' };
-  if (lowerName.includes('hải sản') || lowerName.includes('cá')) return { icon: Fish, bgColor: '#E0F2FE', textColor: '#075985', iconColor: '#0EA5E9' };
-  if (lowerName.includes('đông lạnh')) return { icon: Snowflake, bgColor: '#E0F2FE', textColor: '#0369A1', iconColor: '#38BDF8' };
-  if (lowerName.includes('gạo') || lowerName.includes('ngũ cốc')) return { icon: Wheat, bgColor: '#FEF3C7', textColor: '#92400E', iconColor: '#F59E0B' };
-  if (lowerName.includes('rau') || lowerName.includes('củ')) return { icon: Carrot, bgColor: '#DCFCE7', textColor: '#166534', iconColor: '#22C55E' };
-  if (lowerName.includes('trái cây') || lowerName.includes('quả')) return { icon: Apple, bgColor: '#FFE4E6', textColor: '#9F1239', iconColor: '#F43F5E' };
-  if (lowerName.includes('nước mắm') || lowerName.includes('gia vị') || lowerName.includes('đường') || lowerName.includes('tiêu')) return { icon: Droplets, bgColor: '#FFEDD5', textColor: '#9A3412', iconColor: '#F97316' };
-  if (lowerName.includes('đồ uống') || lowerName.includes('nước ngọt') || lowerName.includes('bia') || lowerName.includes('giải khát')) return { icon: CupSoda, bgColor: '#FCE7F3', textColor: '#9D174D', iconColor: '#EC4899' };
-  if (lowerName.includes('cà phê') || lowerName.includes('trà')) return { icon: Coffee, bgColor: '#FFEDD5', textColor: '#78350F', iconColor: '#B45309' };
-  if (lowerName.includes('bánh') || lowerName.includes('kẹo') || lowerName.includes('ăn vặt')) return { icon: Cookie, bgColor: '#FEF3C7', textColor: '#92400E', iconColor: '#F59E0B' };
-  if (lowerName.includes('sữa') || lowerName.includes('kem')) return { icon: Milk, bgColor: '#F3F4F6', textColor: '#1F2937', iconColor: '#6B7280' };
-  if (lowerName.includes('chăm sóc') || lowerName.includes('cá nhân') || lowerName.includes('gội') || lowerName.includes('giặt') || lowerName.includes('vệ sinh')) return { icon: Sparkles, bgColor: '#F3E8FF', textColor: '#5B21B6', iconColor: '#A855F7' };
-  
-  return { icon: ShoppingBag, bgColor: '#F3F4F6', textColor: '#374151', iconColor: '#6B7280' };
+interface FeaturedCategory {
+  id: string;
+  name: string;
+  subtitle: string;
+  keyword: string;
+  icon: any;
+  bgColor: string;
+  borderColor: string;
+  iconColor: string;
+  textColor: string;
 }
 
-const RGBCard = ({ cat, style, onPress }: any) => {
-  const IconComp = style.icon;
-  const rotation = useSharedValue(0);
+const FEATURED_CATEGORIES: FeaturedCategory[] = [
+  { id: '1', name: 'Rau Củ Tươi', subtitle: 'Xà lách, cà chua...', keyword: 'Rau', icon: Carrot, bgColor: '#F0FDF4', borderColor: '#BBF7D0', iconColor: '#16A34A', textColor: '#166534' },
+  { id: '2', name: 'Thịt & Hải Sản', subtitle: 'Heo, bò, tôm cá...', keyword: 'Thịt', icon: Drumstick, bgColor: '#FEF2F2', borderColor: '#FECACA', iconColor: '#DC2626', textColor: '#991B1B' },
+  { id: '3', name: 'Sữa & Bơ Trứng', subtitle: 'Sữa tươi, trứng gà...', keyword: 'Sữa', icon: Milk, bgColor: '#FEFCE8', borderColor: '#FEF08A', iconColor: '#CA8A04', textColor: '#854D0E' },
+  { id: '4', name: 'Gạo & Mì Khô', subtitle: 'Gạo ST25, mì gói...', keyword: 'Mì', icon: Wheat, bgColor: '#FFF7ED', borderColor: '#FED7AA', iconColor: '#EA580C', textColor: '#9A3412' },
+  { id: '5', name: 'Nước Giải Khát', subtitle: 'Nước ngọt, trà, cafe...', keyword: 'Nước', icon: CupSoda, bgColor: '#F0F9FF', borderColor: '#BAE6FD', iconColor: '#0284C7', textColor: '#075985' },
+  { id: '6', name: 'Gia Vị & Dầu Ăn', subtitle: 'Nước mắm, đường, dầu...', keyword: 'Gia vị', icon: Droplets, bgColor: '#FEFCE8', borderColor: '#FDE047', iconColor: '#D97706', textColor: '#78350F' },
+  { id: '7', name: 'Bánh Kẹo Ăn Vặt', subtitle: 'Bánh quy, snack, kẹo...', keyword: 'Bánh', icon: Cookie, bgColor: '#FDF2F8', borderColor: '#FBCFE8', iconColor: '#DB2777', textColor: '#9D174D' },
+  { id: '8', name: 'Hóa Mỹ Phẩm', subtitle: 'Dầu gội, xà phòng...', keyword: 'Dầu gội', icon: Sparkles, bgColor: '#FAF5FF', borderColor: '#E9D5FF', iconColor: '#9333EA', textColor: '#5B21B6' },
+];
 
-  useEffect(() => {
-    rotation.value = withRepeat(
-      withTiming(360, { duration: 4000, easing: Easing.linear }),
-      -1,
-      false
-    );
-  }, []);
+const TRENDING_SEARCHES = ['Sữa tươi', 'Trứng gà', 'Mì tôm', 'Rau xanh', 'Thịt heo', 'Nước mắm', 'Cà phê', 'Dầu ăn'];
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotateZ: `${rotation.value}deg` }],
-      position: 'absolute',
-      width: '200%',
-      height: '400%',
-      top: '-150%',
-      left: '-50%',
-    };
-  });
-
-  const rainbow = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0000ff', '#4b0082', '#9400d3'];
-  const multiRainbow = [...rainbow, ...rainbow, ...rainbow, '#ff0000'] as unknown as [string, string, ...string[]];
-
+const CategoryCard = ({ cat, onPress }: { cat: FeaturedCategory; onPress: (kw: string) => void }) => {
+  const IconComp = cat.icon;
   return (
-    <Card
-      width="48%"
-      height={55}
-      borderRadius={12}
-      overflow="hidden"
-      pressStyle={{ scale: 0.95 }}
-      onPress={() => onPress(cat.typeName)}
-      style={{ position: 'relative', elevation: 3, shadowColor: '#999', shadowRadius: 5, shadowOpacity: 0.2 }}
+    <Pressable
+      onPress={() => onPress(cat.keyword)}
+      style={({ pressed }) => ({
+        width: '48%',
+        opacity: pressed ? 0.88 : 1,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
+      })}
     >
-      <Animated.View style={animatedStyle}>
-        <LinearGradient
-          colors={multiRainbow}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
-      <XStack
-        position="absolute"
-        top={2}
-        left={2}
-        right={2}
-        bottom={2}
-        backgroundColor="#ffffff"
-        borderRadius={10}
-        alignItems="center"
-        justifyContent="flex-start"
-        gap="$2"
-        paddingHorizontal="$3"
+      <Card
+        backgroundColor={cat.bgColor}
+        borderWidth={1.5}
+        borderColor={cat.borderColor}
+        borderRadius={14}
+        padding="$2.5"
+        shadowColor="black"
+        shadowRadius={4}
+        shadowOpacity={0.04}
+        style={{ elevation: 1 }}
       >
-        <IconComp size={22} color={style.iconColor} />
-        <Text fontSize={12} fontWeight="900" color="#555" numberOfLines={1} flex={1}>
-          {cat.typeName}
-        </Text>
-      </XStack>
-    </Card>
+        <XStack gap="$2" alignItems="center">
+          <View
+            width={34}
+            height={34}
+            borderRadius={10}
+            backgroundColor="white"
+            justifyContent="center"
+            alignItems="center"
+            shadowColor="black"
+            shadowRadius={3}
+            shadowOpacity={0.06}
+            style={{ elevation: 2 }}
+          >
+            <IconComp size={18} color={cat.iconColor} />
+          </View>
+          <YStack flex={1} gap={1}>
+            <Text fontSize={11.5} fontWeight="800" color={cat.textColor} numberOfLines={1}>
+              {cat.name}
+            </Text>
+            <Text fontSize={9.5} color="#64748B" numberOfLines={1}>
+              {cat.subtitle}
+            </Text>
+          </YStack>
+        </XStack>
+      </Card>
+    </Pressable>
   );
 };
 
@@ -164,6 +153,7 @@ import { useRobotAuth } from '../../context/RobotAuthContext';
 import { RecipeRecommendationUI } from '../ui/RecipeRecommendationUI';
 import { CartService } from '../../services/CartService';
 import { useNotification } from '../../context/NotificationContext';
+import { RobotControlService } from '../../services/RobotControlService';
 
 const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
 
@@ -267,7 +257,17 @@ export default function MemberSearchScreen() {
             }
 
           } else {
-            searchResponse = { results: await SearchService.searchProducts(cleanQ), aiExplanation: null, aiRanked: false };
+            try {
+              const allRes = await SearchService.searchAll({ q: cleanQ, useAi: false });
+              searchResponse = {
+                results: allRes.results || [],
+                aiExplanation: allRes.aiExplanation || null,
+                aiRanked: allRes.aiRanked || false,
+              };
+            } catch {
+              const rawProds = await SearchService.searchProducts(cleanQ);
+              searchResponse = { results: rawProds, aiExplanation: null, aiRanked: false };
+            }
           }
 
           const formatted = mapApiToUI(searchResponse.results || []);
@@ -357,18 +357,44 @@ export default function MemberSearchScreen() {
     speak(voiceText);
   };
 
+  const handleGuideToProduct = async (product: { id: number; name: string }) => {
+    try {
+      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy bán ${product.name}. Xin mời đi theo tôi!`);
+      showNotification({
+        title: '🤖 DẪN ĐƯỜNG MUA SẮM',
+        message: `Đang khởi tạo lộ trình đến quầy ${product.name}`,
+        type: 'info',
+      });
+      await RobotControlService.dispatchAutonomous({
+        robotCode: 'RB001',
+        flowType: 'guide',
+        productId: product.id,
+        productIds: [product.id],
+        floorId: 1,
+      });
+      router.push('/cart-guide-map' as any);
+    } catch (err: any) {
+      speak('Không thể khởi tạo dẫn đường');
+      showNotification({
+        title: 'LỖI',
+        message: err?.message || 'Lỗi phát lệnh dẫn đường',
+        type: 'error',
+      });
+    }
+  };
+
   return (
-    <View flex={1} backgroundColor="#f4f7f5" paddingLeft={Math.max(insets.left, 24)} paddingRight={Math.max(insets.right, 24)} paddingTop={insets.top + 16} paddingBottom={insets.bottom + 16}>
+    <View flex={1} backgroundColor="#f4f7f5" paddingLeft={Math.max(insets.left, 16)} paddingRight={Math.max(insets.right, 16)} paddingTop={insets.top + 12} paddingBottom={insets.bottom + 12}>
 
       {/* HEADER SECTION */}
-      <XStack justifyContent="space-between" alignItems="center" marginBottom="$5">
+      <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
         <XStack gap="$3" alignItems="center">
           <RNImage
             source={require('../../../assets/images/logocute.png')}
-            style={{ width: 46, height: 46, borderRadius: 10, resizeMode: 'contain' }}
+            style={{ width: 42, height: 42, borderRadius: 10, resizeMode: 'contain' }}
           />
           <YStack gap="$0.5">
-            <Text fontSize={18} fontWeight="bold" color="#005b2b">SmartMarketBot</Text>
+            <Text fontSize={17} fontWeight="bold" color="#005b2b">SmartMarketBot</Text>
             <Text fontSize={11} color="#666">Sẵn sàng tìm kiếm</Text>
           </YStack>
         </XStack>
@@ -376,15 +402,15 @@ export default function MemberSearchScreen() {
         <Button
           backgroundColor="#e2e8f0"
           borderRadius={20}
-          paddingHorizontal="$4"
-          height={38}
+          paddingHorizontal="$3.5"
+          height={36}
           onPress={() => {
             stop();
             router.back();
           }}
           pressStyle={{ scale: 0.95, backgroundColor: '#cbd5e1' }}
         >
-          <Text color="#475569" fontSize={13} fontWeight="bold">✕ Hủy</Text>
+          <Text color="#475569" fontSize={12} fontWeight="bold">✕ Hủy</Text>
         </Button>
       </XStack>
 
@@ -394,17 +420,17 @@ export default function MemberSearchScreen() {
           backgroundColor="white"
           borderWidth={1.5}
           borderColor="#e2e8f0"
-          borderRadius={35}
-          paddingLeft="$5"
+          borderRadius={26}
+          paddingLeft="$4"
           paddingRight="$2"
-          height={64}
+          height={52}
           alignItems="center"
           gap="$2"
           shadowColor="#00A550"
-          shadowRadius={10}
+          shadowRadius={8}
           shadowOpacity={0.03}
           style={{ elevation: 2 }}
-          marginBottom="$5"
+          marginBottom="$4"
         >
           <Input
             ref={inputRef as any}
@@ -520,10 +546,10 @@ export default function MemberSearchScreen() {
                           >
                             <XStack gap="$4" alignItems="center">
                               {/* Image & Badge */}
-                              <View position="relative" width={110} height={110} borderRadius={16} overflow="hidden" backgroundColor="#f5f5f5">
+                              <View position="relative" width={85} height={85} borderRadius={14} overflow="hidden" backgroundColor="#f5f5f5">
                                 <Image src={product.image} width="100%" height="100%" objectFit="cover" />
-                                <View position="absolute" top={6} left={6} backgroundColor={product.badgeColor} paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={8}>
-                                  <Text color="white" fontSize={9} fontWeight="bold">{product.badge}</Text>
+                                <View position="absolute" top={4} left={4} backgroundColor={product.badgeColor} paddingHorizontal="$1.5" paddingVertical="$0.5" borderRadius={6}>
+                                  <Text color="white" fontSize={8.5} fontWeight="bold">{product.badge}</Text>
                                 </View>
                               </View>
 
@@ -569,6 +595,16 @@ export default function MemberSearchScreen() {
                                   onPress={() => handleProductVoiceSpeak(product.voiceText)}
                                 />
 
+                                {/* Autonomous Robot Guidance to Shelf */}
+                                <Button
+                                  circular
+                                  size="$3.5"
+                                  backgroundColor="#00A550"
+                                  icon={<Navigation size={15} color="white" />}
+                                  pressStyle={{ scale: 0.9, backgroundColor: '#008740' }}
+                                  onPress={() => handleGuideToProduct(product)}
+                                />
+
                                 {/* Add to Cart */}
                                 <Button
                                   circular
@@ -587,7 +623,21 @@ export default function MemberSearchScreen() {
                                         showNotification({ message: 'Thêm giỏ hàng thất bại', type: 'error' });
                                       }
                                     } else {
-                                      showNotification({ message: 'Vui lòng đăng nhập', type: 'error' });
+                                      Alert.alert(
+                                        'Giỏ Hàng Thành Viên',
+                                        'Tính năng giỏ hàng lưu trữ dành cho khách thành viên. Bạn muốn đăng nhập Face ID hay để Robot dẫn đường đến quầy lấy sản phẩm?',
+                                        [
+                                          {
+                                            text: '🚀 Dẫn đường đến quầy',
+                                            onPress: () => handleGuideToProduct(product),
+                                          },
+                                          {
+                                            text: '👑 Quét Face ID',
+                                            onPress: () => router.push('/face-scan' as any),
+                                          },
+                                          { text: 'Đóng', style: 'cancel' },
+                                        ]
+                                      );
                                     }
                                   }}
                                 />
@@ -613,54 +663,154 @@ export default function MemberSearchScreen() {
           )}
         </YStack>
       ) : (
-        /* TRẠNG THÁI EMPTY LÚC ĐẦU (POPULAR, DANH MỤC, KHUYẾN MÃI) */
+        /* TRẠNG THÁI EMPTY LÚC ĐẦU (TÌM PHỔ BIẾN, DANH MỤC 8 NHÓM, AI GỢI Ý MÓN) */
         <Animated.View style={{ flex: 1 }} entering={FadeInDown.delay(100).duration(450)}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-            {/* KHÁM PHÁ DANH MỤC */}
-            <Animated.View entering={FadeInDown.delay(200).duration(450)}>
-              <YStack gap="$3" marginTop="$2">
-                <Text fontSize={11} fontWeight="900" color="#666" letterSpacing={0.5}>🏷️ KHÁM PHÁ DANH MỤC</Text>
-                <XStack flexWrap="wrap" justifyContent="space-between" rowGap="$4">
-                  {productTypes.map((cat, idx) => {
-                    const style = getCategoryStyle(cat.typeName);
-                    return (
-                      <RGBCard 
-                        key={idx} 
-                        cat={cat} 
-                        style={style} 
-                        onPress={(typeName: string) => {
-                          setSearchQuery(typeName);
-                          executeSearch(typeName);
-                        }} 
-                      />
-                    );
-                  })}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110 }}>
+
+            {/* 1. TỪ KHÓA TÌM KIẾM PHỔ BIẾN (TRENDING CHIPS) */}
+            <Animated.View entering={FadeInDown.delay(150).duration(400)}>
+              <YStack gap="$2" marginBottom="$4">
+                <Text fontSize={12} fontWeight="900" color="#475569" letterSpacing={0.5}>
+                  🔥 TÌM KIẾM PHỔ BIẾN
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {TRENDING_SEARCHES.map((item, idx) => (
+                    <TouchableOpacity
+                      key={`trending-${idx}`}
+                      onPress={() => handlePopularSearch(item)}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        paddingHorizontal: 13,
+                        paddingVertical: 7,
+                        borderRadius: 20,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        shadowColor: 'black',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.04,
+                        shadowRadius: 3,
+                        elevation: 1,
+                      }}
+                    >
+                      <Search size={12} color="#00A550" />
+                      <Text fontSize={12} fontWeight="700" color="#1E293B">{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </YStack>
+            </Animated.View>
+
+            {/* 2. 8 DANH MỤC SẢN PHẨM NỔI BẬT (CLEAN RETAIL GRID) */}
+            <Animated.View entering={FadeInDown.delay(250).duration(400)}>
+              <YStack gap="$2.5" marginBottom="$4">
+                <XStack justifyContent="space-between" alignItems="center">
+                  <Text fontSize={12} fontWeight="900" color="#475569" letterSpacing={0.5}>
+                    🏷️ DANH MỤC SẢN PHẨM
+                  </Text>
+                  <Text fontSize={11} color="#64748B" fontWeight="600">
+                    Chạm để lọc theo quầy
+                  </Text>
+                </XStack>
+
+                <XStack flexWrap="wrap" justifyContent="space-between" rowGap="$3">
+                  {FEATURED_CATEGORIES.map((cat) => (
+                    <CategoryCard key={cat.id} cat={cat} onPress={handlePopularSearch} />
+                  ))}
                 </XStack>
               </YStack>
             </Animated.View>
 
-            {/* KHUYẾN MÃI HÔM NAY BĂNG RÔN (BANNER) */}
-            <Animated.View entering={FadeInDown.delay(300).duration(450)}>
+            {/* 3. TRỢ LÝ CÔNG THỨC NẤU ĂN AI (RECIPE ASSISTANT) */}
+            <Animated.View entering={FadeInDown.delay(350).duration(400)}>
               <Card
-                marginTop="$4"
-                backgroundColor="#10B981"
+                backgroundColor="#F0FDF4"
+                borderWidth={1.5}
+                borderColor="#BBF7D0"
+                borderRadius={20}
+                padding="$4"
+                marginBottom="$4"
+                shadowColor="#00A550"
+                shadowRadius={8}
+                shadowOpacity={0.05}
+                style={{ elevation: 2 }}
+              >
+                <YStack gap="$2.5">
+                  <XStack gap="$2" alignItems="center">
+                    <View width={28} height={28} borderRadius={14} backgroundColor="#DCFCE7" justifyContent="center" alignItems="center">
+                      <Sparkles size={16} color="#00A550" />
+                    </View>
+                    <YStack flex={1}>
+                      <Text fontSize={14} fontWeight="900" color="#0F172A">
+                        Nấu Ăn Cùng Trợ Lý AI
+                      </Text>
+                      <Text fontSize={11} color="#166534" fontWeight="600">
+                        Tự động gom trọn bộ nguyên liệu trên kệ
+                      </Text>
+                    </YStack>
+                  </XStack>
+
+                  <Text fontSize={12} color="#475569" lineHeight={18}>
+                    Nhập tên món ăn bất kỳ (vd: "Lẩu thái hải sản", "Thịt kho tàu"), robot sẽ phân tích công thức và chỉ đường lấy toàn bộ gia vị, rau củ trên kệ.
+                  </Text>
+
+                  <XStack gap="$2" marginTop="$1">
+                    <TouchableOpacity
+                      onPress={() => handlePopularSearch('Lẩu thái')}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1.5,
+                        borderColor: '#00A550',
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 16,
+                      }}
+                    >
+                      <Text color="#00A550" fontSize={12} fontWeight="800">🍲 Thử: Lẩu Thái</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handlePopularSearch('Thịt kho tàu')}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1.5,
+                        borderColor: '#00A550',
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 16,
+                      }}
+                    >
+                      <Text color="#00A550" fontSize={12} fontWeight="800">🥩 Thử: Thịt Kho Tàu</Text>
+                    </TouchableOpacity>
+                  </XStack>
+                </YStack>
+              </Card>
+            </Animated.View>
+
+            {/* 4. KHUYẾN MÃI GIÁ SỐC BANNER */}
+            <Animated.View entering={FadeInDown.delay(450).duration(400)}>
+              <Card
+                backgroundColor="#00A550"
                 borderRadius={20}
                 padding="$4"
                 pressStyle={{ scale: 0.98 }}
-                onPress={() => executeSearch('Rau xà lách')}
+                onPress={() => handlePopularSearch('Rau')}
               >
                 <XStack justifyContent="space-between" alignItems="center">
                   <YStack gap="$1" flex={1}>
-                    <Text color="white" fontSize={11} fontWeight="900" letterSpacing={1}>⚡ GIỜ VÀNG GIÁ SỐC</Text>
-                    <Text color="white" fontSize={16} fontWeight="bold">Giảm 50% Rau Củ Sạch</Text>
-                    <Text color="rgba(255,255,255,0.9)" fontSize={12} marginTop="$1">Áp dụng đến 12:00 trưa nay</Text>
+                    <Text color="#DCFCE7" fontSize={10} fontWeight="900" letterSpacing={1}>⚡ ƯU ĐÃI KIOSK HÔM NAY</Text>
+                    <Text color="white" fontSize={15} fontWeight="900">Giảm Đến 50% Nông Sản Sạch</Text>
+                    <Text color="rgba(255,255,255,0.85)" fontSize={11} marginTop="$0.5">Ưu đãi độc quyền tại hệ thống quầy kệ</Text>
                   </YStack>
-                  <View backgroundColor="white" borderRadius={30} paddingHorizontal="$4" paddingVertical="$2">
-                    <Text color="#10B981" fontWeight="bold" fontSize={12}>Xem ngay</Text>
+                  <View backgroundColor="white" borderRadius={20} paddingHorizontal="$3.5" paddingVertical="$2">
+                    <Text color="#00A550" fontWeight="800" fontSize={12}>Xem Ngay</Text>
                   </View>
                 </XStack>
               </Card>
             </Animated.View>
+
           </ScrollView>
         </Animated.View>
       )}

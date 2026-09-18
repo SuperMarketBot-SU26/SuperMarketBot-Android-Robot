@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Text, View, XStack, YStack } from 'tamagui';
 import { isRobotVoiceSpeaking, useRobotVoice } from '../../hooks/useRobotVoice';
-import Voice from '@react-native-voice/voice';
+import Voice, { isNativeVoiceSupported } from '../../utils/safeVoice';
 
 // Import logo robot cute từ thư mục assets
 const logoCuteSource = require('../../../assets/images/logocute.png');
@@ -142,7 +142,7 @@ export default function VoiceSearchScreen() {
     try {
       Voice.onSpeechStart = () => { if (isMounted.current) setStatus('listening'); };
       Voice.onSpeechEnd = () => { if (isMounted.current) setStatus('processing'); };
-      Voice.onSpeechPartialResults = (e) => {
+      Voice.onSpeechPartialResults = (e: any) => {
         if (isMounted.current && e.value && e.value.length > 0) {
           const raw = e.value[0];
           if (!/[\u4e00-\u9fa5]/.test(raw)) {
@@ -150,7 +150,7 @@ export default function VoiceSearchScreen() {
           }
         }
       };
-      Voice.onSpeechResults = (e) => {
+      Voice.onSpeechResults = (e: any) => {
         if (isMounted.current && e.value && e.value.length > 0) {
           const resultText = e.value[0];
           // Bỏ qua nếu là tạp âm tiếng Trung phát ra từ XiaoAI
@@ -162,7 +162,7 @@ export default function VoiceSearchScreen() {
           handleVoiceRecognition(resultText);
         }
       };
-      Voice.onSpeechError = (e) => {
+      Voice.onSpeechError = (e: any) => {
         if (isMounted.current) {
           setStatus('initial');
           setTranscript('Không nghe rõ. Nhấn Mic để thử lại.');
@@ -208,12 +208,20 @@ export default function VoiceSearchScreen() {
 
   // Bắt đầu lắng nghe giọng nói
   const startVoiceListening = async () => {
+    // Dừng ngay tiếng nói của robot (nếu có) để tránh Micro thu lại tiếng hệ thống
+    stop();
+
+    if (!isNativeVoiceSupported) {
+      console.warn('[VoiceSearch] Micro native không khả dụng trên môi trường hiện tại (Expo Go).');
+      setStatus('initial');
+      setTranscript('Expo Go không hỗ trợ Micro Native. Vui lòng cài bản Development Build trên máy Robot.');
+      speak('Tính năng micro yêu cầu cài đặt bản Development Build trên máy thật, bạn có thể bấm tìm kiếm bằng văn bản nhé.');
+      return;
+    }
+
     setStatus('listening');
     setTranscript('Đang lắng nghe...');
     setAiResponse('');
-
-    // Dừng ngay tiếng nói của robot (nếu có) để tránh Micro thu lại tiếng hệ thống
-    stop();
 
     // 1. Kích hoạt hiệu ứng Ripple (Sóng tròn lan tỏa) của Mic
     pulseScale1.value = withRepeat(

@@ -1,2 +1,2 @@
-import MapViewerScreen from '../components/screens/MapViewerScreen';
-export default MapViewerScreen;
+import GuestStoreMapScreen from '../components/screens/GuestStoreMapScreen';
+export default GuestStoreMapScreen;

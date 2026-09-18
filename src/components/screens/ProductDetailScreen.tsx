@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { View, Text, XStack, YStack, Button, Image, Spinner, Paragraph } from 'tamagui';
 import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag, Navigation } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,8 +85,22 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
 
   const handleAddToCart = async () => {
     if (!token) {
-      speak('Vui lòng đăng nhập để thêm vào giỏ hàng.');
-      showNotification({ title: 'LỖI', message: 'Vui lòng đăng nhập', type: 'error' });
+      speak('Tính năng giỏ hàng lưu trữ dành cho thành viên. Quý khách muốn Quét Face ID hay để Robot dẫn đường đến quầy sản phẩm?');
+      Alert.alert(
+        'Giỏ Hàng Thành Viên',
+        'Tính năng giỏ hàng lưu trữ dành cho khách thành viên. Quý khách muốn Quét Face ID đăng nhập hay để Robot dẫn đường đến quầy sản phẩm?',
+        [
+          {
+            text: '🚀 Dẫn đường đến quầy',
+            onPress: () => handleGuideToProduct(),
+          },
+          {
+            text: '👑 Quét Face ID',
+            onPress: () => router.push('/face-scan' as any),
+          },
+          { text: 'Đóng', style: 'cancel' },
+        ]
+      );
       return;
     }
 
@@ -362,50 +376,59 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
           borderTopColor="#e2e8f0"
           style={{ elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: -5 } }}
         >
-          <XStack gap="$4" alignItems="center" justifyContent="space-between">
-            {/* Quantity Selector */}
+          <YStack gap="$3">
+            {/* Top Sub-Row: Quantity Selector + Price status */}
             {!isRecipe && (
-              <XStack alignItems="center" backgroundColor="#f1f5f9" borderRadius={30} padding="$1">
-                <Button circular size="$3.5" backgroundColor="white" icon={<Minus size={18} color="#475569" />} onPress={() => setQuantity(Math.max(1, quantity - 1))} />
-                <Text fontSize={18} fontWeight="bold" color="#1e293b" width={40} textAlign="center">{quantity}</Text>
-                <Button circular size="$3.5" backgroundColor="white" icon={<Plus size={18} color="#475569" />} onPress={() => setQuantity(quantity + 1)} />
+              <XStack justifyContent="space-between" alignItems="center">
+                <XStack alignItems="center" backgroundColor="#f1f5f9" borderRadius={24} padding="$1">
+                  <Button circular size="$3" backgroundColor="white" icon={<Minus size={16} color="#475569" />} onPress={() => setQuantity(Math.max(1, quantity - 1))} />
+                  <Text fontSize={16} fontWeight="bold" color="#1e293b" width={36} textAlign="center">{quantity}</Text>
+                  <Button circular size="$3" backgroundColor="white" icon={<Plus size={16} color="#475569" />} onPress={() => setQuantity(quantity + 1)} />
+                </XStack>
+
+                <Text fontSize={13} fontWeight="800" color={isOutOfStock ? "#ef4444" : "#00A550"}>
+                  {isOutOfStock ? 'Tạm hết hàng' : 'Có sẵn tại quầy'}
+                </Text>
               </XStack>
             )}
 
-            {/* Add to cart Button */}
-            <Button
-              flex={1}
-              height={56}
-              borderRadius={30}
-              backgroundColor={isOutOfStock ? "#cbd5e1" : "#00A550"}
-              disabled={addingToCart || isOutOfStock}
-              icon={addingToCart ? <Spinner color="white" /> : <ShoppingCart size={22} color="white" />}
-              onPress={handleAddToCart}
-              pressStyle={{ scale: 0.98, backgroundColor: '#008740' }}
-            >
-              <Text color="white" fontSize={16} fontWeight="bold">
-                {isOutOfStock ? 'Tạm hết hàng' : (isRecipe ? 'Mua tất cả nguyên liệu' : 'Thêm vào giỏ')}
-              </Text>
-            </Button>
-
-            {/* Guide Me Button (Robot AMR guidance for Kiosk) */}
-            {!isRecipe && !isOutOfStock && (
+            {/* Bottom Actions Row: 2 Big Mobile Buttons */}
+            <XStack gap="$2.5">
+              {/* Add to cart Button */}
               <Button
-                height={56}
-                borderRadius={30}
-                backgroundColor="#0284c7"
-                disabled={guiding}
-                icon={guiding ? <Spinner color="white" /> : <Navigation size={20} color="white" />}
-                onPress={handleGuideToProduct}
-                pressStyle={{ scale: 0.98, backgroundColor: '#0369a1' }}
-                paddingHorizontal="$3.5"
+                flex={1}
+                height={48}
+                borderRadius={20}
+                backgroundColor={isOutOfStock ? "#cbd5e1" : "#00A550"}
+                disabled={addingToCart || isOutOfStock}
+                icon={addingToCart ? <Spinner color="white" /> : <ShoppingCart size={18} color="white" />}
+                onPress={handleAddToCart}
+                pressStyle={{ scale: 0.98, backgroundColor: '#008740' }}
               >
-                <Text color="white" fontSize={15} fontWeight="bold">
-                  {guiding ? 'Đang gọi xe...' : 'Dẫn đường'}
+                <Text color="white" fontSize={14} fontWeight="bold">
+                  {isOutOfStock ? 'Hết hàng' : (isRecipe ? 'Mua nguyên liệu' : 'Thêm giỏ')}
                 </Text>
               </Button>
-            )}
-          </XStack>
+
+              {/* Guide Me Button (Robot AMR guidance for Kiosk) */}
+              {!isRecipe && !isOutOfStock && (
+                <Button
+                  flex={1}
+                  height={48}
+                  borderRadius={20}
+                  backgroundColor="#0284c7"
+                  disabled={guiding}
+                  icon={guiding ? <Spinner color="white" /> : <Navigation size={18} color="white" />}
+                  onPress={handleGuideToProduct}
+                  pressStyle={{ scale: 0.98, backgroundColor: '#0369a1' }}
+                >
+                  <Text color="white" fontSize={14} fontWeight="bold">
+                    {guiding ? 'Đang gọi xe...' : 'Dẫn đường'}
+                  </Text>
+                </Button>
+              )}
+            </XStack>
+          </YStack>
         </View>
       </Animated.View>
 

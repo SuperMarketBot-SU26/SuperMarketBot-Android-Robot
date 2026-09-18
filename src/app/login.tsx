@@ -1,2 +1,2 @@
-import FaceScanScreen from '../components/screens/FaceScanScreen';
-export default FaceScanScreen;
+import RobotLoginScreen from '../components/screens/RobotLoginScreen';
+export default RobotLoginScreen;

@@ -343,12 +343,20 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     setAwaitingPickup(false);
     setStatus('DISPATCHING');
 
+    const pNames = uniqueItems.map(i => i.productName).filter(Boolean);
+    const summaryText = pNames.length > 0
+      ? `Giỏ hàng (${uniqueItems.length} món): ${pNames.slice(0, 3).join(', ')}${pNames.length > 3 ? '...' : ''}`
+      : `Dẫn đường giỏ hàng (${uniqueItems.length} sản phẩm)`;
+
     const result = await RobotControlService.dispatchAutonomous({
       robotCode: ROBOT_CODE,
       missionId: nextMissionId,
       flowType: 'guide',
       productIds: uniqueItems.map(item => item.productId),
       floorId: 1,
+      source: 'RobotKiosk',
+      dispatchedBy: 'Khách mua sắm tại Robot',
+      targetSummary: summaryText,
     });
     if (!result.ok) {
       clearTimeoutGuard();

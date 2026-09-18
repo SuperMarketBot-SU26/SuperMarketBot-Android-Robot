@@ -120,7 +120,7 @@ export default function AdMultiProductSelectScreen() {
 
       const customerName = member?.fullName ? `${member.fullName}` : 'quý khách';
       Speech.speak(
-        `Chào ${customerName}! Dưới đây là các sản phẩm đang có chương trình khuyến mãi. Xin mời chọn các món cần mua để robot dẫn đường nhé!`,
+        `Chào ${customerName}! Dưới đây là tất cả các sản phẩm đang có chương trình khuyến mãi quảng cáo. Mời bạn xem qua nhé!`,
         { language: 'vi-VN', rate: 0.9 }
       );
     }
@@ -346,11 +346,11 @@ export default function AdMultiProductSelectScreen() {
           <View style={styles.headerCenter}>
             <View style={styles.headerPill}>
               <Sparkles size={14} color="#f59e0b" />
-              <Text style={styles.headerPillText}>KHUYẾN MÃI ĐANG QUẢNG CÁO</Text>
+              <Text style={styles.headerPillText}>KHUYẾN MÃI & QUẢNG CÁO</Text>
             </View>
-            <Text style={styles.headerTitle}>Dẫn Đường Mua Sắm</Text>
+            <Text style={styles.headerTitle}>Tất Cả Sản Phẩm Đang Quảng Cáo</Text>
             <Text style={styles.headerSubtitle}>
-              Chọn các món bạn muốn mua • Robot sẽ dẫn đường gom hàng theo lộ trình ngắn nhất
+              Danh sách các món hàng đang có ưu đãi • Chọn món để robot dẫn đường đến quầy kệ
             </Text>
           </View>
 
@@ -915,8 +915,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#0d1527',
-    paddingHorizontal: 28,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -931,14 +931,14 @@ const styles = StyleSheet.create({
   bottomSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
     flex: 1,
-    paddingRight: 16,
+    paddingRight: 10,
   },
   bottomIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -950,24 +950,24 @@ const styles = StyleSheet.create({
   },
   bottomMainTitle: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
   },
   bottomBoldCount: {
     color: '#10b981',
     fontWeight: '900',
-    fontSize: 18,
+    fontSize: 16,
   },
   bottomSubTitle: {
     color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
   },
   dispatchBtn: {
     backgroundColor: '#059669',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
     shadowColor: '#10b981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,

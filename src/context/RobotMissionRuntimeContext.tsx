@@ -12,6 +12,7 @@ import React, {
 } from 'react';
 import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
+import { PatrolMissionOverlay } from '../components/mission/PatrolMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
 import { RobotControlService } from '../services/RobotControlService';
 import { AdInterruptionService } from '../services/AdInterruptionService';
@@ -21,8 +22,8 @@ import { VoiceService } from '../services/RobotVoiceService';
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
-type MissionFlow = 'patrol' | 'ad';
-type MissionStatus = 'IDLE' | 'DISPATCHED' | 'NAVIGATING' | 'MOVING' | 'ARRIVED'
+export type MissionFlow = 'patrol' | 'ad';
+export type MissionStatus = 'IDLE' | 'DISPATCHED' | 'NAVIGATING' | 'MOVING' | 'ARRIVED'
   | 'PLAYLIST_PLAYING' | 'PLAYLIST_COMPLETE' | 'WAYPOINT_COMPLETED'
   | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'ESTOP' | 'WAYPOINT_FAILED';
 
@@ -70,7 +71,7 @@ export interface MissionWaypoint {
   transitTtsMessage?: string | null;
 }
 
-interface RobotMission {
+export interface RobotMission {
   missionId: string;
   robotCode: string;
   flowType: MissionFlow;
@@ -101,7 +102,7 @@ interface NavigationStatusPayload {
   Playlist?: PlaylistItem[];
 }
 
-interface ScanResult {
+export interface ScanResult {
   nodeId: number;
   shelfName?: string;
   analysisStatus: string;
@@ -455,6 +456,69 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       console.warn('[RobotMissionRuntime] router.push(/product-search) warning:', err);
     }
   }, [activeWaypointIndex, router]);
+
+  const openPromotedProductsCatalog = useCallback(async (currentPlaylist?: PlaylistItem[]) => {
+    const activeMission = missionRef.current;
+    console.log('[RobotMissionRuntime] Khách mở danh mục tất cả sản phẩm quảng cáo');
+
+    // 1. Dừng ngay lập tức toàn bộ giọng nói TTS
+    VoiceService.stop();
+    Speech.stop();
+
+    // 2. Lưu playlist và trạng thái nhiệm vụ dở dang
+    const playlistToCache = (currentPlaylist && currentPlaylist.length > 0)
+      ? currentPlaylist
+      : (activePlaylist && activePlaylist.length > 0
+          ? activePlaylist
+          : (activeMission?.waypoints?.flatMap((w) => w.playlist || []) ?? []));
+
+    if (playlistToCache.length > 0) {
+      AdInterruptionService.setCachedAdPlaylist(playlistToCache);
+    }
+
+    if (activeMission && activeMission.flowType === 'ad') {
+      const resolvedIndex = activeWaypointIndex >= 0
+        ? activeWaypointIndex
+        : (activeWaypoint ? activeMission.waypoints.findIndex((w) => w.nodeId === activeWaypoint.nodeId) : 0);
+      const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
+      const remainingWaypoints = activeMission.waypoints.slice(currentIdx);
+      const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId).filter((id) => id > 0);
+      const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
+      const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
+
+      AdInterruptionService.saveInterruptedMission({
+        originalMissionId: activeMission.missionId,
+        robotCode: ROBOT_CODE,
+        remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : activeMission.waypoints.map((w) => w.nodeId).filter((id) => id > 0),
+        remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+        isPerShelfAd: isPerShelf,
+        isFreeRoam: Boolean(activeMission.isFreeRoam),
+        floorId: activeMission.floorId ?? 1,
+        campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
+        interruptedAtWaypointIndex: currentIdx,
+        totalWaypoints: activeMission.waypoints.length,
+        savedTimestamp: Date.now(),
+      });
+
+      // 3. Tạm dừng di chuyển robot trên Backend để robot đứng yên chờ khách thao tác
+      fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/pause?reason=${encodeURIComponent('Customer viewing all promoted products')}`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      }).catch(() => undefined);
+    }
+
+    // 4. Ẩn ngay AdMissionOverlay và dọn dẹp state overlay để mở đường cho screen
+    setActivePlaylist([]);
+    setMission(null);
+    missionRef.current = null;
+
+    // 5. Điều hướng tức thì sang màn hình danh mục tất cả sản phẩm khuyến mãi
+    try {
+      router.push('/ad-multi-select' as any);
+    } catch (e) {
+      console.warn('[RobotMissionRuntime] router.push(/ad-multi-select) failed:', e);
+    }
+  }, [activePlaylist, activeWaypoint, activeWaypointIndex, router]);
 
   useEffect(() => {
     pendingScansRef.current = pendingScans;
@@ -947,26 +1011,23 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   return (
     <RuntimeContext.Provider value={value}>
       {children}
-      <MissionOverlay
+      <PatrolMissionOverlay
         mission={mission}
         status={status}
         activeWaypoint={activeWaypoint}
-        activePlaylist={activePlaylist}
+        activeWaypointIndex={activeWaypointIndex}
         pendingScans={pendingScans}
         completedScans={completedScans}
         failedScans={failedScans}
         lastScan={lastScan}
-        cameraRef={cameraRef}
-        cameraPermission={permission?.granted === true}
-        isAligning={isAligning}
-        onCameraReady={() => setCameraMounted(true)}
-        onCapture={() => {
-          if (mission && activeWaypoint && activeWaypointIndex >= 0) {
-            void captureAtWaypoint(mission, activeWaypoint, activeWaypointIndex);
-          }
-        }}
         onResumeNext={resumeToNextWaypoint}
         onDismiss={() => {
+          if (mission && API_BASE) {
+            void fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=Staff%20stopped%20patrol%20on%20tablet`, {
+              method: 'POST',
+              headers: { 'ngrok-skip-browser-warning': 'true' },
+            });
+          }
           setMission(null);
           missionRef.current = null;
         }}
@@ -979,7 +1040,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         onStartGuide={interruptAdForGuidance}
         onSearchOther={searchOtherProductFromAd}
         onDismiss={() => {
-          // Giữ nguyên activePlaylist trong cache để màn hình chọn nhiều món và phục hồi sau dẫn đường hoạt động liền mạch
+          void openPromotedProductsCatalog(activePlaylist);
         }}
       />
     </RuntimeContext.Provider>

@@ -64,26 +64,46 @@ export interface RecommendIngredientsResponseDto {
 export const SearchService = {
   async searchProducts(keyword: string): Promise<MobileProductSearchResultDto[]> {
     try {
-      // Public kiosk search endpoint (works for both guests and members).
-      const url = new URL(`${BASE_URL}/api/v1/products/search`);
-      url.searchParams.append('keyword', keyword);
-      
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
+      const res = await this.searchAll({ q: keyword });
+      return (res.results || []).map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        description: item.description,
+        unitPrice: Number(item.unitPrice),
+        promotionPrice: item.promotionPrice ? Number(item.promotionPrice) : undefined,
+        status: item.status,
+        imageUrl: item.imageUrl || null,
+        productTypeId: 0,
+        location: {
+          shelfId: undefined,
+          shelfName: item.slotCode || (item.aisleCode ? `Dãy ${item.aisleCode}` : null),
+          zone: item.categoryName || null,
         },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
+      }));
     } catch (error) {
-      console.error('[SearchService] Error searching products:', error);
-      throw error;
+      console.warn('[SearchService] searchAll failed, fallback to /api/products for:', keyword);
+      try {
+        const fallbackRes = await fetch(`${BASE_URL}/api/products?keyword=${encodeURIComponent(keyword)}`, {
+          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        });
+        if (fallbackRes.ok) {
+          const prods = await fallbackRes.json();
+          return (prods || []).map((p: any) => ({
+            productId: p.productId,
+            productName: p.productName,
+            description: p.description,
+            unitPrice: Number(p.unitPrice),
+            promotionPrice: p.promotionPrice ? Number(p.promotionPrice) : undefined,
+            status: p.status,
+            imageUrl: p.imageUrl || null,
+            productTypeId: p.productTypeId || 0,
+            location: p.location || null,
+          }));
+        }
+      } catch (fbErr) {
+        console.warn('[SearchService] Fallback also failed:', fbErr);
+      }
+      return [];
     }
   },
 

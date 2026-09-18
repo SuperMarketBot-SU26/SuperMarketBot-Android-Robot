@@ -33,6 +33,17 @@ const parseErrorBody = async (response: Response) => {
   }
 };
 
+const normalizeCartDto = (data: any): CartDto => {
+  if (!data) return data;
+  const items = Array.isArray(data.items) ? data.items : [];
+  const calculatedTotal = items.reduce((sum: number, item: any) => sum + (Number(item?.quantity) || 0), 0);
+  return {
+    ...data,
+    items,
+    totalItems: typeof data.totalItems === 'number' && data.totalItems > 0 ? data.totalItems : calculatedTotal,
+  };
+};
+
 export class CartService {
   static async addItem(productId: number, quantity: number, token: string): Promise<CartDto> {
     console.log(`[CartService.addItem] POST ${BASE_URL}/api/cart/items`);
@@ -52,7 +63,8 @@ export class CartService {
       throw new Error(data.error || data.message || data.detail || `Thêm sản phẩm thất bại (${response.status})`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return normalizeCartDto(data);
   }
 
   static async getCart(token: string): Promise<CartDto> {
@@ -71,8 +83,10 @@ export class CartService {
       }
       throw new Error(`Lấy giỏ hàng thất bại (${response.status})`);
     }
-    return response.json();
+    const data = await response.json();
+    return normalizeCartDto(data);
   }
+
   static async updateItemQuantity(productId: number, quantity: number, token: string): Promise<CartDto> {
     console.log(`[CartService.updateItemQuantity] PUT ${BASE_URL}/api/cart/items/${productId}`);
     const response = await fetch(`${BASE_URL}/api/cart/items/${productId}`, {
@@ -91,7 +105,8 @@ export class CartService {
       throw new Error(data.error || data.message || data.detail || `Cập nhật số lượng thất bại (${response.status})`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return normalizeCartDto(data);
   }
 
   static async removeItem(productId: number, token: string): Promise<CartDto> {
@@ -110,6 +125,7 @@ export class CartService {
       throw new Error(data.error || data.message || data.detail || `Xóa sản phẩm thất bại (${response.status})`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return normalizeCartDto(data);
   }
 }
