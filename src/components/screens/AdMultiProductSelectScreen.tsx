@@ -330,38 +330,36 @@ export default function AdMultiProductSelectScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
-        {/* ==================== 1. TOP HEADER ==================== */}
+        {/* ==================== 1. TOP HEADER (TWO-ROW CLEAN LAYOUT) ==================== */}
         <View style={styles.header}>
-          {/* Nút quay lại gọn gàng, bo góc thanh lịch */}
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBackToAd}
-            activeOpacity={0.7}
-          >
-            <ChevronLeft size={22} color="#94a3b8" />
-            <Text style={styles.backButtonText}>Quay lại quảng cáo</Text>
-          </TouchableOpacity>
+          <View style={styles.headerTopRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBackToAd}
+              activeOpacity={0.7}
+            >
+              <ChevronLeft size={18} color="#0f172a" />
+              <Text style={styles.backButtonText}>Quay lại</Text>
+            </TouchableOpacity>
 
-          {/* Tiêu đề trung tâm: 1 hàng rõ ràng, không bị ngắt dòng luộm thuộm */}
-          <View style={styles.headerCenter}>
             <View style={styles.headerPill}>
-              <Sparkles size={14} color="#f59e0b" />
-              <Text style={styles.headerPillText}>KHUYẾN MÃI & QUẢNG CÁO</Text>
+              <Sparkles size={13} color="#d97706" />
+              <Text style={styles.headerPillText}>ƯU ĐÃI QUẢNG CÁO</Text>
             </View>
-            <Text style={styles.headerTitle}>Tất Cả Sản Phẩm Đang Quảng Cáo</Text>
-            <Text style={styles.headerSubtitle}>
-              Danh sách các món hàng đang có ưu đãi • Chọn món để robot dẫn đường đến quầy kệ
-            </Text>
-          </View>
 
-          {/* Thông tin khách hàng thành viên */}
-          <View style={styles.headerRight}>
             <View style={styles.memberBadge}>
               <View style={styles.memberDot} />
               <Text style={styles.memberText} numberOfLines={1}>
                 {member?.fullName || 'Thành viên'}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>Tất Cả Sản Phẩm Đang Quảng Cáo</Text>
+            <Text style={styles.headerSubtitle}>
+              Chọn các món bạn muốn để Robot dẫn đường gom hàng theo lộ trình tối ưu nhất
+            </Text>
           </View>
         </View>
 
@@ -535,14 +533,14 @@ export default function AdMultiProductSelectScreen() {
           <View style={styles.bottomBar}>
             <View style={styles.bottomSummary}>
               <View style={styles.bottomIconCircle}>
-                <Navigation size={22} color="#10b981" />
+                <Navigation size={18} color="#16a34a" />
               </View>
               <View style={styles.bottomTextColumn}>
-                <Text style={styles.bottomMainTitle}>
-                  Đã chọn <Text style={styles.bottomBoldCount}>{selectedProducts.length}</Text> sản phẩm
+                <Text style={styles.bottomMainTitle} numberOfLines={1}>
+                  Đã chọn <Text style={styles.bottomBoldCount}>{selectedProducts.length}</Text> món
                 </Text>
-                <Text style={styles.bottomSubTitle}>
-                  Robot sẽ tự động dẫn đường gom hàng theo lộ trình tối ưu nhất
+                <Text style={styles.bottomSubTitle} numberOfLines={1}>
+                  Lộ trình gom hàng tối ưu
                 </Text>
               </View>
             </View>
@@ -559,15 +557,15 @@ export default function AdMultiProductSelectScreen() {
               {isSubmitting ? (
                 <View style={styles.btnContentRow}>
                   <ActivityIndicator size="small" color="white" />
-                  <Text style={styles.dispatchBtnText}>Đang lập tuyến dẫn đường...</Text>
+                  <Text style={styles.dispatchBtnText}>Đang lập tuyến...</Text>
                 </View>
               ) : (
                 <View style={styles.btnContentRow}>
-                  <Navigation size={18} color="white" />
+                  <Navigation size={16} color="white" />
                   <Text style={styles.dispatchBtnText}>
-                    Bắt đầu dẫn đường ({selectedProducts.length})
+                    Dẫn đường ({selectedProducts.length})
                   </Text>
-                  <ArrowRight size={18} color="white" />
+                  <ArrowRight size={16} color="white" />
                 </View>
               )}
             </TouchableOpacity>
@@ -630,100 +628,102 @@ export default function AdMultiProductSelectScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#070d19',
+    backgroundColor: '#f8fafc',
   },
   container: {
     flex: 1,
-    backgroundColor: '#070d19',
+    backgroundColor: '#f8fafc',
   },
 
   // 1. Header
   header: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    backgroundColor: '#0d1527',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    gap: 4,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: '#e2e8f0',
   },
   backButtonText: {
-    color: '#cbd5e1',
-    fontSize: 14,
+    color: '#0f172a',
+    fontSize: 13,
     fontWeight: '700',
-  },
-  headerCenter: {
-    alignItems: 'center',
-    flex: 1,
-    paddingHorizontal: 16,
   },
   headerPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 3,
+    gap: 5,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    marginBottom: 4,
+    borderColor: '#fde68a',
   },
   headerPillText: {
-    color: '#fbbf24',
+    color: '#b45309',
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  headerTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-  },
-  headerSubtitle: {
-    color: '#94a3b8',
-    fontSize: 13,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  headerRight: {
-    alignItems: 'flex-end',
+    letterSpacing: 0.5,
   },
   memberBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    gap: 6,
+    backgroundColor: '#dcfce7',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: '#bbf7d0',
   },
   memberDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10b981',
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#16a34a',
   },
   memberText: {
-    color: '#6ee7b7',
-    fontSize: 13,
+    color: '#15803d',
+    fontSize: 12,
     fontWeight: '800',
-    maxWidth: 160,
+    maxWidth: 120,
+  },
+  headerTitleWrap: {
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+  },
+  headerTitle: {
+    color: '#0f172a',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 17,
   },
 
   // 2. Toolbar
@@ -731,93 +731,96 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: '#0a101f',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: '#e2e8f0',
   },
   toolbarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   toolbarLabel: {
-    color: '#94a3b8',
-    fontSize: 14,
+    color: '#64748b',
+    fontSize: 13,
     fontWeight: '600',
   },
   toolbarCount: {
-    color: '#10b981',
+    color: '#16a34a',
     fontWeight: '900',
-    fontSize: 16,
   },
   toolbarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   toolbarBtnSelectAll: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    gap: 4,
+    backgroundColor: '#dcfce7',
     paddingVertical: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.35)',
+    borderColor: '#bbf7d0',
   },
   toolbarBtnSelectAllText: {
-    color: '#34d399',
-    fontSize: 13,
+    color: '#15803d',
+    fontSize: 12,
     fontWeight: '700',
   },
   toolbarBtnDeselect: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    gap: 4,
+    backgroundColor: '#f1f5f9',
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: '#e2e8f0',
   },
   toolbarBtnDeselectText: {
-    color: '#94a3b8',
-    fontSize: 13,
+    color: '#64748b',
+    fontSize: 12,
     fontWeight: '700',
   },
 
   // 3. Grid & Cards
   scrollContent: {
-    padding: 20,
-    paddingBottom: 120,
+    padding: 16,
+    paddingBottom: 110,
   },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: 12,
   },
   productCard: {
-    // 2 cột trên tablet nhỏ, 3 cột trên tablet lớn
-    width: (SW - 40 - 16) / 2 > 350 ? (SW - 40 - 32) / 3 : (SW - 40 - 16) / 2,
-    borderRadius: 18,
+    width: (SW - 32 - 12) / 2 > 350 ? (SW - 32 - 24) / 3 : (SW - 32 - 12) / 2,
+    borderRadius: 16,
     borderWidth: 2,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   productCardUnselected: {
-    backgroundColor: '#0d1527',
-    borderColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
   },
   productCardSelected: {
-    backgroundColor: '#0e2329',
-    borderColor: '#10b981',
+    backgroundColor: '#f0fdf4',
+    borderColor: '#16a34a',
   },
   cardImageContainer: {
     width: '100%',
-    height: 165,
-    backgroundColor: '#060a14',
+    height: 140,
+    backgroundColor: '#f8fafc',
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
@@ -832,79 +835,79 @@ const styles = StyleSheet.create({
   },
   cardPromoBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     backgroundColor: '#ef4444',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 6,
   },
   cardPromoBadgeText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   checkboxWrap: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(10, 16, 31, 0.85)',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 999,
     padding: 2,
   },
   checkboxWrapActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: '#ffffff',
   },
   cardContent: {
-    padding: 14,
-    gap: 6,
+    padding: 12,
+    gap: 4,
   },
   productTitle: {
-    color: '#ffffff',
-    fontSize: 15,
+    color: '#0f172a',
+    fontSize: 14,
     fontWeight: '800',
-    lineHeight: 22,
-    minHeight: 44,
+    lineHeight: 19,
+    minHeight: 38,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 8,
+    gap: 6,
     marginTop: 2,
   },
   promoPriceText: {
-    color: '#34d399',
-    fontSize: 17,
+    color: '#dc2626',
+    fontSize: 15,
     fontWeight: '900',
   },
   originalPriceText: {
-    color: '#64748b',
-    fontSize: 12,
+    color: '#94a3b8',
+    fontSize: 11,
     textDecorationLine: 'line-through',
   },
   regularPriceText: {
-    color: '#38bdf8',
-    fontSize: 16,
+    color: '#16a34a',
+    fontSize: 15,
     fontWeight: '900',
   },
   locationChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     marginTop: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 6,
     alignSelf: 'flex-start',
   },
   locationChipText: {
-    color: '#a7f3d0',
-    fontSize: 12,
+    color: '#475569',
+    fontSize: 11,
     fontWeight: '700',
   },
 
@@ -914,81 +917,81 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#0d1527',
+    backgroundColor: '#ffffff',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: '#e2e8f0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 8,
   },
   bottomSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   bottomIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#dcfce7',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: '#bbf7d0',
   },
   bottomTextColumn: {
     flex: 1,
   },
   bottomMainTitle: {
-    color: '#ffffff',
-    fontSize: 14,
+    color: '#0f172a',
+    fontSize: 13,
     fontWeight: '800',
   },
   bottomBoldCount: {
-    color: '#10b981',
+    color: '#16a34a',
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: 15,
   },
   bottomSubTitle: {
-    color: '#94a3b8',
+    color: '#64748b',
     fontSize: 11,
     marginTop: 1,
   },
   dispatchBtn: {
-    backgroundColor: '#059669',
+    backgroundColor: '#16a34a',
     paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   dispatchBtnDisabled: {
-    backgroundColor: '#334155',
+    backgroundColor: '#cbd5e1',
     shadowOpacity: 0,
     elevation: 0,
   },
   dispatchBtnText: {
     color: 'white',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.3,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   btnContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
 
   // 5. Loading & Empty
@@ -999,8 +1002,8 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   loadingText: {
-    color: '#94a3b8',
-    fontSize: 15,
+    color: '#64748b',
+    fontSize: 14,
     fontWeight: '600',
   },
   emptyContainer: {
@@ -1010,148 +1013,150 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   emptyIconBox: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#dcfce7',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
+    borderColor: '#bbf7d0',
   },
   emptyTitle: {
-    color: '#ffffff',
-    fontSize: 20,
+    color: '#0f172a',
+    fontSize: 18,
     fontWeight: '800',
     marginBottom: 8,
   },
   emptyDesc: {
-    color: '#94a3b8',
-    fontSize: 14,
+    color: '#64748b',
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 480,
-    marginBottom: 24,
+    lineHeight: 20,
+    maxWidth: 440,
+    marginBottom: 20,
   },
   emptyActionRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   emptyPrimaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#059669',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    gap: 6,
+    backgroundColor: '#16a34a',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 12,
   },
   emptyPrimaryBtnText: {
     color: 'white',
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 13,
   },
   emptySecondaryBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   emptySecondaryBtnText: {
-    color: '#e2e8f0',
+    color: '#475569',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 13,
   },
 
   // 6. Notice Modal
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.75)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalCard: {
     width: '100%',
-    maxWidth: 460,
-    backgroundColor: '#0f172a',
-    borderRadius: 24,
-    padding: 28,
+    maxWidth: 440,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#e2e8f0',
     alignItems: 'center',
     position: 'relative',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 12,
   },
   modalCloseBtn: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 14,
+    right: 14,
     padding: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: '#f1f5f9',
   },
   modalIconBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fef3c7',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderColor: '#fde68a',
   },
   modalTitle: {
-    color: '#ffffff',
-    fontSize: 20,
+    color: '#0f172a',
+    fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   modalMessage: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    lineHeight: 22,
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 20,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalActionRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     width: '100%',
   },
   modalPrimaryBtn: {
     flex: 1,
-    backgroundColor: '#059669',
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: '#16a34a',
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalPrimaryBtnText: {
     color: 'white',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   modalSecondaryBtn: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#e2e8f0',
   },
   modalSecondaryBtnText: {
-    color: '#cbd5e1',
-    fontSize: 15,
+    color: '#475569',
+    fontSize: 14,
     fontWeight: '700',
   },
 });

@@ -21,6 +21,7 @@ import { SearchService, MobileProductSearchResultDto } from '../../services/Sear
 import { useGeofencing } from '../../context/GeofencingContext';
 import { useNotification } from '../../context/NotificationContext';
 import { RobotControlService } from '../../services/RobotControlService';
+import { useRobotGuide } from '../../context/RobotGuideContext';
 import { Image } from 'expo-image';
 
 const ROBOT_CODE = 'RB001';
@@ -32,6 +33,7 @@ export default function MemberHomeScreen() {
   const router = useVoiceRouter();
   const { speak, stop } = useRobotVoice();
   const { showNotification } = useNotification();
+  const { dispatchCart } = useRobotGuide();
 
   const [deals, setDeals] = useState<MemberDealDto[]>([]);
   const [sponsoredRecs, setSponsoredRecs] = useState<SponsoredRecommendationDto[]>([]);
@@ -106,7 +108,13 @@ export default function MemberHomeScreen() {
   }, [member?.fullName]);
 
   // Điều hướng robot dẫn đường đến kệ chứa sản phẩm
-  const handleGuideToProduct = async (product: { productId: number; productName: string }) => {
+  const handleGuideToProduct = async (product: {
+    productId: number;
+    productName: string;
+    imageUrl?: string | null;
+    unitPrice?: number;
+    location?: { shelfName?: string; zone?: string } | any;
+  }) => {
     if (guidingId !== null) return;
     setGuidingId(product.productId);
     try {
@@ -116,17 +124,17 @@ export default function MemberHomeScreen() {
         message: `Đang khởi tạo lộ trình đến quầy ${product.productName}`,
         type: 'info',
       });
-      await RobotControlService.dispatchAutonomous({
-        robotCode: ROBOT_CODE,
-        flowType: 'guide',
-        productId: product.productId,
-        productIds: [product.productId],
-        floorId: 1,
-        source: 'RobotKiosk',
-        dispatchedBy: member?.fullName ? `${member.fullName} (VIP)` : 'Thành viên VIP',
-        targetSummary: `Sản phẩm: ${product.productName}`,
-      });
-      router.push('/cart-guide-map' as any);
+      await dispatchCart([{ productId: product.productId, productName: product.productName }]);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          productId: String(product.productId),
+          productName: product.productName,
+          productImage: product.imageUrl || '',
+          productPrice: String(product.unitPrice || 0),
+          shelfName: product.location?.shelfName || '',
+        },
+      } as any);
     } catch (err: any) {
       speak('Không thể khởi tạo dẫn đường. Vui lòng thử lại sau.');
       showNotification({
@@ -707,7 +715,13 @@ export default function MemberHomeScreen() {
                           <TouchableOpacity
                             onPress={(e) => {
                               e.stopPropagation();
-                              handleGuideToProduct({ productId: product.productId, productName: product.productName });
+                              handleGuideToProduct({
+                                productId: product.productId,
+                                productName: product.productName,
+                                imageUrl: product.imageUrl,
+                                unitPrice: product.promotionPrice ?? product.unitPrice,
+                                location: product.location,
+                              });
                             }}
                             disabled={guidingId === product.productId}
                             style={{
@@ -838,7 +852,13 @@ export default function MemberHomeScreen() {
                           <TouchableOpacity
                             onPress={(e) => {
                               e.stopPropagation();
-                              handleGuideToProduct({ productId: p.productId, productName: p.productName });
+                              handleGuideToProduct({
+                                productId: p.productId,
+                                productName: p.productName,
+                                imageUrl: p.imageUrl,
+                                unitPrice: p.promotionPrice ?? p.unitPrice,
+                                location: p.location,
+                              });
                             }}
                             disabled={guidingId === p.productId}
                             style={{

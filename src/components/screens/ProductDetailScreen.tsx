@@ -12,6 +12,7 @@ import { ProductService, ProductDetailDto } from '../../services/ProductService'
 import { MealSuggestionService, MenuAssistantResponseDto } from '../../services/MealSuggestionService';
 import { CartService } from '../../services/CartService';
 import { RobotControlService } from '../../services/RobotControlService';
+import { useRobotGuide } from '../../context/RobotGuideContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { height, width } = Dimensions.get('window');
@@ -27,6 +28,7 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
   const { member, token } = useRobotAuth();
   const { speak, stop } = useRobotVoice();
   const { showNotification } = useNotification();
+  const { dispatchCart } = useRobotGuide();
 
   const [detail, setDetail] = useState<ProductDetailDto | null>(null);
   const [recipeDetail, setRecipeDetail] = useState<MenuAssistantResponseDto | null>(null);
@@ -137,14 +139,17 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
         message: `Đang khởi tạo lộ trình đến ${detail.productName}`,
         type: 'info',
       });
-      await RobotControlService.dispatchAutonomous({
-        robotCode: 'RB001',
-        flowType: 'guide',
-        productId: detail.productId,
-        productIds: [detail.productId],
-        floorId: 1,
-      });
-      router.push('/cart-guide-map' as any);
+      await dispatchCart([{ productId: detail.productId, productName: detail.productName }]);
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          productId: String(detail.productId),
+          productName: detail.productName,
+          productImage: detail.imageUrl || '',
+          productPrice: String(detail.unitPrice || 0),
+          shelfName: detail.aisleCode ? `Dãy ${detail.aisleCode}${detail.levelNumber ? ` - Tầng ${detail.levelNumber}` : ''}` : (detail.categoryName || ''),
+        },
+      } as any);
     } catch (err: any) {
       speak('Không thể khởi tạo dẫn đường');
       showNotification({
