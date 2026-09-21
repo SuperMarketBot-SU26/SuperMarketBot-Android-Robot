@@ -5,11 +5,25 @@ import { RobotControlService } from '../services/RobotControlService';
 const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 export const ROBOT_CODE = process.env.EXPO_PUBLIC_ROBOT_CODE ?? 'RB0001';
 
+export interface LowBatteryAlertInfo {
+  robotCode: string;
+  batteryPct: number;
+  status: string;
+  dockNodeId?: number;
+  message?: string;
+  timestamp: string;
+}
+
 interface RobotRealtimeContextValue {
   isConnected: boolean;
+  isLowBatteryLocked: boolean;
+  lowBatteryInfo: LowBatteryAlertInfo | null;
+  clearLowBatteryLock: () => void;
   subscribeNavigationStatus: (handler: EventHandler) => () => void;
   subscribeMissionAssigned: (handler: EventHandler) => () => void;
   subscribeTelemetry: (handler: EventHandler) => () => void;
+  subscribeMapLayoutUpdated: (handler: EventHandler) => () => void;
+  subscribeLowBatteryAlert: (handler: EventHandler) => () => void;
 }
 
 type EventHandler = (payload: any) => void;
@@ -18,10 +32,20 @@ const RobotRealtimeContext = createContext<RobotRealtimeContextValue | null>(nul
 
 export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
   const [isConnected, setConnected] = useState(false);
+  const [isLowBatteryLocked, setIsLowBatteryLocked] = useState(false);
+  const [lowBatteryInfo, setLowBatteryInfo] = useState<LowBatteryAlertInfo | null>(null);
+
   const navigationHandlers = useRef(new Set<EventHandler>());
   const missionHandlers = useRef(new Set<EventHandler>());
   const telemetryHandlers = useRef(new Set<EventHandler>());
+  const mapLayoutHandlers = useRef(new Set<EventHandler>());
+  const lowBatteryHandlers = useRef(new Set<EventHandler>());
   const activeMissionRef = useRef<any | null>(null);
+
+  const clearLowBatteryLock = useCallback(() => {
+    setIsLowBatteryLocked(false);
+    setLowBatteryInfo(null);
+  }, []);
 
   const subscribeNavigationStatus = useCallback((handler: EventHandler) => {
     navigationHandlers.current.add(handler);
@@ -41,6 +65,21 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     telemetryHandlers.current.add(handler);
     return () => telemetryHandlers.current.delete(handler);
   }, []);
+
+  const subscribeMapLayoutUpdated = useCallback((handler: EventHandler) => {
+    mapLayoutHandlers.current.add(handler);
+    return () => mapLayoutHandlers.current.delete(handler);
+  }, []);
+
+  const subscribeLowBatteryAlert = useCallback((handler: EventHandler) => {
+    lowBatteryHandlers.current.add(handler);
+    if (lowBatteryInfo) {
+      Promise.resolve().then(() => {
+        if (lowBatteryHandlers.current.has(handler)) handler(lowBatteryInfo);
+      });
+    }
+    return () => lowBatteryHandlers.current.delete(handler);
+  }, [lowBatteryInfo]);
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -89,7 +128,43 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     connection.on('telemetry', (payload: any) => {
       if (!mounted) return;
       telemetryHandlers.current.forEach((handler) => handler(payload));
+      const battery = Number(payload?.battery ?? payload?.Battery ?? payload?.batteryPct ?? payload?.BatteryPct ?? 100);
+      if (battery > 0 && battery < 15) {
+        setIsLowBatteryLocked(true);
+        setLowBatteryInfo((prev) => prev ?? {
+          robotCode: String(payload?.robotCode ?? payload?.RobotCode ?? ROBOT_CODE),
+          batteryPct: battery,
+          status: String(payload?.status ?? payload?.Status ?? 'Low_Battery'),
+          dockNodeId: 8,
+          message: `Robot pin yếu (${battery}% < 15%). Đang tự động di chuyển về trạm sạc.`,
+          timestamp: new Date().toISOString(),
+        });
+      }
     });
+
+    connection.on('lowBatteryAlert', (payload: any) => {
+      if (!mounted) return;
+      console.log('[RobotRealtime] ⚠️ Low Battery Alert received:', payload);
+      const battery = Number(payload?.batteryPct ?? payload?.BatteryPct ?? 12);
+      const info: LowBatteryAlertInfo = {
+        robotCode: String(payload?.robotCode ?? payload?.RobotCode ?? ROBOT_CODE),
+        batteryPct: battery,
+        status: String(payload?.status ?? payload?.Status ?? 'Low_Battery'),
+        dockNodeId: Number(payload?.dockNodeId ?? payload?.DockNodeId ?? 8),
+        message: String(payload?.message ?? `⚠️ Pin yếu (${battery}%). Robot đang tự động quay về trạm sạc.`),
+        timestamp: new Date().toISOString(),
+      };
+      setIsLowBatteryLocked(true);
+      setLowBatteryInfo(info);
+      lowBatteryHandlers.current.forEach((h) => h(info));
+    });
+
+    connection.on('mapLayoutUpdated', (payload: any) => {
+      if (!mounted) return;
+      console.log('[RobotRealtime] 🗺️ Map layout updated notification received:', payload);
+      mapLayoutHandlers.current.forEach((h) => h(payload));
+    });
+
     // BE vẫn phát event legacy này cho một số dashboard. Đăng ký handler để
     // SignalR không spam "No client method zoneentered"; quảng cáo hiện dùng
     // navigationStatus làm nguồn sự thật.
@@ -102,6 +177,14 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     // Tablet lập tức đẩy lệnh này vào ESP32 cổng 81 qua WebSocket cục bộ
     connection.on('robotCommand', (payload: any) => {
       if (!mounted) return;
+      const cmd = String(payload?.command ?? payload?.Command ?? '').toUpperCase();
+      if (cmd === 'LOW_BATTERY_RETURN') {
+        setIsLowBatteryLocked(true);
+      } else if (cmd === 'CLEAR_BATTERY_LOCK') {
+        setIsLowBatteryLocked(false);
+        setLowBatteryInfo(null);
+      }
+
       const targetCode = payload?.robotCode ?? payload?.RobotCode;
       const currentCode = ROBOT_CODE.toUpperCase();
       if (targetCode) {
@@ -169,6 +252,9 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
       connection.off('navigationStatus');
       connection.off('missionAssigned');
       connection.off('telemetry');
+      connection.off('lowBatteryAlert');
+      connection.off('mapLayoutUpdated');
+      connection.off('robotCommand');
       connection.off('zoneEntered');
       connection.off('robotLog');
       connection.stop().catch(() => undefined);
@@ -177,10 +263,25 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     isConnected,
+    isLowBatteryLocked,
+    lowBatteryInfo,
+    clearLowBatteryLock,
     subscribeNavigationStatus,
     subscribeMissionAssigned,
     subscribeTelemetry,
-  }), [isConnected, subscribeMissionAssigned, subscribeNavigationStatus, subscribeTelemetry]);
+    subscribeMapLayoutUpdated,
+    subscribeLowBatteryAlert,
+  }), [
+    isConnected,
+    isLowBatteryLocked,
+    lowBatteryInfo,
+    clearLowBatteryLock,
+    subscribeMissionAssigned,
+    subscribeNavigationStatus,
+    subscribeTelemetry,
+    subscribeMapLayoutUpdated,
+    subscribeLowBatteryAlert,
+  ]);
 
   return <RobotRealtimeContext.Provider value={value}>{children}</RobotRealtimeContext.Provider>;
 }

@@ -729,22 +729,36 @@ export default function GuestHomeScreen() {
             </Text>
 
             {/* QR Mockup Frame */}
-            <View
-              backgroundColor="#F8FAFC"
-              padding="$4"
-              borderRadius={18}
-              borderWidth={2}
-              borderColor="#E2E8F0"
-              alignItems="center"
-              justifyContent="center"
-              marginTop="$2"
-            >
-              <Image
-                source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://smartmarketbot.vn/download' }}
-                style={{ width: 170, height: 170 }}
-                contentFit="contain"
-              />
-            </View>
+            {(() => {
+              const appDownloadUrl =
+                process.env.EXPO_PUBLIC_APP_DOWNLOAD_URL ||
+                'https://github.com/SuperMarketBot-SU26/SuperMarketBot-Android/releases';
+              return (
+                <>
+                  <View
+                    backgroundColor="#F8FAFC"
+                    padding="$4"
+                    borderRadius={18}
+                    borderWidth={2}
+                    borderColor="#E2E8F0"
+                    alignItems="center"
+                    justifyContent="center"
+                    marginTop="$2"
+                  >
+                    <Image
+                      source={{
+                        uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(appDownloadUrl)}`,
+                      }}
+                      style={{ width: 170, height: 170 }}
+                      contentFit="contain"
+                    />
+                  </View>
+                  <Text fontSize={11} color="#94A3B8" textAlign="center" marginTop="$1" numberOfLines={1}>
+                    {appDownloadUrl}
+                  </Text>
+                </>
+              );
+            })()}
 
             {/* Steps */}
             <YStack width="100%" gap="$1.5" marginTop="$2" paddingHorizontal="$2">

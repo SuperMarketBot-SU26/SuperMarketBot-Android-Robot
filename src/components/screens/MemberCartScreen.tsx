@@ -344,9 +344,18 @@ export default function MemberCartScreen() {
                         const mission = await dispatchCart(cart.items.map(item => ({
                           productId: item.productId,
                           productName: item.productName,
-                        })));
+                        })), {
+                          fromAd: false,
+                          returnUrl: '/member-cart',
+                        });
                         speak(`Hãy đi theo tôi. Lộ trình có ${mission?.targetNodeCount || 0} điểm kệ.`);
-                        router.push('/cart-guide-map' as any);
+                        router.push({
+                          pathname: '/cart-guide-map',
+                          params: {
+                            returnUrl: '/member-cart',
+                            from: 'cart',
+                          },
+                        } as any);
                       } catch (error: any) {
                         Alert.alert('Không thể bắt đầu', error?.message || 'Robot chưa nhận được nhiệm vụ.');
                         speak('Xin lỗi, chưa thể tạo lộ trình cho giỏ hàng này.');

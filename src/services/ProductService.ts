@@ -30,6 +30,10 @@ export interface ProductDetailDto {
   aisleCode?: string;
   levelNumber?: number;
   slotCode?: string;
+  shelfId?: number;
+  shelfName?: string;
+  zoneName?: string;
+  aisleName?: string;
 }
 
 export class ProductService {

@@ -54,7 +54,10 @@ interface RobotGuideContextValue {
   awaitingPickup: boolean;
   isBusy: boolean;
   isHubConnected: boolean;
-  dispatchCart: (items: { productId: number; productName: string }[]) => Promise<any>;
+  dispatchCart: (
+    items: { productId: number; productName: string }[],
+    options?: { fromAd?: boolean; returnUrl?: string }
+  ) => Promise<any>;
   confirmPickup: () => Promise<void>;
   cancelGuide: () => Promise<void>;
 }
@@ -313,7 +316,13 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => clearTimeoutGuard(), [clearTimeoutGuard]);
 
-  const dispatchCart = useCallback(async (items: { productId: number; productName: string }[]) => {
+  const dispatchCart = useCallback(async (
+    items: { productId: number; productName: string }[],
+    options?: { fromAd?: boolean; returnUrl?: string }
+  ) => {
+    if (!options?.fromAd) {
+      AdInterruptionService.clear();
+    }
     // Nếu có mission cũ còn tồn đọng, dọn dẹp để ưu tiên phục vụ khách trực tiếp tại kiosk
     if (missionRef.current) {
       console.log(`[RobotGuide] dispatchCart clearing prior/active mission: ${missionRef.current}`);
@@ -468,51 +477,9 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         setMissionId(null);
         setStatus('COMPLETED');
         setError(null);
+        AdInterruptionService.clear();
 
-        // Kiểm tra xem trước đó có lộ trình Quảng cáo đang bị tạm dừng hay không
-        if (AdInterruptionService.hasInterruptedMission()) {
-          const interrupted = AdInterruptionService.getInterruptedMission()!;
-          AdInterruptionService.clear();
-          console.log(`[RobotGuide] Phát hiện lộ trình quảng cáo đang chờ! Tiếp tục ${interrupted.remainingNodeIds.length} waypoint còn lại:`, interrupted.remainingNodeIds, 'shelves:', interrupted.remainingShelfIds);
-
-          Speech.speak('Cảm ơn quý khách đã mua sắm! Robot xin phép tiếp tục hành trình quảng cáo.', {
-            language: 'vi-VN',
-            rate: 0.9,
-          });
-
-          try {
-            // Khi free-roam: KHÔNG gửi shelfIds (backend sẽ coi là per-shelf nếu shelfIds > 0)
-            // Khi per-shelf: gửi shelfIds và không dùng fullZoneMap
-            await RobotControlService.dispatchAutonomous({
-              robotCode: ROBOT_CODE,
-              flowType: 'ad',
-              shelfIds: interrupted.isFreeRoam ? [] : (interrupted.remainingShelfIds ?? []),
-              nodeIds: interrupted.isFreeRoam ? [] : (interrupted.remainingNodeIds ?? []),
-              floorId: interrupted.floorId ?? 1,
-              campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
-              fullZoneMap: interrupted.isFreeRoam ? true : undefined,
-              durationMinutes: interrupted.durationMinutes,
-            });
-            console.log('[RobotGuide] Đã tự động khôi phục và tiếp tục lộ trình quảng cáo.',
-              `isFreeRoam=${interrupted.isFreeRoam}, durationMinutes=${interrupted.durationMinutes}`);
-          } catch (err) {
-            console.warn('[RobotGuide] Khôi phục lộ trình quảng cáo thất bại:', err);
-          }
-          return;
-        }
-
-        void VoiceService.speak('Tuyệt vời! Quý khách đã lấy xong tất cả sản phẩm. Robot đang quay về trạm sạc. Chúc quý khách mua sắm vui vẻ!');
-
-        try {
-          await RobotControlService.dispatchAutonomous({
-            robotCode: ROBOT_CODE,
-            flowType: 'return',
-            nodeIds: [7],
-            floorId: 1,
-          });
-        } catch (err) {
-          console.warn('[RobotGuide] Return to base dispatch warning:', err);
-        }
+        void VoiceService.speak('Robot đã dẫn bạn đến đúng vị trí sản phẩm. Quý khách vui lòng kiểm tra sản phẩm và tiếp tục mua sắm nhé!');
       } else {
         // Waypoint trung gian: cho robot đi tiếp đến kệ tiếp theo.
         console.log(`[RobotGuide] Intermediate waypoint confirmed — sending RESUME to continue to next shelf.`);
@@ -558,27 +525,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
       awaitingPickupRef.current = false;
       setAwaitingPickup(false);
       setStatus('CANCELLED');
-
-      // Nếu có ad mission bị hoãn, hỏi hoặc tự động resume
-      if (AdInterruptionService.hasInterruptedMission()) {
-        const interrupted = AdInterruptionService.getInterruptedMission()!;
-        AdInterruptionService.clear();
-        Speech.speak('Dẫn đường đã hủy. Robot xin phép tiếp tục hành trình quảng cáo.', { language: 'vi-VN', rate: 0.9 });
-        try {
-          await RobotControlService.dispatchAutonomous({
-            robotCode: ROBOT_CODE,
-            flowType: 'ad',
-            shelfIds: interrupted.isFreeRoam ? [] : (interrupted.remainingShelfIds ?? []),
-            nodeIds: interrupted.isFreeRoam ? [] : (interrupted.remainingNodeIds ?? []),
-            floorId: interrupted.floorId ?? 1,
-            campaignId: interrupted.isPerShelfAd ? undefined : (interrupted.campaignId ?? undefined),
-            fullZoneMap: interrupted.isFreeRoam ? true : undefined,
-            durationMinutes: interrupted.durationMinutes,
-          });
-        } catch (err) {
-          console.warn('[RobotGuide] Resume ad mission on cancel warning:', err);
-        }
-      }
+      AdInterruptionService.clear();
     }
   }, [clearTimeoutGuard]);
 

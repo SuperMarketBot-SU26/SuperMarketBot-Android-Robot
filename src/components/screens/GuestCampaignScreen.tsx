@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ScrollView, DimensionValue, Pressable, useWindowDimensions } from 'react-native';
 import { View, Text, XStack, YStack, Button, Card, Image, Spinner } from 'tamagui';
 import {
@@ -10,6 +10,8 @@ import {
   Sparkles,
   Flame,
   ShoppingBag,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -68,13 +70,28 @@ export default function GuestCampaignScreen() {
   const { showNotification } = useNotification();
   const { dispatchCart } = useRobotGuide();
 
+  const scrollViewRef = useRef<ScrollView>(null);
   const [deals, setDeals] = useState<MobileProductSearchResultDto[]>([]);
   const [generalAds, setGeneralAds] = useState<AdPlaylistItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [guidingId, setGuidingId] = useState<number | null>(null);
 
+  // Pagination state
+  const ITEMS_PER_PAGE = 6;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Responsive card width based on screen width (desktop web vs tablet vs mobile)
   const cardWidth: DimensionValue = width > 1100 ? '31.5%' : width > 680 ? '48%' : '100%';
+
+  const totalPages = Math.max(1, Math.ceil(deals.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedDeals = deals.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    scrollViewRef.current?.scrollTo({ y: 320, animated: true });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -204,6 +221,7 @@ export default function GuestCampaignScreen() {
       </XStack>
 
       <ScrollView
+        ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 80 }}
       >
@@ -383,9 +401,25 @@ export default function GuestCampaignScreen() {
               Danh Sách Khuyến Mãi Hôm Nay
             </Text>
           </XStack>
-          <Text fontSize={13} color="#64748b" fontWeight="600">
-            {deals.length} sản phẩm
-          </Text>
+          <XStack alignItems="center" gap="$2">
+            {deals.length > 0 && (
+              <View
+                backgroundColor="#f1f5f9"
+                paddingHorizontal="$2.5"
+                paddingVertical="$1"
+                borderRadius={12}
+                borderWidth={1}
+                borderColor="#e2e8f0"
+              >
+                <Text fontSize={12} color="#475569" fontWeight="700">
+                  Trang {currentPage}/{totalPages}
+                </Text>
+              </View>
+            )}
+            <Text fontSize={13} color="#64748b" fontWeight="600">
+              {deals.length} sản phẩm
+            </Text>
+          </XStack>
         </XStack>
 
         {loading ? (
@@ -406,15 +440,15 @@ export default function GuestCampaignScreen() {
           </Card>
         ) : (
           <XStack flexWrap="wrap" justifyContent="space-between" gap="$3">
-            {deals.map((product: MobileProductSearchResultDto, index: number) => {
+            {paginatedDeals.map((product: MobileProductSearchResultDto, index: number) => {
               const displayPrice = product.promotionPrice ?? product.unitPrice;
               const hasDiscount = !!product.promotionPrice && product.promotionPrice < product.unitPrice;
 
               return (
                 <Animated.View
-                  key={`deal-${product.productId}-${index}`}
+                  key={`deal-${product.productId}-p${currentPage}-${index}`}
                   style={{ width: cardWidth, marginBottom: 14 }}
-                  entering={FadeInUp.delay(200 + index * 40).duration(450)}
+                  entering={FadeInUp.delay(80 + index * 40).duration(400)}
                 >
                   <View
                     borderRadius={20}
@@ -602,6 +636,103 @@ export default function GuestCampaignScreen() {
                 </Animated.View>
               );
             })}
+          </XStack>
+        )}
+
+        {/* PAGINATION CONTROLS */}
+        {!loading && totalPages > 1 && (
+          <XStack
+            justifyContent="center"
+            alignItems="center"
+            gap="$2"
+            marginTop="$4"
+            marginBottom="$4"
+            flexWrap="wrap"
+          >
+            {/* Previous Page Button */}
+            <Button
+              size="$3.5"
+              backgroundColor={currentPage === 1 ? '#f8fafc' : 'white'}
+              borderWidth={1}
+              borderColor={currentPage === 1 ? '#e2e8f0' : '#cbd5e1'}
+              disabled={currentPage === 1}
+              opacity={currentPage === 1 ? 0.4 : 1}
+              icon={<ChevronLeft size={18} color={currentPage === 1 ? '#94a3b8' : '#005b2b'} />}
+              onPress={() => handlePageChange(currentPage - 1)}
+              pressStyle={{ scale: 0.95 }}
+              borderRadius={12}
+            >
+              <Text
+                fontSize={13}
+                fontWeight="700"
+                color={currentPage === 1 ? '#94a3b8' : '#005b2b'}
+              >
+                Trước
+              </Text>
+            </Button>
+
+            {/* Page Numbers */}
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+              const isActive = pageNum === currentPage;
+              return (
+                <Button
+                  key={`page-btn-${pageNum}`}
+                  size="$3.5"
+                  width={42}
+                  height={42}
+                  padding={0}
+                  justifyContent="center"
+                  alignItems="center"
+                  borderRadius={12}
+                  backgroundColor={isActive ? '#005b2b' : 'white'}
+                  borderWidth={1}
+                  borderColor={isActive ? '#005b2b' : '#e2e8f0'}
+                  onPress={() => handlePageChange(pageNum)}
+                  pressStyle={{ scale: 0.95 }}
+                  style={
+                    isActive
+                      ? {
+                          elevation: 3,
+                          shadowColor: '#005b2b',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.25,
+                          shadowRadius: 4,
+                        }
+                      : undefined
+                  }
+                >
+                  <Text
+                    fontSize={14}
+                    fontWeight="800"
+                    color={isActive ? 'white' : '#334155'}
+                  >
+                    {pageNum}
+                  </Text>
+                </Button>
+              );
+            })}
+
+            {/* Next Page Button */}
+            <Button
+              size="$3.5"
+              backgroundColor={currentPage === totalPages ? '#f8fafc' : 'white'}
+              borderWidth={1}
+              borderColor={currentPage === totalPages ? '#e2e8f0' : '#cbd5e1'}
+              disabled={currentPage === totalPages}
+              opacity={currentPage === totalPages ? 0.4 : 1}
+              iconAfter={<ChevronRight size={18} color={currentPage === totalPages ? '#94a3b8' : '#005b2b'} />}
+              onPress={() => handlePageChange(currentPage + 1)}
+              pressStyle={{ scale: 0.95 }}
+              borderRadius={12}
+            >
+              <Text
+                fontSize={13}
+                fontWeight="700"
+                color={currentPage === totalPages ? '#94a3b8' : '#005b2b'}
+              >
+                Sau
+              </Text>
+            </Button>
           </XStack>
         )}
       </ScrollView>

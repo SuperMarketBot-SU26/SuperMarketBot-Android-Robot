@@ -14,8 +14,8 @@
  *   { t: 'test_motor', payload }      — chạy thử 1 bánh "slot_speedPct"
  */
 
-const ESP32_WS_CONTROL = 'ws://192.168.4.1:81';
-const RECONNECT_INTERVAL_MS = 3000;
+const ESP32_WS_CONTROL = process.env.EXPO_PUBLIC_ROBOT_WS_URL || 'ws://192.168.4.1:81';
+const RECONNECT_INTERVAL_MS = 5000;
 const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 const ROBOT_CODE_DEFAULT = 'RB0001';
 
@@ -69,8 +69,11 @@ class RobotControlServiceClass {
 
       this.ws.onclose = () => {
         this.ws = null;
+        const wasConnected = this._isConnected;
         this._setConnected(false);
-        console.warn('[RobotControl] Mất kết nối Control. Thử reconnect...');
+        if (wasConnected) {
+          console.log('[RobotControl] Mất kết nối Control. Đang thử kết nối lại...');
+        }
         if (this.shouldReconnect) {
           this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
@@ -79,7 +82,8 @@ class RobotControlServiceClass {
         }
       };
     } catch (e) {
-      console.warn('[RobotControl] Không thể mở WebSocket:', e);
+      // Quiet fail if ESP32 is offline
+      console.log('[RobotControl] Không thể mở WebSocket:', e);
     }
   }
 

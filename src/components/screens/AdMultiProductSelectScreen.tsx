@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,12 +28,13 @@ import {
   RotateCcw,
   Search,
   AlertCircle,
+  Clock,
   X,
 } from 'lucide-react-native';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 import { useRobotMissionRuntime, PlaylistItem } from '../../context/RobotMissionRuntimeContext';
-import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
+import { ROBOT_CODE, useRobotRealtime } from '../../context/RobotRealtimeContext';
 import { AdInterruptionService } from '../../services/AdInterruptionService';
 import { RobotControlService } from '../../services/RobotControlService';
 
@@ -56,10 +57,14 @@ export default function AdMultiProductSelectScreen() {
   const { member } = useRobotAuth();
   const { dispatchCart } = useRobotGuide();
   const { activePlaylist, mission } = useRobotMissionRuntime();
+  const { subscribeNavigationStatus } = useRobotRealtime();
 
   const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const hasExitedRef = useRef(false);
+  const isSubmittingRef = useRef(false);
 
   // Modal thông báo lịch sự, thân thiện cho khách hàng (không hiện lỗi dev)
   const [notice, setNotice] = useState<CustomerNotice>({
@@ -68,6 +73,159 @@ export default function AdMultiProductSelectScreen() {
     title: '',
     message: '',
   });
+
+  // Tự động thoát về màn hình chờ khi phiên quảng cáo kết thúc hoặc bị hủy trên Web Admin
+  const handleAutoExit = useCallback((reason: string) => {
+    if (hasExitedRef.current || isSubmittingRef.current) return;
+    hasExitedRef.current = true;
+    console.log(`[AdMultiProductSelectScreen] Tự động thoát màn hình (${reason})`);
+
+    AdInterruptionService.clear();
+
+    try {
+      Speech.speak('Phiên quảng cáo đã kết thúc. Robot xin phép quay về màn hình chờ nhé!', {
+        language: 'vi-VN',
+        rate: 0.9,
+      });
+    } catch {}
+
+    try {
+      router.replace('/' as any);
+    } catch (e) {
+      console.warn('[AdMultiProductSelectScreen] router.replace failed:', e);
+    }
+  }, [router]);
+
+  // 1. Lắng nghe trạng thái hủy / hoàn tất qua SignalR realtime (ngay khi Admin bấm dừng hoặc hết giờ)
+  useEffect(() => {
+    const unsubscribe = subscribeNavigationStatus((payload: any) => {
+      const robotCode = payload?.robotCode || payload?.RobotCode;
+      if (robotCode) {
+        const inc = String(robotCode).toUpperCase();
+        const cur = ROBOT_CODE.toUpperCase();
+        const isMatch = inc === cur || (inc === 'RB001' && cur === 'RB0001') || (inc === 'RB0001' && cur === 'RB001');
+        if (!isMatch) return;
+      }
+
+      const navStatus = String(payload?.navStatus || payload?.NavStatus || '').toUpperCase();
+      console.log('[AdMultiProductSelectScreen] Realtime navStatus:', navStatus);
+
+      if (['CANCELLED', 'COMPLETED', 'STOPPED', 'FAILED', 'ESTOP', 'IDLE'].includes(navStatus)) {
+        handleAutoExit(`SignalR navStatus: ${navStatus}`);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [subscribeNavigationStatus, handleAutoExit]);
+
+  // 2. Bộ đếm thời gian thực thời lượng quảng cáo (Ad Session Countdown)
+  const interrupted = AdInterruptionService.getInterruptedMission();
+  const totalDurationSec = useMemo(() => {
+    if (interrupted?.estimatedDurationSeconds && interrupted.estimatedDurationSeconds > 0) {
+      return interrupted.estimatedDurationSeconds;
+    }
+    if (interrupted?.durationMinutes && interrupted.durationMinutes > 0) {
+      return interrupted.durationMinutes * 60;
+    }
+    if (mission?.estimatedDurationSeconds && mission.estimatedDurationSeconds > 0) {
+      return mission.estimatedDurationSeconds;
+    }
+    return 180; // Fallback 3 phút
+  }, [interrupted?.estimatedDurationSeconds, interrupted?.durationMinutes, mission?.estimatedDurationSeconds]);
+
+  const missionStartTime = useMemo(() => {
+    if (mission?.dispatchedAt) {
+      const ms = new Date(mission.dispatchedAt).getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (interrupted?.savedTimestamp) {
+      return interrupted.savedTimestamp;
+    }
+    return Date.now();
+  }, [mission?.dispatchedAt, interrupted?.savedTimestamp]);
+
+  const [remainingSec, setRemainingSec] = useState<number>(() => {
+    const elapsed = Math.floor((Date.now() - missionStartTime) / 1000);
+    return Math.max(0, totalDurationSec - elapsed);
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - missionStartTime) / 1000);
+      const remaining = Math.max(0, totalDurationSec - elapsed);
+      setRemainingSec(remaining);
+
+      if (remaining <= 0) {
+        clearInterval(timer);
+        handleAutoExit('Hết thời lượng phiên quảng cáo (duration countdown)');
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [totalDurationSec, missionStartTime, handleAutoExit]);
+
+  // 3. Polling dự phòng kiểm tra trạng thái máy chủ Backend
+  useEffect(() => {
+    if (!API_BASE) return;
+    let isMounted = true;
+
+    const checkServerStatus = async () => {
+      if (isSubmittingRef.current || hasExitedRef.current) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/robot-operations/missions/${ROBOT_CODE}/active`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' },
+        });
+        if (res.ok) {
+          const activeMission = await res.json();
+          if (
+            !activeMission ||
+            !activeMission.missionId ||
+            activeMission.flowType !== 'ad' ||
+            ['COMPLETED', 'CANCELLED', 'STOPPED', 'FAILED'].includes(activeMission.status)
+          ) {
+            console.log('[AdMultiProductSelectScreen] Máy chủ xác nhận ad mission đã kết thúc:', activeMission);
+            if (isMounted) {
+              handleAutoExit('Máy chủ đã kết thúc phiên quảng cáo');
+            }
+          }
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(checkServerStatus, 2000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [handleAutoExit]);
+
+  // 4. Kiosk Inactivity Guard (60 giây nếu khách không thao tác)
+  const inactivityTimerRef = useRef<any>(null);
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    if (!isSubmittingRef.current && !hasExitedRef.current) {
+      inactivityTimerRef.current = setTimeout(() => {
+        handleAutoExit('Không có thao tác trong 60 giây');
+      }, 60000);
+    }
+  }, [handleAutoExit]);
+
+  useEffect(() => {
+    resetInactivityTimer();
+    return () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [resetInactivityTimer]);
+
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   // 1. Thu thập và khử trùng lặp toàn bộ sản phẩm trong phiên quảng cáo, sắp xếp theo thứ tự ưu tiên
   const products = useMemo(() => {
@@ -186,6 +344,7 @@ export default function AdMultiProductSelectScreen() {
     if (isSubmitting) return;
 
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     try {
       // 3.1 Dừng động cơ robot để đảm bảo an toàn tuyệt đối
       RobotControlService.sendMove(0, 0, 0);
@@ -241,6 +400,7 @@ export default function AdMultiProductSelectScreen() {
           onPrimary: () => setNotice((prev) => ({ ...prev, visible: false })),
         });
         setIsSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 
@@ -261,6 +421,8 @@ export default function AdMultiProductSelectScreen() {
       router.push('/cart-guide-map' as any);
     } catch (err: any) {
       console.warn('[AdMultiProductSelectScreen] Start guide error:', err);
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
 
       // UNHAPPY CASE 2 & 3: Xử lý lỗi một cách lịch sự, ấm áp (KHÔNG VĂNG LỖI DEV)
       const errText = String(err?.message || '');
@@ -297,11 +459,13 @@ export default function AdMultiProductSelectScreen() {
         },
       });
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
   // 4. HAPPY CASE 2: Khách bấm "Quay lại quảng cáo"
   const handleBackToAd = async () => {
+    hasExitedRef.current = true;
     if (AdInterruptionService.hasInterruptedMission()) {
       const interrupted = AdInterruptionService.getInterruptedMission()!;
       AdInterruptionService.clear();
@@ -328,7 +492,12 @@ export default function AdMultiProductSelectScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={['top', 'left', 'right']}
+      onTouchStart={resetInactivityTimer}
+      onTouchMove={resetInactivityTimer}
+    >
       <View style={styles.container}>
         {/* ==================== 1. TOP HEADER (TWO-ROW CLEAN LAYOUT) ==================== */}
         <View style={styles.header}>
@@ -346,6 +515,15 @@ export default function AdMultiProductSelectScreen() {
               <Sparkles size={13} color="#d97706" />
               <Text style={styles.headerPillText}>ƯU ĐÃI QUẢNG CÁO</Text>
             </View>
+
+            {remainingSec !== null && remainingSec > 0 && (
+              <View style={[styles.timerBadge, remainingSec <= 30 && styles.timerBadgeUrgent]}>
+                <Clock size={13} color={remainingSec <= 30 ? '#ef4444' : '#64748b'} />
+                <Text style={[styles.timerText, remainingSec <= 30 && styles.timerTextUrgent]}>
+                  {formatTime(remainingSec)}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.memberBadge}>
               <View style={styles.memberDot} />
@@ -682,6 +860,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  timerBadgeUrgent: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
+  },
+  timerText: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  timerTextUrgent: {
+    color: '#ef4444',
   },
   memberBadge: {
     flexDirection: 'row',

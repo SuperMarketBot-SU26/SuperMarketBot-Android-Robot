@@ -39,6 +39,7 @@ export interface RobotPoseState {
 }
 
 interface Store2DMapCanvasProps {
+  shelves?: StoreShelf[];
   robotPose?: RobotPoseState;
   selectedShelfId?: number | null;
   onShelfPress?: (shelf: StoreShelf) => void;
@@ -49,6 +50,7 @@ interface Store2DMapCanvasProps {
 }
 
 export function Store2DMapCanvas({
+  shelves,
   robotPose,
   selectedShelfId,
   onShelfPress,
@@ -151,17 +153,17 @@ export function Store2DMapCanvas({
       {/* ── 4. Tường ranh giới & Cửa vào siêu thị ── */}
       <G>
         <Line x1={0} y1={0} x2={3000} y2={0} stroke={wallStroke} strokeWidth={38} strokeLinecap="round" />
-        <Line x1={0} y1={0} x2={0} y2={3000} stroke={wallStroke} strokeWidth={38} strokeLinecap="round" />
         <Line x1={3000} y1={0} x2={3000} y2={3000} stroke={wallStroke} strokeWidth={38} strokeLinecap="round" />
+        <Line x1={0} y1={3000} x2={3000} y2={3000} stroke={wallStroke} strokeWidth={38} strokeLinecap="round" />
 
-        {/* Tường dưới mở lối cho Cửa vào */}
-        <Line x1={0} y1={3000} x2={s(DOOR.x)} y2={3000} stroke={wallStroke} strokeWidth={38} />
-        <Line x1={s(DOOR.x + DOOR.width)} y1={3000} x2={3000} y2={3000} stroke={wallStroke} strokeWidth={38} />
+        {/* Tường bên trái mở lối cho Cửa vào hành lang */}
+        <Line x1={0} y1={0} x2={0} y2={1500} stroke={wallStroke} strokeWidth={38} />
+        <Line x1={0} y1={2100} x2={0} y2={3000} stroke={wallStroke} strokeWidth={38} />
 
         {/* Mũi tên & Nhãn Cửa Vào */}
-        <Line x1={s(DOOR.x)} y1={3000} x2={s(DOOR.x + 0.22)} y2={2780} stroke="#16a34a" strokeWidth={20} />
-        <SvgText x={s(DOOR.x + 0.22)} y={3150} fill="#15803d" fontSize={75} fontWeight="800">
-          CỬA VÀO ➔
+        <Line x1={-60} y1={1800} x2={180} y2={1800} stroke="#16a34a" strokeWidth={20} strokeLinecap="round" />
+        <SvgText x={-90} y={1825} fill="#15803d" fontSize={70} fontWeight="800" textAnchor="end">
+          ➔ CỬA VÀO
         </SvgText>
       </G>
 
@@ -232,8 +234,8 @@ export function Store2DMapCanvas({
         </SvgText>
       </G>
 
-      {/* ── 7. 6 KỆ HÀNG CHÍNH THỨC SIÊU THỊ ── */}
-      {SHELVES_6.map((shelf) => {
+      {/* ── 7. KỆ HÀNG SIÊU THỊ (Đồng bộ động từ Web Admin) ── */}
+      {(shelves && shelves.length > 0 ? shelves : SHELVES_6).map((shelf) => {
         const shX = s(shelf.x);
         const shY = s(shelf.y);
         const shW = s(shelf.width);

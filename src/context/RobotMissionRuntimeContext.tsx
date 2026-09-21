@@ -407,26 +407,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     const activeMission = missionRef.current;
     if (!activeMission) return;
 
-    // 1. Lưu lộ trình quảng cáo dở dang vào AdInterruptionService
-    const waypoints = activeMission.waypoints ?? [];
-    const remainingWaypoints = waypoints.slice(activeWaypointIndex + 1);
-    const remainingNodeIds = remainingWaypoints.map((w: any) => w.nodeId || w.id).filter((id) => id > 0);
-    const remainingShelfIds = remainingWaypoints.map((w: any) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
-    const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
-
-    AdInterruptionService.saveInterruptedMission({
-      originalMissionId: activeMission.missionId,
-      robotCode: ROBOT_CODE,
-      remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : waypoints.map((w: any) => w.nodeId || w.id).filter((id) => id > 0),
-      remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
-      isPerShelfAd: isPerShelf,
-      isFreeRoam: Boolean(activeMission.isFreeRoam),
-      floorId: activeMission.floorId ?? 1,
-      campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
-      interruptedAtWaypointIndex: activeWaypointIndex,
-      totalWaypoints: waypoints.length,
-      savedTimestamp: Date.now(),
-    });
+    // 1. Dọn dẹp trạng thái quảng cáo cũ, không lưu hoãn để tránh tự động kích hoạt ad sau khi dẫn đường
+    AdInterruptionService.clear();
 
     // 2. Hủy mission ad hiện tại trên Backend để giải phóng robot
     await fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Guest requested search for other products')}`, {
@@ -482,6 +464,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
       const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
+      const durMinutes = (activeMission as any).durationMinutes ?? (activeMission.estimatedDurationSeconds ? Math.ceil(activeMission.estimatedDurationSeconds / 60) : undefined);
       AdInterruptionService.saveInterruptedMission({
         originalMissionId: activeMission.missionId,
         robotCode: ROBOT_CODE,
@@ -493,6 +476,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         campaignId: isPerShelf ? null : (activeMission.campaignId ?? null),
         interruptedAtWaypointIndex: currentIdx,
         totalWaypoints: activeMission.waypoints.length,
+        durationMinutes: durMinutes,
+        estimatedDurationSeconds: activeMission.estimatedDurationSeconds ?? undefined,
         savedTimestamp: Date.now(),
       });
 
@@ -503,10 +488,9 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       }).catch(() => undefined);
     }
 
-    // 4. Ẩn ngay AdMissionOverlay và dọn dẹp state overlay để mở đường cho screen
+    // 4. Giữ nguyên mission state để Ad Session Timer & SignalR listener tiếp tục theo dõi,
+    // chỉ làm rỗng activePlaylist tạm thời để nhường toàn bộ giao diện cho catalog screen.
     setActivePlaylist([]);
-    setMission(null);
-    missionRef.current = null;
 
     // 5. Điều hướng tức thì sang màn hình danh mục tất cả sản phẩm khuyến mãi
     try {
@@ -837,6 +821,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
               setActivePlaylist([]);
               setMission(null);
               missionRef.current = null;
+              AdInterruptionService.clear();
+              try { router.replace('/' as any); } catch {}
               void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
             }, 5000);
             return;
@@ -846,13 +832,18 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
             setLastScan(null);
             setMission(null);
             missionRef.current = null;
+            AdInterruptionService.clear();
+            try { router.replace('/' as any); } catch {}
             void RobotControlService.dispatchAutonomous({ robotCode: ROBOT_CODE, flowType: 'return', nodeIds: [7], floorId: 1 });
             return;
           }
         }
         if (nextStatus === 'CANCELLED') {
           const cancelReason = String(valueOf(payload, 'error', 'Error') ?? valueOf(payload, 'reason', 'Reason') ?? '');
-          const isInterruptedForGuide = AdInterruptionService.hasInterruptedMission() || cancelReason.toLowerCase().includes('guidance');
+          const isInterruptedForGuide = AdInterruptionService.hasInterruptedMission() ||
+            cancelReason.toLowerCase().includes('guidance') ||
+            cancelReason.toLowerCase().includes('search') ||
+            cancelReason.toLowerCase().includes('guide');
           const isTimerExpired = cancelReason.toLowerCase().includes('expired') || isMissionExpiringRef.current;
 
           console.log(`[RobotMissionRuntime] Nhận trạng thái CANCELLED (reason: "${cancelReason}"). Dọn dẹp nhiệm vụ.`);
@@ -863,6 +854,10 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           setLastScan(null);
           setMission(null);
           missionRef.current = null;
+          AdInterruptionService.clear();
+          if (!isInterruptedForGuide) {
+            try { router.replace('/' as any); } catch {}
+          }
         }
         if (nextStatus === 'ESTOP') {
           void VoiceService.speak('Dừng khẩn cấp.');
@@ -870,6 +865,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           setLastScan(null);
           setMission(null);
           missionRef.current = null;
+          AdInterruptionService.clear();
+          try { router.replace('/' as any); } catch {}
         }
         if (pendingScansRef.current === 0 && !isAdFlow) {
           missionRef.current = null;
@@ -957,6 +954,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       setActivePlaylist([]);
       setMission(null);
       missionRef.current = null;
+      AdInterruptionService.clear();
+      try { router.replace('/' as any); } catch {}
 
       // 2. Hủy mission trên backend
       fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/cancel?reason=${encodeURIComponent('Ad session expired by duration timer')}`, {

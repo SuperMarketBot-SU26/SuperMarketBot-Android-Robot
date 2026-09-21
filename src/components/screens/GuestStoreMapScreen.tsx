@@ -50,6 +50,7 @@ import {
   SUPERMARKET_NODES,
 } from '../map/StoreLayoutConstants';
 import { useRobotRealtime, ROBOT_CODE } from '../../context/RobotRealtimeContext';
+import { StoreMapService } from '../../services/StoreMapService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useNotification } from '../../context/NotificationContext';
@@ -60,9 +61,13 @@ export default function GuestStoreMapScreen() {
   const router = useRouter();
   const { speak } = useRobotVoice();
   const { showNotification } = useNotification();
-  const { isConnected, subscribeTelemetry, subscribeNavigationStatus } = useRobotRealtime();
+  const { isConnected, subscribeTelemetry, subscribeNavigationStatus, subscribeMapLayoutUpdated } = useRobotRealtime();
   const { member } = useRobotAuth();
   const isMember = Boolean(member);
+
+  // Danh sách kệ hàng động được đồng bộ từ Web Admin qua Backend
+  const [shelves, setShelves] = useState<StoreShelf[]>(SHELVES_6);
+  const [isLiveSynced, setIsLiveSynced] = useState(false);
 
   // State vị trí & thông số Robot AMR
   const [robotPose, setRobotPose] = useState<RobotPoseState>({
@@ -77,6 +82,44 @@ export default function GuestStoreMapScreen() {
   const [selectedShelf, setSelectedShelf] = useState<StoreShelf | null>(null);
   const [activeGuidedShelf, setActiveGuidedShelf] = useState<StoreShelf | null>(null);
   const [isGuiding, setIsGuiding] = useState(false);
+
+  // Tải sơ đồ kệ hàng động từ Backend và lắng nghe sự kiện đồng bộ từ Web Admin
+  useEffect(() => {
+    let mounted = true;
+
+    const loadLayout = async (force = false) => {
+      try {
+        const layout = await StoreMapService.getStoreMapLayout(1, force);
+        if (layout && layout.shelves && layout.shelves.length > 0 && mounted) {
+          setShelves(layout.shelves);
+          setIsLiveSynced(true);
+          setSelectedShelf((prev) => {
+            if (!prev) return null;
+            return layout.shelves.find((s) => s.shelfId === prev.shelfId) || prev;
+          });
+        }
+      } catch (e) {
+        console.warn('[GuestStoreMapScreen] Error loading store layout:', e);
+      }
+    };
+
+    void loadLayout();
+
+    const unsubMapLayout = subscribeMapLayoutUpdated((payload) => {
+      console.log('[GuestStoreMapScreen] 🗺️ Sơ đồ bản đồ 2D vừa cập nhật từ Web Admin:', payload);
+      showNotification({
+        type: 'info',
+        title: 'Bản Đồ Cập Nhật',
+        message: 'Tọa độ và vị trí kệ hàng đã được đồng bộ tự động từ Web Admin!',
+      });
+      void loadLayout(true);
+    });
+
+    return () => {
+      mounted = false;
+      unsubMapLayout();
+    };
+  }, [subscribeMapLayoutUpdated, showNotification]);
 
   // Pan & Zoom controls
   const mapScale = useSharedValue(1);
@@ -237,7 +280,9 @@ export default function GuestStoreMapScreen() {
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle}>Sơ Đồ Quầy Kệ 2D</Text>
           <Text style={styles.headerSubtitle}>
-            {isMember ? `Chào ${member?.fullName || 'Thành viên'} · 6 Kệ hàng chính` : 'Siêu thị 3m × 3m · 6 Kệ hàng chính'}
+            {isMember
+              ? `Chào ${member?.fullName || 'Thành viên'} · ${shelves.length} Kệ hàng`
+              : `Sơ đồ ${shelves.length} Kệ hàng · Đồng bộ động ⚡`}
           </Text>
         </View>
 
@@ -264,11 +309,11 @@ export default function GuestStoreMapScreen() {
             activeOpacity={0.75}
           >
             <Text style={[styles.filterChipText, !selectedShelf && styles.filterChipTextActive]}>
-              Tất cả (6)
+              {`Tất cả (${shelves.length})`}
             </Text>
           </TouchableOpacity>
 
-          {SHELVES_6.map((shelf) => {
+          {shelves.map((shelf) => {
             const isSelected = selectedShelf?.shelfId === shelf.shelfId;
             return (
               <TouchableOpacity
@@ -302,6 +347,7 @@ export default function GuestStoreMapScreen() {
       <View style={styles.mapViewport}>
         <Animated.View style={[styles.canvasContainer, mapAnimatedStyle]}>
           <Store2DMapCanvas
+            shelves={shelves}
             robotPose={robotPose}
             selectedShelfId={selectedShelf?.shelfId}
             onShelfPress={handleSelectShelf}

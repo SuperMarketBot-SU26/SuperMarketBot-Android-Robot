@@ -18,6 +18,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Text, View, XStack, YStack } from 'tamagui';
 import { useRobotVoice } from '../../hooks/useRobotVoice';
+import { AdInterruptionService } from '../../services/AdInterruptionService';
 
 export default function WelcomeScreen() {
   const { speak } = useRobotVoice();
@@ -28,6 +29,10 @@ export default function WelcomeScreen() {
   // Trạng thái quá trình khởi động hệ thống (Bỏ qua nếu quay lại từ Idle Timeout)
   const [isStarting, setIsStarting] = useState(!shouldSkip);
   const [startupLog, setStartupLog] = useState('⚡ Đang khởi động hệ thống robot...');
+
+  useEffect(() => {
+    AdInterruptionService.clear();
+  }, []);
 
   const floatY = useSharedValue(0);
   const glowOpacity = useSharedValue(0.4);
@@ -504,6 +509,7 @@ export default function WelcomeScreen() {
                 <Pressable
                   onPress={(e) => {
                     e.stopPropagation();
+                    AdInterruptionService.clear();
                     speak('Tuyệt vời! Hãy cùng bắt đầu mua sắm.');
                     router.push('/role-selection');
                   }}
@@ -523,6 +529,7 @@ export default function WelcomeScreen() {
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
+                      AdInterruptionService.clear();
                       speak('Đang mở danh sách siêu khuyến mãi hôm nay!');
                       router.push('/guest-campaign');
                     }}
@@ -539,6 +546,7 @@ export default function WelcomeScreen() {
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
+                      AdInterruptionService.clear();
                       speak('Mở trang tìm kiếm sản phẩm.');
                       router.push('/product-search' as any);
                     }}

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import {
   MapPin,
   Navigation,
@@ -72,7 +72,8 @@ export function AdMissionOverlay({
     setIsDismissed(false);
   }, [activeWaypoint?.nodeId]);
 
-  if (!mission || mission.flowType !== 'ad') return null;
+  const pathname = usePathname();
+  if (!mission || mission.flowType !== 'ad' || pathname === '/ad-multi-select' || pathname?.includes('ad-multi-select')) return null;
 
   const isFreeRoam = mission.isFreeRoam
     || mission.adMode === 'freeroam'

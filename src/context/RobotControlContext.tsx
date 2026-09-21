@@ -54,7 +54,6 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
 
     const onConn = (c: boolean) => connRef.current?.(c);
     RobotControlService.onConnection(onConn);
-    RobotControlService.connect();
 
     return () => {
       isMounted = false;

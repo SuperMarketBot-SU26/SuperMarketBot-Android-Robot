@@ -1,7 +1,12 @@
 import { Stack } from 'expo-router';
 import { TamaguiProvider } from 'tamagui';
 import tamaguiConfig from '../theme/tamagui.config';
-import { View } from 'react-native';
+import { View, LogBox } from 'react-native';
+
+LogBox.ignoreLogs([
+  '[RobotControl]',
+  'Mất kết nối Control',
+]);
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { CustomerSessionProvider } from '../context/CustomerSessionContext';
 import { RobotAuthProvider } from '../context/RobotAuthContext';
@@ -14,6 +19,7 @@ import { RobotGuideProvider, useRobotGuide } from '../context/RobotGuideContext'
 import { RobotMissionRuntimeProvider, useRobotMissionRuntime } from '../context/RobotMissionRuntimeContext';
 import { RobotRealtimeProvider } from '../context/RobotRealtimeContext';
 import ZoneAdOverlay from '../components/ui/ZoneAdOverlay';
+import { LowBatteryLockOverlay } from '../components/common/LowBatteryLockOverlay';
 import { useKeepAwake } from 'expo-keep-awake';
 
 /**
@@ -43,6 +49,7 @@ function RootLayoutContent() {
     >
       <Stack screenOptions={{ headerShown: false }} />
       <AdAwareZoneOverlay />
+      <LowBatteryLockOverlay />
     </View>
   );
 }

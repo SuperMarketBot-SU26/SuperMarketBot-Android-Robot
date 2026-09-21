@@ -7,6 +7,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, ZoomIn, useSharedValue, withRepeat, withTiming, withSequence, useAnimatedStyle, Easing, interpolateColor } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
+import { AdInterruptionService } from '../../services/AdInterruptionService';
 
 function SearchSkeleton() {
   const opacity = useSharedValue(0.4);
@@ -155,6 +156,7 @@ import { CartService } from '../../services/CartService';
 import { useNotification } from '../../context/NotificationContext';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { SHELVES_6 } from '../map/StoreLayoutConstants';
 
 const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
 
@@ -164,30 +166,68 @@ export default function MemberSearchScreen() {
   const params = useLocalSearchParams();
   const { query: initialQuery } = params as { query?: string };
   const { speak, stop } = useRobotVoice();
-  const { token } = useRobotAuth();
+  const { member, token } = useRobotAuth();
+  const isMember = Boolean(token && member);
   const { dispatchCart } = useRobotGuide();
 
   const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
-  const [productTypes, setProductTypes] = useState<ProductTypeDto[]>([]);
   const [recipeIngredients, setRecipeIngredients] = useState<IngredientRecommendationDto[]>([]);
-  const [searchIntent, setSearchIntent] = useState<'recipe' | 'product'>('product');
+  const [searchIntent, setSearchIntent] = useState<'product' | 'recipe'>('product');
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [aiRanked, setAiRanked] = useState<boolean>(false);
+  const [productTypes, setProductTypes] = useState<ProductTypeDto[]>([]);
   const inputRef = useRef<TextInput>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showNotification } = useNotification();
 
-  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
-  const [aiRanked, setAiRanked] = useState(false);
+  useEffect(() => {
+    AdInterruptionService.clear();
+  }, []);
 
   // Map dữ liệu API về format UI
   const mapApiToUI = (items: any[]) => {
     return items.map(p => {
       const formattedPrice = p.unitPrice.toLocaleString('vi-VN') + 'đ';
       const loc = p.location || {};
-      const location = [loc.zoneName || loc.zone, loc.aisleName || loc.aisleCode, loc.shelfName, loc.slotCode]
-        .filter(Boolean).join(' | ') || p.categoryName || 'Vị trí đang cập nhật';
+
+      const shelfId = p.shelfId || loc.shelfId;
+      let shelfName = p.shelfName || loc.shelfName;
+      let aisleCode = p.aisleCode || loc.aisleCode;
+      let aisleName = p.aisleName || loc.aisleName;
+      let levelNumber = p.levelNumber || loc.levelNumber;
+      let slotCode = p.slotCode || loc.slotCode;
+
+      if (!shelfName) {
+        let foundShelf = shelfId ? SHELVES_6.find((s) => s.shelfId === shelfId) : null;
+        if (!foundShelf && aisleCode) {
+          foundShelf = SHELVES_6.find((s) => s.aisleCode.toLowerCase() === aisleCode?.toLowerCase());
+        }
+        if (!foundShelf && (p.categoryName || p.productName || p.name)) {
+          const q = `${p.categoryName || ''} ${p.productName || p.name || ''}`.toLowerCase();
+          if (q.includes('bánh') || q.includes('kẹo') || q.includes('snack') || q.includes('ăn vặt')) foundShelf = SHELVES_6.find((s) => s.shelfId === 1);
+          else if (q.includes('nước') || q.includes('sữa') || q.includes('uống') || q.includes('giải khát')) foundShelf = SHELVES_6.find((s) => s.shelfId === 2);
+          else if (q.includes('thịt') || q.includes('cá') || q.includes('trứng') || q.includes('rau') || q.includes('tươi')) foundShelf = SHELVES_6.find((s) => s.shelfId === 3);
+          else if (q.includes('mì') || q.includes('gạo') || q.includes('phở') || q.includes('khô')) foundShelf = SHELVES_6.find((s) => s.shelfId === 4);
+          else if (q.includes('giặt') || q.includes('rửa') || q.includes('gia dụng') || q.includes('tắm') || q.includes('gội')) foundShelf = SHELVES_6.find((s) => s.shelfId === 5);
+          else if (q.includes('gia vị') || q.includes('dầu') || q.includes('mắm') || q.includes('hạt nêm') || q.includes('hào') || q.includes('trà')) foundShelf = SHELVES_6.find((s) => s.shelfId === 6);
+        }
+        if (foundShelf) {
+          shelfName = foundShelf.name;
+          aisleCode = aisleCode || foundShelf.aisleCode;
+          slotCode = slotCode || `K${foundShelf.shelfId}_T1_01`;
+        }
+      }
+
+      const aisleDisplay = aisleCode ? `Dãy ${aisleCode}` : (aisleName || '');
+      const levelDisplay = levelNumber ? `Tầng ${levelNumber}` : '';
+      const slotDisplay = slotCode ? `Ô ${slotCode}` : '';
+
+      const locationParts = [shelfName, aisleDisplay, levelDisplay, slotDisplay].filter(Boolean);
+      const location = locationParts.length > 0 ? locationParts.join(' · ') : (p.categoryName || 'Vị trí đang cập nhật');
+
       return {
         id: p.productId,
         name: p.productName,
@@ -197,8 +237,9 @@ export default function MemberSearchScreen() {
         badgeColor: p.status === 'Available' || p.status === 'instock' ? '#22c55e' : '#ef4444',
         image: p.imageUrl || 'https://via.placeholder.com/400',
         location,
+        shelfName: shelfName || location,
         distance: 'Tính toán...', // Lidar sẽ update sau
-        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${location}.`,
+        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${shelfName || location}.`,
         relevanceScore: p.relevanceScore || 0,
         healthTags: p.healthTags || []
       };
@@ -225,6 +266,28 @@ export default function MemberSearchScreen() {
 
     try {
       if (intent === 'recipe') {
+        if (!isMember) {
+          setIsSearching(false);
+          setIsLoading(false);
+          speak('Tính năng trợ lý nấu ăn AI dành riêng cho Thành viên. Quý khách vui lòng đăng nhập để sử dụng nhé!');
+          Alert.alert(
+            '🌟 Tính Năng Dành Cho Thành Viên',
+            'Trợ lý Nấu Ăn & Gom Nguyên Liệu AI là tính năng độc quyền dành riêng cho Thành viên SuperMarketBot.\n\nQuý khách có muốn đăng nhập để sử dụng tính năng này không?',
+            [
+              { text: 'Để sau', style: 'cancel' },
+              {
+                text: '👤 Quét khuôn mặt',
+                onPress: () => router.push({ pathname: '/face-scan', params: { returnUrl: '/product-search' } } as any),
+              },
+              {
+                text: '🔑 Đăng nhập',
+                onPress: () => router.push({ pathname: '/login', params: { returnUrl: '/product-search' } } as any),
+              },
+            ]
+          );
+          return;
+        }
+
         if (!silent) speak(`Xin chờ trong giây lát, trợ lý AI đang phân tích nguyên liệu cho món ${query}.`);
         const rec = await SearchService.recommendIngredients(cleanQ);
         setRecipeIngredients(rec.ingredients || []);
@@ -359,15 +422,20 @@ export default function MemberSearchScreen() {
     speak(voiceText);
   };
 
-  const handleGuideToProduct = async (product: { id: number; name: string; image?: string; price?: any; location?: string }) => {
+  const handleGuideToProduct = async (product: { id: number; name: string; image?: string; price?: any; location?: string; shelfName?: string }) => {
     try {
-      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy bán ${product.name}. Xin mời đi theo tôi!`);
+      AdInterruptionService.clear();
+      const targetShelf = product.shelfName || product.location || `quầy ${product.name}`;
+      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến ${targetShelf}. Xin mời đi theo tôi!`);
       showNotification({
         title: '🤖 DẪN ĐƯỜNG MUA SẮM',
-        message: `Đang khởi tạo lộ trình đến quầy ${product.name}`,
+        message: `Đang khởi tạo lộ trình đến ${targetShelf}`,
         type: 'info',
       });
-      await dispatchCart([{ productId: product.id, productName: product.name }]);
+      await dispatchCart([{ productId: product.id, productName: product.name }], {
+        fromAd: false,
+        returnUrl: '/product-search',
+      });
       router.push({
         pathname: '/cart-guide-map',
         params: {
@@ -375,7 +443,9 @@ export default function MemberSearchScreen() {
           productName: product.name,
           productImage: product.image || '',
           productPrice: String(product.price || 0),
-          shelfName: product.location || '',
+          shelfName: targetShelf,
+          returnUrl: '/product-search',
+          from: 'search',
         },
       } as any);
     } catch (err: any) {
@@ -577,13 +647,37 @@ export default function MemberSearchScreen() {
                                   <Text fontSize={16} fontWeight="900" color="#00A550">{product.price}</Text>
                                 </XStack>
 
-                                {/* Futuristic Kiosk Location Indicator */}
-                                <XStack backgroundColor="#f0fdf4" borderWidth={1} borderColor="#d1fae5" borderRadius={12} paddingHorizontal="$3" paddingVertical="$2" alignItems="center" gap="$2" marginTop="$1">
-                                  <MapPin size={14} color="#005b2b" />
-                                  <Text fontSize={11} fontWeight="bold" color="#005b2b" flex={1} numberOfLines={2}>
-                                    {product.location}
-                                  </Text>
-                                </XStack>
+                                {/* Interactive Shelf Location Indicator */}
+                                <Pressable
+                                  onPress={() => handleGuideToProduct(product)}
+                                  style={({ pressed }) => ({
+                                    opacity: pressed ? 0.85 : 1,
+                                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                                  })}
+                                >
+                                  <XStack
+                                    backgroundColor="#f0fdf4"
+                                    borderWidth={1}
+                                    borderColor="#bbf7d0"
+                                    borderRadius={12}
+                                    paddingHorizontal="$3"
+                                    paddingVertical="$2"
+                                    alignItems="center"
+                                    justifyContent="space-between"
+                                    marginTop="$1"
+                                  >
+                                    <XStack alignItems="center" gap="$2" flex={1}>
+                                      <MapPin size={14} color="#005b2b" />
+                                      <Text fontSize={11} fontWeight="bold" color="#005b2b" flex={1} numberOfLines={1}>
+                                        {product.location}
+                                      </Text>
+                                    </XStack>
+                                    <XStack alignItems="center" gap="$1" marginLeft="$2">
+                                      <Text fontSize={10} fontWeight="bold" color="#00A550">Dẫn đường</Text>
+                                      <Navigation size={12} color="#00A550" />
+                                    </XStack>
+                                  </XStack>
+                                </Pressable>
                               </YStack>
 
                               {/* Interactive Voice and Direction CTA Buttons */}
@@ -728,71 +822,73 @@ export default function MemberSearchScreen() {
               </YStack>
             </Animated.View>
 
-            {/* 3. TRỢ LÝ CÔNG THỨC NẤU ĂN AI (RECIPE ASSISTANT) */}
-            <Animated.View entering={FadeInDown.delay(350).duration(400)}>
-              <Card
-                backgroundColor="#F0FDF4"
-                borderWidth={1.5}
-                borderColor="#BBF7D0"
-                borderRadius={20}
-                padding="$4"
-                marginBottom="$4"
-                shadowColor="#00A550"
-                shadowRadius={8}
-                shadowOpacity={0.05}
-                style={{ elevation: 2 }}
-              >
-                <YStack gap="$2.5">
-                  <XStack gap="$2" alignItems="center">
-                    <View width={28} height={28} borderRadius={14} backgroundColor="#DCFCE7" justifyContent="center" alignItems="center">
-                      <Sparkles size={16} color="#00A550" />
-                    </View>
-                    <YStack flex={1}>
-                      <Text fontSize={14} fontWeight="900" color="#0F172A">
-                        Nấu Ăn Cùng Trợ Lý AI
-                      </Text>
-                      <Text fontSize={11} color="#166534" fontWeight="600">
-                        Tự động gom trọn bộ nguyên liệu trên kệ
-                      </Text>
-                    </YStack>
-                  </XStack>
+            {/* 3. TRỢ LÝ CÔNG THỨC NẤU ĂN AI (RECIPE ASSISTANT) - DÀNH RIÊNG CHO THÀNH VIÊN ĐÃ ĐĂNG NHẬP */}
+            {isMember && (
+              <Animated.View entering={FadeInDown.delay(350).duration(400)}>
+                <Card
+                  backgroundColor="#F0FDF4"
+                  borderWidth={1.5}
+                  borderColor="#BBF7D0"
+                  borderRadius={20}
+                  padding="$4"
+                  marginBottom="$4"
+                  shadowColor="#00A550"
+                  shadowRadius={8}
+                  shadowOpacity={0.05}
+                  style={{ elevation: 2 }}
+                >
+                  <YStack gap="$2.5">
+                    <XStack gap="$2" alignItems="center">
+                      <View width={28} height={28} borderRadius={14} backgroundColor="#DCFCE7" justifyContent="center" alignItems="center">
+                        <Sparkles size={16} color="#00A550" />
+                      </View>
+                      <YStack flex={1}>
+                        <Text fontSize={14} fontWeight="900" color="#0F172A">
+                          Nấu Ăn Cùng Trợ Lý AI
+                        </Text>
+                        <Text fontSize={11} color="#166534" fontWeight="600">
+                          Tự động gom trọn bộ nguyên liệu trên kệ
+                        </Text>
+                      </YStack>
+                    </XStack>
 
-                  <Text fontSize={12} color="#475569" lineHeight={18}>
-                    Nhập tên món ăn bất kỳ (vd: "Lẩu thái hải sản", "Thịt kho tàu"), robot sẽ phân tích công thức và chỉ đường lấy toàn bộ gia vị, rau củ trên kệ.
-                  </Text>
+                    <Text fontSize={12} color="#475569" lineHeight={18}>
+                      Nhập tên món ăn bất kỳ (vd: "Lẩu thái hải sản", "Thịt kho tàu"), robot sẽ phân tích công thức và chỉ đường lấy toàn bộ gia vị, rau củ trên kệ.
+                    </Text>
 
-                  <XStack gap="$2" marginTop="$1">
-                    <TouchableOpacity
-                      onPress={() => handlePopularSearch('Lẩu thái')}
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        borderWidth: 1.5,
-                        borderColor: '#00A550',
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        borderRadius: 16,
-                      }}
-                    >
-                      <Text color="#00A550" fontSize={12} fontWeight="800">🍲 Thử: Lẩu Thái</Text>
-                    </TouchableOpacity>
+                    <XStack gap="$2" marginTop="$1">
+                      <TouchableOpacity
+                        onPress={() => handlePopularSearch('Lẩu thái')}
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          borderWidth: 1.5,
+                          borderColor: '#00A550',
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 16,
+                        }}
+                      >
+                        <Text color="#00A550" fontSize={12} fontWeight="800">🍲 Thử: Lẩu Thái</Text>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={() => handlePopularSearch('Thịt kho tàu')}
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        borderWidth: 1.5,
-                        borderColor: '#00A550',
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        borderRadius: 16,
-                      }}
-                    >
-                      <Text color="#00A550" fontSize={12} fontWeight="800">🥩 Thử: Thịt Kho Tàu</Text>
-                    </TouchableOpacity>
-                  </XStack>
-                </YStack>
-              </Card>
-            </Animated.View>
+                      <TouchableOpacity
+                        onPress={() => handlePopularSearch('Thịt kho tàu')}
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          borderWidth: 1.5,
+                          borderColor: '#00A550',
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 16,
+                        }}
+                      >
+                        <Text color="#00A550" fontSize={12} fontWeight="800">🥩 Thử: Thịt Kho Tàu</Text>
+                      </TouchableOpacity>
+                    </XStack>
+                  </YStack>
+                </Card>
+              </Animated.View>
+            )}
 
             {/* 4. KHUYẾN MÃI GIÁ SỐC BANNER */}
             <Animated.View entering={FadeInDown.delay(450).duration(400)}>

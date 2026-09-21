@@ -26,7 +26,7 @@ export interface StoreShelf {
 }
 
 export const SHELVES_6: StoreShelf[] = [
-  // ── DÃY A01: Bánh Kẹo & Nước Giải Khát (Xanh dương / Indigo) ──
+  // ── DÃY A01: Bánh Kẹo & Nước Giải Khát (Hàng trên, cạnh Dock sạc) ──
   {
     shelfId: 1,
     arucoTag: 1,
@@ -34,10 +34,10 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 1 - Đồ Ăn Vặt & Bánh Kẹo',
     category: 'Bánh Kẹo',
     icon: '🍪',
-    x: 0.08,
-    y: 0.85,
-    width: 0.38,
-    height: 0.85,
+    x: 1.55,
+    y: 0.15,
+    width: 0.65,
+    height: 0.36,
     themeColor: '#2563eb',
     themeBg: 'rgba(37, 99, 235, 0.12)',
     sampleProducts: ['Bánh quy Oishi', 'Snack Lay\'s khoai tây', 'Bánh Chocopie', 'Kẹo dẻo Haribo', 'Bánh que Pocky'],
@@ -49,16 +49,16 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 2 - Nước Giải Khát & Đồ Uống',
     category: 'Giải Khát',
     icon: '🥤',
-    x: 0.45,
-    y: 0.08,
-    width: 0.85,
-    height: 0.38,
+    x: 2.25,
+    y: 0.15,
+    width: 0.65,
+    height: 0.36,
     themeColor: '#2563eb',
     themeBg: 'rgba(37, 99, 235, 0.12)',
     sampleProducts: ['Coca-Cola lon', 'Pepsi không calo', 'Trà xanh C2 chanh', 'Nước ép cam Teppy', 'Nước suối Aquafina'],
   },
 
-  // ── DÃY B01: Thực Phẩm Tươi Sống & Mì Ăn Liền (Xanh lá / Emerald) ──
+  // ── DÃY B01: Thực Phẩm Tươi Sống & Mì Ăn Liền (Tường phải & Tường đáy) ──
   {
     shelfId: 3,
     arucoTag: 3,
@@ -66,10 +66,10 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 3 - Thực Phẩm Tươi Sống',
     category: 'Tươi Sống',
     icon: '🥩',
-    x: 1.70,
-    y: 0.08,
-    width: 0.85,
-    height: 0.38,
+    x: 2.55,
+    y: 1.10,
+    width: 0.36,
+    height: 0.85,
     themeColor: '#16a34a',
     themeBg: 'rgba(22, 163, 74, 0.12)',
     sampleProducts: ['Thịt heo ba chỉ rút sườn', 'Thịt bò Úc phi lê', 'Trứng gà Ba Huân', 'Cá hồi Na Uy', 'Rau xà lách hữu cơ'],
@@ -81,16 +81,16 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 4 - Mì Ăn Liền & Đóng Gói',
     category: 'Mì & Khô',
     icon: '🍜',
-    x: 2.54,
-    y: 0.85,
-    width: 0.38,
-    height: 0.85,
+    x: 1.45,
+    y: 2.48,
+    width: 0.85,
+    height: 0.36,
     themeColor: '#16a34a',
     themeBg: 'rgba(22, 163, 74, 0.12)',
     sampleProducts: ['Mì Hảo Hảo tôm chua cay', 'Mì Kokomi tôm cay', 'Phở bò Đệ Nhất', 'Miến Phú Hương', 'Bún bò Huế khô'],
   },
 
-  // ── DÃY C01: Đồ Gia Dụng & Gia Vị (Cam ấm / Amber) ──
+  // ── DÃY C01: Đồ Gia Dụng & Gia Vị (Tường đáy trái & Vách giữa) ──
   {
     shelfId: 5,
     arucoTag: 5,
@@ -98,10 +98,10 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 5 - Đồ Gia Dụng & Tiện Ích',
     category: 'Gia Dụng',
     icon: '🧴',
-    x: 2.47,
-    y: 1.90,
-    width: 0.45,
-    height: 0.95,
+    x: 0.35,
+    y: 2.48,
+    width: 0.85,
+    height: 0.36,
     themeColor: '#d97706',
     themeBg: 'rgba(217, 119, 6, 0.12)',
     sampleProducts: ['Nước rửa chén Sunlight chanh', 'Nước giặt OMO Matic', 'Dầu gội Sunsilk óng mượt', 'Khăn giấy Paseo'],
@@ -113,44 +113,45 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 6 - Gia Vị & Trà',
     category: 'Gia Vị',
     icon: '🧂',
-    x: 1.35,
-    y: 1.95,
-    width: 0.38,
-    height: 0.95,
+    x: 0.60,
+    y: 1.10,
+    width: 0.85,
+    height: 0.36,
     themeColor: '#d97706',
     themeBg: 'rgba(217, 119, 6, 0.12)',
     sampleProducts: ['Nước mắm Nam Ngư Đệ Nhị', 'Dầu ăn Simply hạt cải', 'Hạt nêm Knorr thịt thăn', 'Muối i-ốt Bạc Liêu', 'Trà Lipton túi lọc'],
   },
 ];
 
-/* ─── Cashier desk ("Thu Ngân" - Góc dưới trái) ─── */
+/* ─── Cashier desk ("Thu Ngân" - Góc trên bên trái) ─── */
 export const CASHIER = {
   id: 'cashier-counter',
   label: 'THU NGÂN',
   subLabel: 'POS CHECKOUT',
   icon: '💳',
   x: 0.08,
-  y: 2.30,
-  width: 0.60,
-  height: 0.58,
+  y: 0.12,
+  width: 0.55,
+  height: 0.50,
   fill: 'rgba(100, 116, 139, 0.12)',
   stroke: '#475569',
 };
 
-/* ─── Door (Cửa vào - Cạnh dưới giữa Thu Ngân & Kệ 6) ─── */
+/* ─── Door (Cửa vào - Cạnh bên trái bên dưới Thu Ngân) ─── */
 export const DOOR = {
-  x: 0.80,
-  y: 3.0,
-  width: 0.45,
+  x: 0.0,
+  y: 1.70,
+  width: 0.40,
+  height: 0.40,
   label: 'CỬA VÀO ➔',
 };
 
-/* ─── Dock / Trạm sạc Robot (sát phía trên quầy thu ngân) ─── */
+/* ─── Dock / Trạm sạc Robot (Cạnh trên giữa Thu Ngân & Kệ 1) ─── */
 export const DOCK = {
-  x: 0.27,
-  y: 2.09,
-  outerRadius: 0.09,
-  innerRadius: 0.045,
+  x: 1.07,
+  y: 0.22,
+  outerRadius: 0.14,
+  innerRadius: 0.07,
   label: 'DOCK SẠC',
   icon: '⚡',
 };
@@ -169,14 +170,14 @@ export interface SupermarketNode {
 }
 
 export const SUPERMARKET_NODES: Record<number, SupermarketNode> = {
-  1: { nodeId: 1, name: 'Kệ 1 - Bánh kẹo & Snack', shelfId: 1, role: 'shelf', rosX: 1.5741, rosY: 0.0809, mapX: 0.27, mapY: 1.28, headingDeg: 90 },
-  2: { nodeId: 2, name: 'Kệ 2 - Nước giải khát', shelfId: 2, role: 'shelf', rosX: 2.1035, rosY: -0.2687, mapX: 0.88, mapY: 0.27, headingDeg: 180 },
-  3: { nodeId: 3, name: 'Kệ 3 - Thực phẩm tươi sống', shelfId: 3, role: 'shelf', rosX: 1.8738, rosY: -1.5971, mapX: 2.13, mapY: 0.27, headingDeg: 180 },
-  4: { nodeId: 4, name: 'Kệ 4 - Mì ăn liền & Đóng gói', shelfId: 4, role: 'shelf', rosX: 1.3943, rosY: -1.7470, mapX: 2.73, mapY: 1.28, headingDeg: 270 },
-  5: { nodeId: 5, name: 'Kệ 5 - Đồ gia dụng & Tiện ích', shelfId: 5, role: 'shelf', rosX: 0.0558, rosY: -1.5472, mapX: 2.70, mapY: 2.38, headingDeg: 270 },
-  6: { nodeId: 6, name: 'Kệ 6 - Gia vị & Trà', shelfId: 6, role: 'shelf', rosX: 0.0858, rosY: -1.1976, mapX: 1.54, mapY: 2.43, headingDeg: 90 },
-  7: { nodeId: 7, name: 'Quầy Thu Ngân (TN)', role: 'cashier', rosX: 0.2257, rosY: 0.0809, mapX: 0.38, mapY: 2.59, headingDeg: 0 },
-  8: { nodeId: 8, name: 'Trạm Sạc Robot (Dock)', role: 'dock', rosX: 0.8949, rosY: 0.4006, mapX: 0.27, mapY: 2.09, headingDeg: 90 },
+  1: { nodeId: 1, name: 'Kệ 1 - Bánh kẹo & Snack', shelfId: 1, role: 'shelf', rosX: 1.8653, rosY: 0.0230, mapX: 1.87, mapY: 0.48, headingDeg: 0 },
+  2: { nodeId: 2, name: 'Kệ 2 - Nước giải khát', shelfId: 2, role: 'shelf', rosX: 2.4465, rosY: -0.1091, mapX: 2.45, mapY: 0.61, headingDeg: 0 },
+  3: { nodeId: 3, name: 'Kệ 3 - Thực phẩm tươi sống', shelfId: 3, role: 'shelf', rosX: 2.3056, rosY: -1.2232, mapX: 2.31, mapY: 1.72, headingDeg: 270 },
+  4: { nodeId: 4, name: 'Kệ 4 - Mì ăn liền & Đóng gói', shelfId: 4, role: 'shelf', rosX: 1.5600, rosY: -1.7933, mapX: 1.56, mapY: 2.29, headingDeg: 270 },
+  5: { nodeId: 5, name: 'Kệ 5 - Đồ gia dụng & Tiện ích', shelfId: 5, role: 'shelf', rosX: 0.4254, rosY: -1.7383, mapX: 0.43, mapY: 2.24, headingDeg: 270 },
+  6: { nodeId: 6, name: 'Kệ 6 - Gia vị & Trà', shelfId: 6, role: 'shelf', rosX: 0.6543, rosY: -0.9325, mapX: 0.65, mapY: 1.43, headingDeg: 0 },
+  7: { nodeId: 7, name: 'Quầy Thu Ngân (TN)', role: 'cashier', rosX: 0.2257, rosY: 0.0809, mapX: 0.23, mapY: 0.42, headingDeg: 0 },
+  8: { nodeId: 8, name: 'Trạm Sạc Robot (Dock)', role: 'dock', rosX: 1.0683, rosY: 0.3709, mapX: 1.07, mapY: 0.13, headingDeg: 0 },
 };
 
 /**
@@ -204,35 +205,37 @@ export function resolveRobotPosition(payload: any, prev?: { x: number; y: number
     return { x: node.mapX, y: node.mapY, headingDeg: node.headingDeg, nodeName: node.name };
   }
 
-  // 2. Kiểm tra tọa độ trực tiếp trên Map SVG (0.1m -> 2.9m)
+  // 2. Kiểm tra tọa độ trực tiếp
   const valX = payload.x ?? payload.X ?? payload.xCoord ?? payload.XCoord;
   const valY = payload.y ?? payload.Y ?? payload.yCoord ?? payload.YCoord;
   const numX = typeof valX === 'number' ? valX : typeof valX === 'string' && valX !== '' ? Number(valX) : null;
   const numY = typeof valY === 'number' ? valY : typeof valY === 'string' && valY !== '' ? Number(valY) : null;
 
   if (numX !== null && numY !== null && Number.isFinite(numX) && Number.isFinite(numY)) {
-    // So khớp Euclid với tọa độ ROS (nếu là tọa độ ROS âm hoặc lớn hơn 3m)
+    // Chuyển đổi tọa độ ROS sang hệ Canvas 3m x 3m (mapX = x, mapY = 0.50 - y)
+    let canvasX = numX;
+    let canvasY = numY;
+    if (numY <= 0.5 && numY >= -2.5) {
+      canvasX = Math.max(0.1, Math.min(2.9, numX));
+      canvasY = Math.max(0.1, Math.min(2.9, 0.50 - numY));
+    }
+
     let nearestNode: SupermarketNode | null = null;
     let minDistance = Infinity;
     for (const n of Object.values(SUPERMARKET_NODES)) {
-      const d = Math.hypot(numX - n.rosX, numY - n.rosY);
+      const d = Math.hypot(canvasX - n.mapX, canvasY - n.mapY);
       if (d < minDistance) {
         minDistance = d;
         nearestNode = n;
       }
     }
-    if (nearestNode && minDistance <= 1.5) {
-      return { x: nearestNode.mapX, y: nearestNode.mapY, headingDeg: nearestNode.headingDeg, nodeName: nearestNode.name };
-    }
 
-    if (numX >= 0.1 && numX <= 2.9 && numY >= 0.1 && numY <= 2.9) {
-      return {
-        x: numX,
-        y: numY,
-        headingDeg: Number(payload.headingDeg ?? payload.HeadingDeg ?? prev?.headingDeg ?? 90),
-        nodeName: nearestNode ? `Gần ${nearestNode.name}` : `Tọa độ (${numX.toFixed(1)}m, ${numY.toFixed(1)}m)`,
-      };
-    }
+    return {
+      x: canvasX,
+      y: canvasY,
+      headingDeg: Number(payload.headingDeg ?? payload.HeadingDeg ?? prev?.headingDeg ?? 0),
+      nodeName: nearestNode ? `Gần ${nearestNode.name}` : `Tọa độ (${canvasX.toFixed(1)}m, ${canvasY.toFixed(1)}m)`,
+    };
   }
 
   // 3. Giữ nguyên vị trí cũ nếu đã có

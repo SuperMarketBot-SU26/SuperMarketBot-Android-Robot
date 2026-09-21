@@ -28,6 +28,7 @@ export interface InterruptedAdMission {
   productName?: string;
   shelfName?: string;
   durationMinutes?: number;
+  estimatedDurationSeconds?: number;
   savedTimestamp: number;
 }
 

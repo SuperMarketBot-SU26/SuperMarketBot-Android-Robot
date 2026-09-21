@@ -4,6 +4,10 @@ export interface ProductLocation {
   shelfId?: number;
   shelfName: string | null;
   zone: string | null;
+  aisleCode?: string | null;
+  aisleName?: string | null;
+  levelNumber?: number | null;
+  slotCode?: string | null;
 }
 
 export interface MobileProductSearchResultDto {
@@ -18,6 +22,14 @@ export interface MobileProductSearchResultDto {
   promotionPrice?: number;
   discountPercent?: number;
   promotionLabel?: string;
+  categoryName?: string;
+  shelfId?: number;
+  shelfName?: string;
+  aisleCode?: string;
+  aisleName?: string;
+  levelNumber?: number;
+  slotCode?: string;
+  zoneName?: string;
 }
 
 export interface SearchResultItemDto {
@@ -36,6 +48,10 @@ export interface SearchResultItemDto {
   aisleCode?: string;
   levelNumber?: number;
   slotCode?: string;
+  shelfId?: number;
+  shelfName?: string;
+  zoneName?: string;
+  aisleName?: string;
 }
 
 export interface SearchResponseDto {
@@ -74,10 +90,22 @@ export const SearchService = {
         status: item.status,
         imageUrl: item.imageUrl || null,
         productTypeId: 0,
+        categoryName: item.categoryName,
+        shelfId: item.shelfId,
+        shelfName: item.shelfName,
+        aisleCode: item.aisleCode,
+        aisleName: item.aisleName,
+        levelNumber: item.levelNumber,
+        slotCode: item.slotCode,
+        zoneName: item.zoneName,
         location: {
-          shelfId: undefined,
-          shelfName: item.slotCode || (item.aisleCode ? `Dãy ${item.aisleCode}` : null),
-          zone: item.categoryName || null,
+          shelfId: item.shelfId,
+          shelfName: item.shelfName || null,
+          zone: item.zoneName || item.categoryName || null,
+          aisleCode: item.aisleCode || null,
+          aisleName: item.aisleName || null,
+          levelNumber: item.levelNumber || null,
+          slotCode: item.slotCode || null,
         },
       }));
     } catch (error) {
@@ -97,7 +125,23 @@ export const SearchService = {
             status: p.status,
             imageUrl: p.imageUrl || null,
             productTypeId: p.productTypeId || 0,
-            location: p.location || null,
+            categoryName: p.categoryName,
+            shelfId: p.shelfId,
+            shelfName: p.shelfName,
+            aisleCode: p.aisleCode,
+            aisleName: p.aisleName,
+            levelNumber: p.levelNumber,
+            slotCode: p.slotCode,
+            zoneName: p.zoneName,
+            location: {
+              shelfId: p.shelfId,
+              shelfName: p.shelfName || null,
+              zone: p.zoneName || p.categoryName || null,
+              aisleCode: p.aisleCode || null,
+              aisleName: p.aisleName || null,
+              levelNumber: p.levelNumber || null,
+              slotCode: p.slotCode || null,
+            },
           }));
         }
       } catch (fbErr) {

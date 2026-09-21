@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { View, Text, XStack, YStack, Button, Image, Spinner, Paragraph } from 'tamagui';
-import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag, Navigation } from 'lucide-react-native';
+import { Dimensions, ScrollView, StyleSheet, TouchableOpacity, Alert, Pressable } from 'react-native';
+import { View, Text, XStack, YStack, Button, Image, Spinner, Paragraph, Card } from 'tamagui';
+import { ArrowLeft, ShoppingCart, Minus, Plus, Heart, Info, Tag, Navigation, MapPin, ChevronRight } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedScrollHandler, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ import { MealSuggestionService, MenuAssistantResponseDto } from '../../services/
 import { CartService } from '../../services/CartService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { SHELVES_6 } from '../map/StoreLayoutConstants';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { height, width } = Dimensions.get('window');
@@ -129,17 +130,56 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
     }
   };
 
+  // Resolve shelf details
+  const shelfInfo = (() => {
+    if (!detail) return null;
+    let foundShelf = detail.shelfId ? SHELVES_6.find((s) => s.shelfId === detail.shelfId) : null;
+    if (!foundShelf && detail.aisleCode) {
+      foundShelf = SHELVES_6.find((s) => s.aisleCode.toLowerCase() === detail.aisleCode?.toLowerCase());
+    }
+    if (!foundShelf && (detail.categoryName || detail.productName)) {
+      const q = `${detail.categoryName || ''} ${detail.productName}`.toLowerCase();
+      if (q.includes('bánh') || q.includes('kẹo') || q.includes('snack') || q.includes('ăn vặt')) foundShelf = SHELVES_6.find((s) => s.shelfId === 1);
+      else if (q.includes('nước') || q.includes('sữa') || q.includes('uống') || q.includes('giải khát')) foundShelf = SHELVES_6.find((s) => s.shelfId === 2);
+      else if (q.includes('thịt') || q.includes('cá') || q.includes('trứng') || q.includes('rau') || q.includes('tươi')) foundShelf = SHELVES_6.find((s) => s.shelfId === 3);
+      else if (q.includes('mì') || q.includes('gạo') || q.includes('phở') || q.includes('khô')) foundShelf = SHELVES_6.find((s) => s.shelfId === 4);
+      else if (q.includes('giặt') || q.includes('rửa') || q.includes('gia dụng') || q.includes('tắm') || q.includes('gội')) foundShelf = SHELVES_6.find((s) => s.shelfId === 5);
+      else if (q.includes('gia vị') || q.includes('dầu') || q.includes('mắm') || q.includes('hạt nêm') || q.includes('hào') || q.includes('trà')) foundShelf = SHELVES_6.find((s) => s.shelfId === 6);
+    }
+
+    const shelfName = detail.shelfName || foundShelf?.name || (detail.aisleCode ? `Kệ Dãy ${detail.aisleCode}` : 'Kệ Hàng Siêu Thị');
+    const aisleName = detail.aisleName ? `${detail.aisleName} (${detail.aisleCode || foundShelf?.aisleCode || 'A01'})` : (detail.aisleCode ? `Dãy ${detail.aisleCode}` : (foundShelf ? `Dãy ${foundShelf.aisleCode}` : 'Dãy A01'));
+    const levelName = detail.levelNumber ? `Tầng ${detail.levelNumber}` : 'Tầng 1';
+    const slotCode = detail.slotCode || (foundShelf ? `K${foundShelf.shelfId}_T1_01` : null);
+    const themeColor = foundShelf?.themeColor || '#00A550';
+    const icon = foundShelf?.icon || '📦';
+
+    return {
+      shelfId: detail.shelfId || foundShelf?.shelfId || 1,
+      shelfName,
+      aisleName,
+      levelName,
+      slotCode,
+      themeColor,
+      icon,
+    };
+  })();
+
   const handleGuideToProduct = async () => {
-    if (guiding || !detail) return;
+    if (guiding || !detail || isOutOfStock) return;
     setGuiding(true);
     try {
-      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến quầy ${detail.productName}. Xin mời đi theo tôi!`);
+      const destinationShelf = shelfInfo?.shelfName || (detail.aisleCode ? `Dãy ${detail.aisleCode}` : detail.productName);
+      speak(`Dạ vâng! Robot sẽ dẫn quý khách đến ${destinationShelf}. Xin mời đi theo tôi!`);
       showNotification({
-        title: '🤖 DẪN ĐƯỜNG',
-        message: `Đang khởi tạo lộ trình đến ${detail.productName}`,
+        title: '🤖 DẪN ĐƯỜNG MUA SẮM',
+        message: `Đang khởi tạo lộ trình đến ${destinationShelf}`,
         type: 'info',
       });
-      await dispatchCart([{ productId: detail.productId, productName: detail.productName }]);
+      await dispatchCart([{ productId: detail.productId, productName: detail.productName }], {
+        fromAd: false,
+        returnUrl: '/product-search',
+      });
       router.push({
         pathname: '/cart-guide-map',
         params: {
@@ -147,7 +187,9 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
           productName: detail.productName,
           productImage: detail.imageUrl || '',
           productPrice: String(detail.unitPrice || 0),
-          shelfName: detail.aisleCode ? `Dãy ${detail.aisleCode}${detail.levelNumber ? ` - Tầng ${detail.levelNumber}` : ''}` : (detail.categoryName || ''),
+          shelfName: destinationShelf,
+          returnUrl: '/product-search',
+          from: 'search',
         },
       } as any);
     } catch (err: any) {
@@ -277,6 +319,120 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
                   )}
                 </XStack>
               </YStack>
+
+              {/* Interactive Shelf Location Card */}
+              {!isRecipe && shelfInfo && (
+                <Pressable
+                  onPress={handleGuideToProduct}
+                  disabled={guiding || isOutOfStock}
+                  style={({ pressed }) => ({
+                    marginTop: 14,
+                    opacity: pressed && !isOutOfStock ? 0.92 : 1,
+                    transform: [{ scale: pressed && !isOutOfStock ? 0.99 : 1 }],
+                  })}
+                >
+                  <Card
+                    backgroundColor="#f0fdf4"
+                    borderWidth={1.5}
+                    borderColor="#bbf7d0"
+                    borderRadius={20}
+                    padding="$4"
+                    shadowColor="#00A550"
+                    shadowRadius={12}
+                    shadowOpacity={0.08}
+                    style={{ elevation: 3 }}
+                  >
+                    <XStack justifyContent="space-between" alignItems="center" marginBottom="$2.5">
+                      <XStack alignItems="center" gap="$2.5">
+                        <View
+                          width={36}
+                          height={36}
+                          borderRadius={12}
+                          backgroundColor="#00A550"
+                          justifyContent="center"
+                          alignItems="center"
+                          shadowColor="#00A550"
+                          shadowOpacity={0.25}
+                          shadowRadius={6}
+                          style={{ elevation: 2 }}
+                        >
+                          <MapPin size={20} color="white" />
+                        </View>
+                        <YStack>
+                          <Text fontSize={11} fontWeight="900" color="#166534" letterSpacing={0.8} textTransform="uppercase">
+                            Vị trí quầy kệ siêu thị
+                          </Text>
+                          <Text fontSize={11.5} color="#15803d" fontWeight="600">
+                            {isOutOfStock ? 'Tạm ngưng dẫn đường' : 'Sẵn sàng dẫn đường tự hành'}
+                          </Text>
+                        </YStack>
+                      </XStack>
+
+                      <View
+                        backgroundColor={isOutOfStock ? '#fee2e2' : '#dcfce7'}
+                        paddingHorizontal="$3"
+                        paddingVertical="$1.5"
+                        borderRadius={14}
+                      >
+                        <Text fontSize={11.5} fontWeight="800" color={isOutOfStock ? '#dc2626' : '#15803d'}>
+                          {isOutOfStock ? 'Hết hàng' : 'Đang trưng bày'}
+                        </Text>
+                      </View>
+                    </XStack>
+
+                    {/* Shelf Main Title */}
+                    <XStack alignItems="center" gap="$2" marginTop="$1" marginBottom="$2">
+                      <Text fontSize={20}>{shelfInfo.icon}</Text>
+                      <Text fontSize={18} fontWeight="900" color="#0f172a" flex={1}>
+                        {shelfInfo.shelfName}
+                      </Text>
+                    </XStack>
+
+                    {/* Breakdown pills: Dãy, Tầng, Ô slot */}
+                    <XStack gap="$2" flexWrap="wrap" marginBottom="$3">
+                      <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
+                        <Text fontSize={12} fontWeight="700" color="#334155">📍 {shelfInfo.aisleName}</Text>
+                      </View>
+                      <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
+                        <Text fontSize={12} fontWeight="700" color="#334155">📦 {shelfInfo.levelName}</Text>
+                      </View>
+                      {shelfInfo.slotCode ? (
+                        <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
+                          <Text fontSize={12} fontWeight="700" color="#334155">🏷️ Ô: {shelfInfo.slotCode}</Text>
+                        </View>
+                      ) : null}
+                    </XStack>
+
+                    {/* Interactive Guidance CTA Bar */}
+                    {!isOutOfStock && (
+                      <XStack
+                        backgroundColor="#00A550"
+                        borderRadius={14}
+                        paddingVertical="$2.5"
+                        paddingHorizontal="$3.5"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        shadowColor="#00A550"
+                        shadowOpacity={0.25}
+                        shadowRadius={6}
+                        style={{ elevation: 2 }}
+                      >
+                        <XStack alignItems="center" gap="$2">
+                          {guiding ? (
+                            <Spinner size="small" color="white" />
+                          ) : (
+                            <Navigation size={16} color="white" />
+                          )}
+                          <Text fontSize={13} fontWeight="800" color="white">
+                            {guiding ? 'Đang kích hoạt Robot dẫn đường...' : 'Chạm để Robot dẫn đường tới kệ này'}
+                          </Text>
+                        </XStack>
+                        <ChevronRight size={18} color="white" />
+                      </XStack>
+                    )}
+                  </Card>
+                </Pressable>
+              )}
 
               {/* Health Tags */}
               {!isRecipe && detail?.healthTags && detail.healthTags.length > 0 && (

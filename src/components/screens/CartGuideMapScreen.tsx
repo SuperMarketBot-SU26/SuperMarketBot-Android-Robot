@@ -43,6 +43,7 @@ import {
   Package,
   PackageCheck,
   Radio,
+  Search,
   ShoppingBag,
   Sparkles,
   Store,
@@ -130,9 +131,11 @@ export default function CartGuideMapScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 860;
 
-  // Params từ màn hình quảng cáo (khi khách tương tác "Dẫn Đường")
+  // Params từ màn hình quảng cáo hoặc tra cứu (khi khách tương tác "Dẫn Đường")
   const params = useLocalSearchParams<{
     fromAd?: string;
+    from?: string;
+    returnUrl?: string;
     productId?: string;
     productIds?: string;
     productName?: string;
@@ -144,6 +147,14 @@ export default function CartGuideMapScreen() {
     shelfName?: string;
     aisleName?: string;
   }>();
+
+  const returnRoute = useMemo(() => {
+    if (params.returnUrl && typeof params.returnUrl === 'string') return params.returnUrl;
+    if (params.from === 'search') return '/product-search';
+    if (params.from === 'cart') return '/member-cart';
+    if (params.fromAd === '1') return '/';
+    return '/product-search';
+  }, [params.returnUrl, params.from, params.fromAd]);
 
   const {
     status,
@@ -342,11 +353,11 @@ export default function CartGuideMapScreen() {
 
     if (status === 'COMPLETED' || status === 'CANCELLED') {
       const timer = setTimeout(() => {
-        router.replace('/' as any);
-      }, status === 'CANCELLED' ? 1800 : 4000);
+        router.replace(returnRoute as any);
+      }, status === 'CANCELLED' ? 1500 : 3500);
       return () => clearTimeout(timer);
     }
-  }, [status, router, token, params.fromAd, params.productId, params.productIds]);
+  }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute]);
 
   const handleConfirmPickup = async () => {
     try {
@@ -367,7 +378,7 @@ export default function CartGuideMapScreen() {
           style: 'destructive',
           onPress: async () => {
             await cancelGuide().catch(() => undefined);
-            router.replace('/' as any);
+            router.replace(returnRoute as any);
           },
         },
       ],
@@ -475,15 +486,34 @@ export default function CartGuideMapScreen() {
         {status === 'COMPLETED' ? (
           <View style={s.completedBox}>
             <Text style={s.completedEmoji}>🎉</Text>
-            <Text style={s.completedTitle}>Mua sắm hoàn tất!</Text>
+            <Text style={s.completedTitle}>Đã đến đúng vị trí sản phẩm!</Text>
             <Text style={s.completedSub}>
-              Mời quý khách tiến về{' '}
-              <Text style={{ fontWeight: '800' }}>Quầy Thu Ngân</Text> để thanh toán.
+              Mời quý khách kiểm tra và lấy sản phẩm trên quầy kệ. Robot sẽ tự động quay lại màn hình tra cứu sau vài giây.
             </Text>
-            <TouchableOpacity style={s.homeBtn} onPress={() => router.replace('/' as any)} activeOpacity={0.85}>
-              <Home size={18} color="#fff" />
-              <Text style={s.homeBtnText}>Về Màn Hình Chính</Text>
-            </TouchableOpacity>
+            <View style={{ width: '100%', gap: 10, marginTop: 12 }}>
+              <TouchableOpacity
+                style={s.homeBtn}
+                onPress={() => router.replace(returnRoute as any)}
+                activeOpacity={0.85}
+              >
+                {returnRoute === '/member-cart' ? (
+                  <ShoppingBag size={18} color="#fff" />
+                ) : (
+                  <Search size={18} color="#fff" />
+                )}
+                <Text style={s.homeBtnText}>
+                  {returnRoute === '/member-cart' ? 'Quay Lại Giỏ Hàng' : 'Tiếp Tục Tra Cứu Hàng'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.homeBtn, { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' }]}
+                onPress={() => router.replace('/' as any)}
+                activeOpacity={0.85}
+              >
+                <Home size={18} color="#475569" />
+                <Text style={[s.homeBtnText, { color: '#475569' }]}>Về Màn Hình Chờ</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <>
