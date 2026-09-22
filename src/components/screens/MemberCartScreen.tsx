@@ -72,7 +72,9 @@ export default function MemberCartScreen() {
 
   useEffect(() => {
     if (guideStatus === 'COMPLETED' && token) {
-      CartService.clearCart(token)
+      // Khi hoàn tất dẫn đường, CartGuideMapScreen sẽ tự động ghi nhận hóa đơn và dọn giỏ trong BE.
+      // MemberCartScreen chỉ cần reload giỏ hàng sạch từ BE về state UI.
+      CartService.getCart(token)
         .then((res) => setCart(res))
         .catch(() => undefined);
     }
@@ -356,6 +358,8 @@ export default function MemberCartScreen() {
                           params: {
                             returnUrl: '/member-cart',
                             from: 'cart',
+                            productIds: cart.items.map(i => i.productId).join(','),
+                            productPrices: cart.items.map(i => i.unitPrice).join(','),
                           },
                         } as any);
                       } catch (error: any) {

@@ -345,12 +345,12 @@ export default function CartGuideMapScreen() {
           token
         ).catch((e) => console.warn('[CartGuideMapScreen] recordShoppingTrip single error:', e));
       } else if (params.productIds) {
-        // Dẫn đường danh sách nhiều sản phẩm từ trang chọn sản phẩm
+        // Dẫn đường danh sách nhiều sản phẩm từ giỏ hàng hoặc trang chọn sản phẩm
         const ids = params.productIds.split(',').map((s) => Number(s.trim())).filter((n) => n > 0);
         const prices = params.productPrices ? params.productPrices.split(',').map(Number) : [];
         CartService.recordShoppingTrip(
           {
-            fromCart: false,
+            fromCart: params.from === 'cart',
             items: ids.map((id, i) => ({ productId: id, quantity: 1, unitPrice: prices[i] || undefined })),
           },
           token

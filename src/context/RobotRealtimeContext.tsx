@@ -129,7 +129,13 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       telemetryHandlers.current.forEach((handler) => handler(payload));
       const battery = Number(payload?.battery ?? payload?.Battery ?? payload?.batteryPct ?? payload?.BatteryPct ?? 100);
-      if (battery > 0 && battery < 15) {
+      const isCharging = Boolean(payload?.deviceIsCharging ?? payload?.DeviceIsCharging ?? payload?.isCharging ?? false);
+      const status = String(payload?.status ?? payload?.Status ?? '');
+
+      if (isCharging || status === 'Charging') {
+        setIsLowBatteryLocked(false);
+        setLowBatteryInfo(null);
+      } else if (battery > 0 && battery < 15 && status !== 'Idle') {
         setIsLowBatteryLocked(true);
         setLowBatteryInfo((prev) => prev ?? {
           robotCode: String(payload?.robotCode ?? payload?.RobotCode ?? ROBOT_CODE),
@@ -145,6 +151,15 @@ export function RobotRealtimeProvider({ children }: { children: ReactNode }) {
     connection.on('lowBatteryAlert', (payload: any) => {
       if (!mounted) return;
       console.log('[RobotRealtime] ⚠️ Low Battery Alert received:', payload);
+      const status = String(payload?.status ?? payload?.Status ?? '');
+      const isCharging = Boolean(payload?.isCharging ?? false);
+
+      if (isCharging || status === 'Charging' || status === 'RESOLVED') {
+        setIsLowBatteryLocked(false);
+        setLowBatteryInfo(null);
+        return;
+      }
+
       const battery = Number(payload?.batteryPct ?? payload?.BatteryPct ?? 12);
       const info: LowBatteryAlertInfo = {
         robotCode: String(payload?.robotCode ?? payload?.RobotCode ?? ROBOT_CODE),
