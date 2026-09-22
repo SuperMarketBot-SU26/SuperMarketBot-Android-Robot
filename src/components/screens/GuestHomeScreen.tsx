@@ -20,6 +20,7 @@ import { useRobotAuth } from '../../context/RobotAuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 const ROBOT_CODE = 'RB001';
 
@@ -575,15 +576,8 @@ export default function GuestHomeScreen() {
                           {product?.productName || 'Sản phẩm siêu thị'}
                         </Text>
 
-                        {/* Shelf Location if available */}
-                        {product.location?.shelfName ? (
-                          <XStack alignItems="center" gap="$1">
-                            <MapPin size={10} color="#64748B" />
-                            <Text fontSize={10} color="#64748B" numberOfLines={1}>
-                              {product.location.zone ? `${product.location.zone} · ` : ''}{product.location.shelfName}
-                            </Text>
-                          </XStack>
-                        ) : null}
+                        {/* Shelf Location */}
+                        <ProductLocationBadge product={product} />
 
                         {/* Price & Guide Action (Vertical Stack for 100% mobile fit) */}
                         <YStack gap="$1.5" marginTop="$1">

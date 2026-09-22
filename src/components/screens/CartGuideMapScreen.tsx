@@ -327,27 +327,42 @@ export default function CartGuideMapScreen() {
     }
   }, [status, awaitingPickup, destination, currentWaypointIndex, currentShelf, speak]);
 
-  // Tự động chuyển về Home sau khi hoàn tất & Dọn dẹp các sản phẩm đã được dẫn trong giỏ hàng
+  // Tự động chuyển về Home sau khi hoàn tất & Lưu lịch sử mua sắm / Hóa đơn cho Member
   useEffect(() => {
     if (status === 'COMPLETED' && token && !hasClearedCartRef.current) {
       hasClearedCartRef.current = true;
-      console.log('[CartGuideMapScreen] Dẫn đường hoàn tất -> Xóa các sản phẩm đã dẫn trong giỏ hàng');
-      if (params.fromAd === '1' && params.productId) {
-        CartService.removeItem(Number(params.productId), token).catch((e) =>
-          console.warn('[CartGuideMapScreen] removeItem error:', e)
-        );
-      } else if (params.fromAd === '1' && params.productIds) {
+      console.log('[CartGuideMapScreen] Dẫn đường hoàn tất -> Ghi nhận lịch sử mua sắm (InvoiceHistory) cho Member');
+
+      if (params.productId) {
+        // Dẫn đường 1 sản phẩm cụ thể từ bất kỳ trang nào (Chi tiết, Ưu đãi, Trang chủ, Tìm kiếm, v.v.)
+        const singleId = Number(params.productId);
+        const singlePrice = params.productPrice ? Number(params.productPrice) : undefined;
+        CartService.recordShoppingTrip(
+          {
+            fromCart: false,
+            items: [{ productId: singleId, quantity: 1, unitPrice: singlePrice }],
+          },
+          token
+        ).catch((e) => console.warn('[CartGuideMapScreen] recordShoppingTrip single error:', e));
+      } else if (params.productIds) {
+        // Dẫn đường danh sách nhiều sản phẩm từ trang chọn sản phẩm
         const ids = params.productIds.split(',').map((s) => Number(s.trim())).filter((n) => n > 0);
-        ids.forEach((id) =>
-          CartService.removeItem(id, token).catch((e) =>
-            console.warn('[CartGuideMapScreen] removeItem error:', e)
-          )
-        );
+        const prices = params.productPrices ? params.productPrices.split(',').map(Number) : [];
+        CartService.recordShoppingTrip(
+          {
+            fromCart: false,
+            items: ids.map((id, i) => ({ productId: id, quantity: 1, unitPrice: prices[i] || undefined })),
+          },
+          token
+        ).catch((e) => console.warn('[CartGuideMapScreen] recordShoppingTrip multi error:', e));
       } else {
-        // Dẫn đường từ Giỏ hàng (toàn bộ giỏ) -> Xóa toàn bộ giỏ hàng của thành viên
-        CartService.clearCart(token).catch((e) =>
-          console.warn('[CartGuideMapScreen] clearCart error:', e)
-        );
+        // Dẫn đường từ Giỏ hàng (nhiều sản phẩm trong giỏ) -> Lưu toàn bộ giỏ hàng thành hóa đơn và dọn giỏ
+        CartService.recordShoppingTrip(
+          {
+            fromCart: true,
+          },
+          token
+        ).catch((e) => console.warn('[CartGuideMapScreen] recordShoppingTrip cart error:', e));
       }
     }
 

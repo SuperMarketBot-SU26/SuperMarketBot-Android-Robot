@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TextInput, ScrollView, Pressable, Image as RNImage, Alert, TouchableOpacity } from 'react-native';
 import { View, Text, XStack, YStack, Button, Input, Image, Card } from 'tamagui';
-import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick, Navigation } from 'lucide-react-native';
+import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick, Navigation, ChevronRight } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -221,12 +221,14 @@ export default function MemberSearchScreen() {
         }
       }
 
-      const aisleDisplay = aisleCode ? `Dãy ${aisleCode}` : (aisleName || '');
-      const levelDisplay = levelNumber ? `Tầng ${levelNumber}` : '';
-      const slotDisplay = slotCode ? `Ô ${slotCode}` : '';
+      let cleanShelfName = shelfName;
+      if (cleanShelfName) {
+        cleanShelfName = cleanShelfName.replace(/\s*[-–]\s*/, ': ');
+      } else {
+        cleanShelfName = aisleCode ? `Kệ Dãy ${aisleCode}` : (p.categoryName ? `Kệ ${p.categoryName}` : 'Kệ Hàng Siêu Thị');
+      }
 
-      const locationParts = [shelfName, aisleDisplay, levelDisplay, slotDisplay].filter(Boolean);
-      const location = locationParts.length > 0 ? locationParts.join(' · ') : (p.categoryName || 'Vị trí đang cập nhật');
+      const location = cleanShelfName;
 
       return {
         id: p.productId,
@@ -237,9 +239,9 @@ export default function MemberSearchScreen() {
         badgeColor: p.status === 'Available' || p.status === 'instock' ? '#22c55e' : '#ef4444',
         image: p.imageUrl || 'https://via.placeholder.com/400',
         location,
-        shelfName: shelfName || location,
+        shelfName: cleanShelfName,
         distance: 'Tính toán...', // Lidar sẽ update sau
-        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${shelfName || location}.`,
+        voiceText: `Tôi đã tìm thấy ${p.productName} có giá ${formattedPrice}, nằm tại ${cleanShelfName}.`,
         relevanceScore: p.relevanceScore || 0,
         healthTags: p.healthTags || []
       };
@@ -647,7 +649,7 @@ export default function MemberSearchScreen() {
                                   <Text fontSize={16} fontWeight="900" color="#00A550">{product.price}</Text>
                                 </XStack>
 
-                                {/* Interactive Shelf Location Indicator */}
+                                {/* Shelf Location Indicator - Rõ ràng, không bị che khuất */}
                                 <Pressable
                                   onPress={() => handleGuideToProduct(product)}
                                   style={({ pressed }) => ({
@@ -660,22 +662,17 @@ export default function MemberSearchScreen() {
                                     borderWidth={1}
                                     borderColor="#bbf7d0"
                                     borderRadius={12}
-                                    paddingHorizontal="$3"
-                                    paddingVertical="$2"
+                                    paddingHorizontal="$2.5"
+                                    paddingVertical="$1.5"
                                     alignItems="center"
-                                    justifyContent="space-between"
+                                    gap="$1.5"
                                     marginTop="$1"
                                   >
-                                    <XStack alignItems="center" gap="$2" flex={1}>
-                                      <MapPin size={14} color="#005b2b" />
-                                      <Text fontSize={11} fontWeight="bold" color="#005b2b" flex={1} numberOfLines={1}>
-                                        {product.location}
-                                      </Text>
-                                    </XStack>
-                                    <XStack alignItems="center" gap="$1" marginLeft="$2">
-                                      <Text fontSize={10} fontWeight="bold" color="#00A550">Dẫn đường</Text>
-                                      <Navigation size={12} color="#00A550" />
-                                    </XStack>
+                                    <MapPin size={13} color="#166534" />
+                                    <Text fontSize={11.5} fontWeight="700" color="#166534" flex={1} numberOfLines={1} ellipsizeMode="tail">
+                                      {product.location}
+                                    </Text>
+                                    <ChevronRight size={14} color="#00A550" />
                                   </XStack>
                                 </Pressable>
                               </YStack>

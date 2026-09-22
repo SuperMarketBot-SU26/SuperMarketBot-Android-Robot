@@ -12,6 +12,7 @@ import { MemberService } from '../../services/MemberService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 export default function PersonalizedProductsScreen() {
   const insets = useSafeAreaInsets();
@@ -292,6 +293,9 @@ export default function PersonalizedProductsScreen() {
                     <Text fontSize={11} color="#64748b" numberOfLines={2}>
                       {p.description || "Phù hợp lịch sử mua sắm của bạn"}
                     </Text>
+
+                    {/* Shelf Location */}
+                    <ProductLocationBadge product={p} />
 
                     <XStack alignItems="center" gap="$2" marginTop="$0.5">
                       <Text fontSize={15} fontWeight="bold" color="#00A550">

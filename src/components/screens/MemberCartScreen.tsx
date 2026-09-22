@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService, CartDto } from '../../services/CartService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 export default function MemberCartScreen() {
   const insets = useSafeAreaInsets();
@@ -230,6 +231,7 @@ export default function MemberCartScreen() {
                       <Text fontSize={14.5} fontWeight="bold" color="$textPrimary" numberOfLines={2}>
                         {item.productName}
                       </Text>
+                      <ProductLocationBadge product={item} />
                       <Text fontSize={12} color="$textSecondary">
                         Đơn giá: {(item?.unitPrice ?? 0).toLocaleString('vi-VN')}đ
                       </Text>

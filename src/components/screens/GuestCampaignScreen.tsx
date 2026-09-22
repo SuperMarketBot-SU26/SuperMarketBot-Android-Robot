@@ -31,6 +31,7 @@ import { RobotControlService } from '../../services/RobotControlService';
 import { useNotification } from '../../context/NotificationContext';
 import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 const SkeletonCard = ({ cardWidth }: { cardWidth: DimensionValue }) => {
   const opacity = useSharedValue(0.4);
@@ -533,20 +534,7 @@ export default function GuestCampaignScreen() {
                       >
                         <YStack gap="$1.5">
                           {/* Shelf Location Tag */}
-                          <XStack
-                            alignItems="center"
-                            gap="$1"
-                            backgroundColor="#f0fdf4"
-                            paddingHorizontal="$2"
-                            paddingVertical="$0.5"
-                            borderRadius={6}
-                            alignSelf="flex-start"
-                          >
-                            <MapPin size={11} color="#16a34a" />
-                            <Text fontSize={11} color="#16a34a" fontWeight="700">
-                              {product.location?.shelfName || 'Khu Vực Siêu Thị'}
-                            </Text>
-                          </XStack>
+                          <ProductLocationBadge product={product} />
 
                           {/* Title */}
                           <Text

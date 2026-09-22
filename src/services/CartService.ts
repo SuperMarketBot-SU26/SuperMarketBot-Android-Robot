@@ -148,4 +148,46 @@ export class CartService {
     const data = await response.json();
     return normalizeCartDto(data);
   }
+
+  /**
+   * Lưu lịch sử chuyến mua sắm (Hóa đơn / InvoiceHistory) cho Member vào Backend.
+   * Dùng khi Member hoàn tất dẫn đường từ giỏ hàng hoặc từ bất kỳ màn hình nào.
+   */
+  static async recordShoppingTrip(
+    payload: {
+      fromCart?: boolean;
+      items?: { productId: number; quantity: number; unitPrice?: number }[];
+    },
+    token: string
+  ): Promise<{ invoiceHistoryId: number; totalPrice: number; totalItems: number; message: string } | null> {
+    console.log(`[CartService.recordShoppingTrip] POST ${BASE_URL}/api/members/me/orders/record-shopping-trip`, payload);
+    try {
+      const response = await fetch(`${BASE_URL}/api/members/me/orders/record-shopping-trip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fromCart: payload.fromCart ?? false,
+          items: payload.items ?? [],
+        }),
+      });
+
+      if (!response.ok) {
+        const { rawText } = await parseErrorBody(response);
+        console.warn(`[CartService.recordShoppingTrip] Warning (${response.status}):`, rawText);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log(`[CartService.recordShoppingTrip] Success:`, data);
+      return data;
+    } catch (err) {
+      console.warn(`[CartService.recordShoppingTrip] Network or parse error:`, err);
+      return null;
+    }
+  }
 }
+

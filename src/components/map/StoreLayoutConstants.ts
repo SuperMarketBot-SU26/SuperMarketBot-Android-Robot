@@ -34,7 +34,7 @@ export const SHELVES_6: StoreShelf[] = [
     name: 'Kệ 1 - Đồ Ăn Vặt & Bánh Kẹo',
     category: 'Bánh Kẹo',
     icon: '🍪',
-    x: 1.55,
+    x: 1.50,
     y: 0.15,
     width: 0.65,
     height: 0.36,

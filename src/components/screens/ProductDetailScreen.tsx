@@ -148,7 +148,10 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
     }
 
     const shelfName = detail.shelfName || foundShelf?.name || (detail.aisleCode ? `Kệ Dãy ${detail.aisleCode}` : 'Kệ Hàng Siêu Thị');
-    const aisleName = detail.aisleName ? `${detail.aisleName} (${detail.aisleCode || foundShelf?.aisleCode || 'A01'})` : (detail.aisleCode ? `Dãy ${detail.aisleCode}` : (foundShelf ? `Dãy ${foundShelf.aisleCode}` : 'Dãy A01'));
+    const aisleCode = detail.aisleCode || foundShelf?.aisleCode || 'A01';
+    let aisleDesc = detail.aisleName || foundShelf?.name || 'Dãy hàng';
+    aisleDesc = aisleDesc.replace(/\s*\([A-Z0-9]+\)/i, '').replace(/^Dãy\s+[A-Z0-9]+\s*[-–]?\s*/i, '').trim();
+
     const levelName = detail.levelNumber ? `Tầng ${detail.levelNumber}` : 'Tầng 1';
     const slotCode = detail.slotCode || (foundShelf ? `K${foundShelf.shelfId}_T1_01` : null);
     const themeColor = foundShelf?.themeColor || '#00A550';
@@ -157,7 +160,8 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
     return {
       shelfId: detail.shelfId || foundShelf?.shelfId || 1,
       shelfName,
-      aisleName,
+      aisleCode,
+      aisleDesc,
       levelName,
       slotCode,
       themeColor,
@@ -263,7 +267,7 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
 
       {/* Bottom Content Section */}
       <Animated.ScrollView
-        contentContainerStyle={{ paddingTop: height * 0.42, paddingBottom: 120 }}
+        contentContainerStyle={{ paddingTop: height * 0.42, paddingBottom: 130 }}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
@@ -281,7 +285,7 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
             <YStack gap="$4">
               <XStack justifyContent="space-between" alignItems="flex-start">
                 <YStack flex={1} gap="$2.5">
-                  <Text fontSize={28} fontWeight="900" color="#0f172a" lineHeight={36} letterSpacing={-0.5}>{title}</Text>
+                  <Text fontSize={26} fontWeight="900" color="#0f172a" lineHeight={34} letterSpacing={-0.5}>{title}</Text>
                   <XStack gap="$2" alignItems="center" flexWrap="wrap">
                     {!isRecipe && detail?.categoryName && (
                       <View backgroundColor="#f1f5f9" paddingHorizontal="$3" paddingVertical="$1" borderRadius={20}>
@@ -303,11 +307,11 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
               </XStack>
 
               <YStack gap="$1" marginTop="$2" backgroundColor="#f0fdf4" padding="$4" borderRadius={16} borderWidth={1} borderColor="#dcfce7">
-                <Text fontSize={14} color="#64748b" style={{ textDecorationLine: promotionPrice ? 'line-through' : 'none' }}>
-                  {promotionPrice ? unitPrice?.toLocaleString('vi-VN') + 'đ' : (isRecipe ? 'Tổng chi phí ước tính' : 'Giá bán')}
+                <Text fontSize={13} color="#64748b" style={{ textDecorationLine: promotionPrice ? 'line-through' : 'none' }}>
+                  {promotionPrice ? unitPrice?.toLocaleString('vi-VN') + 'đ' : (isRecipe ? 'Tổng chi phí ước tính' : 'Giá bán niêm yết')}
                 </Text>
                 <XStack alignItems="center" gap="$3">
-                  <Text fontSize={36} fontWeight="900" color="#00A550" letterSpacing={-1}>
+                  <Text fontSize={34} fontWeight="900" color="#00A550" letterSpacing={-1}>
                     {promotionPrice ? promotionPrice.toLocaleString('vi-VN') : unitPrice?.toLocaleString('vi-VN')}đ
                   </Text>
                   {promotionPrice && (
@@ -320,118 +324,123 @@ export default function ProductDetailScreen({ productId, isRecipe = false }: Pro
                 </XStack>
               </YStack>
 
-              {/* Interactive Shelf Location Card */}
+              {/* Redesigned Shelf Location Card - Dễ đọc, Tinh gọn, Không trùng nút */}
               {!isRecipe && shelfInfo && (
-                <Pressable
-                  onPress={handleGuideToProduct}
-                  disabled={guiding || isOutOfStock}
-                  style={({ pressed }) => ({
-                    marginTop: 14,
-                    opacity: pressed && !isOutOfStock ? 0.92 : 1,
-                    transform: [{ scale: pressed && !isOutOfStock ? 0.99 : 1 }],
-                  })}
+                <Card
+                  backgroundColor="#ffffff"
+                  borderWidth={1.5}
+                  borderColor="#bbf7d0"
+                  borderRadius={22}
+                  padding="$4"
+                  marginTop={14}
+                  shadowColor="#00A550"
+                  shadowRadius={14}
+                  shadowOpacity={0.06}
+                  style={{ elevation: 3 }}
                 >
-                  <Card
-                    backgroundColor="#f0fdf4"
-                    borderWidth={1.5}
-                    borderColor="#bbf7d0"
-                    borderRadius={20}
-                    padding="$4"
-                    shadowColor="#00A550"
-                    shadowRadius={12}
-                    shadowOpacity={0.08}
-                    style={{ elevation: 3 }}
-                  >
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom="$2.5">
-                      <XStack alignItems="center" gap="$2.5">
-                        <View
-                          width={36}
-                          height={36}
-                          borderRadius={12}
-                          backgroundColor="#00A550"
-                          justifyContent="center"
-                          alignItems="center"
-                          shadowColor="#00A550"
-                          shadowOpacity={0.25}
-                          shadowRadius={6}
-                          style={{ elevation: 2 }}
-                        >
-                          <MapPin size={20} color="white" />
-                        </View>
-                        <YStack>
-                          <Text fontSize={11} fontWeight="900" color="#166534" letterSpacing={0.8} textTransform="uppercase">
-                            Vị trí quầy kệ siêu thị
-                          </Text>
-                          <Text fontSize={11.5} color="#15803d" fontWeight="600">
-                            {isOutOfStock ? 'Tạm ngưng dẫn đường' : 'Sẵn sàng dẫn đường tự hành'}
-                          </Text>
-                        </YStack>
-                      </XStack>
-
+                  {/* Header: Title + Status Pill */}
+                  <XStack justifyContent="space-between" alignItems="center" paddingBottom="$3" borderBottomWidth={1} borderBottomColor="#f1f5f9">
+                    <XStack alignItems="center" gap="$2.5">
                       <View
-                        backgroundColor={isOutOfStock ? '#fee2e2' : '#dcfce7'}
-                        paddingHorizontal="$3"
-                        paddingVertical="$1.5"
-                        borderRadius={14}
+                        width={34}
+                        height={34}
+                        borderRadius={10}
+                        backgroundColor="#00A550"
+                        justifyContent="center"
+                        alignItems="center"
+                        shadowColor="#00A550"
+                        shadowOpacity={0.2}
+                        shadowRadius={4}
                       >
-                        <Text fontSize={11.5} fontWeight="800" color={isOutOfStock ? '#dc2626' : '#15803d'}>
-                          {isOutOfStock ? 'Hết hàng' : 'Đang trưng bày'}
-                        </Text>
+                        <MapPin size={18} color="white" />
                       </View>
+                      <YStack>
+                        <Text fontSize={12} fontWeight="900" color="#166534" letterSpacing={0.5} textTransform="uppercase">
+                          Vị trí trưng bày tại siêu thị
+                        </Text>
+                        <Text fontSize={11} color="#64748b" fontWeight="500">
+                          Định vị chính xác trên sơ đồ quầy kệ
+                        </Text>
+                      </YStack>
                     </XStack>
 
-                    {/* Shelf Main Title */}
-                    <XStack alignItems="center" gap="$2" marginTop="$1" marginBottom="$2">
-                      <Text fontSize={20}>{shelfInfo.icon}</Text>
-                      <Text fontSize={18} fontWeight="900" color="#0f172a" flex={1}>
+                    <View
+                      backgroundColor={isOutOfStock ? '#fee2e2' : '#dcfce7'}
+                      paddingHorizontal="$3"
+                      paddingVertical="$1.5"
+                      borderRadius={12}
+                    >
+                      <Text fontSize={11} fontWeight="800" color={isOutOfStock ? '#dc2626' : '#15803d'}>
+                        {isOutOfStock ? 'Hết hàng' : 'Có sẵn trên kệ'}
+                      </Text>
+                    </View>
+                  </XStack>
+
+                  {/* Main Shelf Banner */}
+                  <XStack alignItems="center" gap="$3" paddingVertical="$3.5" paddingHorizontal="$1">
+                    <Text fontSize={32}>{shelfInfo.icon}</Text>
+                    <YStack flex={1}>
+                      <Text fontSize={12} fontWeight="700" color="#059669" textTransform="uppercase" letterSpacing={0.5}>
+                        Khu vực quầy kệ
+                      </Text>
+                      <Text fontSize={19} fontWeight="900" color="#0f172a" numberOfLines={1}>
                         {shelfInfo.shelfName}
                       </Text>
-                    </XStack>
+                    </YStack>
+                  </XStack>
 
-                    {/* Breakdown pills: Dãy, Tầng, Ô slot */}
-                    <XStack gap="$2" flexWrap="wrap" marginBottom="$3">
-                      <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
-                        <Text fontSize={12} fontWeight="700" color="#334155">📍 {shelfInfo.aisleName}</Text>
-                      </View>
-                      <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
-                        <Text fontSize={12} fontWeight="700" color="#334155">📦 {shelfInfo.levelName}</Text>
-                      </View>
-                      {shelfInfo.slotCode ? (
-                        <View backgroundColor="white" borderWidth={1} borderColor="#cbd5e1" paddingHorizontal="$2.5" paddingVertical="$1" borderRadius={8}>
-                          <Text fontSize={12} fontWeight="700" color="#334155">🏷️ Ô: {shelfInfo.slotCode}</Text>
-                        </View>
-                      ) : null}
-                    </XStack>
+                  {/* 3-Column Structured Position Grid (Dãy, Tầng, Ô) */}
+                  <XStack gap="$2.5">
+                    {/* Cột 1: Dãy */}
+                    <View flex={1} backgroundColor="#f8fafc" borderWidth={1} borderColor="#e2e8f0" borderRadius={14} padding="$2.5">
+                      <Text fontSize={10} fontWeight="800" color="#64748b" textTransform="uppercase" letterSpacing={0.3}>
+                        Dãy hàng
+                      </Text>
+                      <Text fontSize={14} fontWeight="900" color="#0f172a" marginTop="$1" numberOfLines={1}>
+                        {shelfInfo.aisleCode}
+                      </Text>
+                      <Text fontSize={10} color="#64748b" fontWeight="600" marginTop="$0.5" numberOfLines={1}>
+                        {shelfInfo.aisleDesc || 'Khu hàng'}
+                      </Text>
+                    </View>
 
-                    {/* Interactive Guidance CTA Bar */}
-                    {!isOutOfStock && (
-                      <XStack
-                        backgroundColor="#00A550"
-                        borderRadius={14}
-                        paddingVertical="$2.5"
-                        paddingHorizontal="$3.5"
-                        alignItems="center"
-                        justifyContent="space-between"
-                        shadowColor="#00A550"
-                        shadowOpacity={0.25}
-                        shadowRadius={6}
-                        style={{ elevation: 2 }}
-                      >
-                        <XStack alignItems="center" gap="$2">
-                          {guiding ? (
-                            <Spinner size="small" color="white" />
-                          ) : (
-                            <Navigation size={16} color="white" />
-                          )}
-                          <Text fontSize={13} fontWeight="800" color="white">
-                            {guiding ? 'Đang kích hoạt Robot dẫn đường...' : 'Chạm để Robot dẫn đường tới kệ này'}
-                          </Text>
-                        </XStack>
-                        <ChevronRight size={18} color="white" />
-                      </XStack>
-                    )}
-                  </Card>
-                </Pressable>
+                    {/* Cột 2: Tầng */}
+                    <View flex={1} backgroundColor="#f8fafc" borderWidth={1} borderColor="#e2e8f0" borderRadius={14} padding="$2.5">
+                      <Text fontSize={10} fontWeight="800" color="#64748b" textTransform="uppercase" letterSpacing={0.3}>
+                        Tầng kệ
+                      </Text>
+                      <Text fontSize={14} fontWeight="900" color="#0f172a" marginTop="$1" numberOfLines={1}>
+                        {shelfInfo.levelName}
+                      </Text>
+                      <Text fontSize={10} color="#64748b" fontWeight="600" marginTop="$0.5">
+                        Tầm mắt
+                      </Text>
+                    </View>
+
+                    {/* Cột 3: Ô slot */}
+                    <View flex={1} backgroundColor="#f8fafc" borderWidth={1} borderColor="#e2e8f0" borderRadius={14} padding="$2.5">
+                      <Text fontSize={10} fontWeight="800" color="#64748b" textTransform="uppercase" letterSpacing={0.3}>
+                        Vị trí ô
+                      </Text>
+                      <Text fontSize={14} fontWeight="900" color="#00A550" marginTop="$1" numberOfLines={1}>
+                        {shelfInfo.slotCode || `K${shelfInfo.shelfId}_T1`}
+                      </Text>
+                      <Text fontSize={10} color="#64748b" fontWeight="600" marginTop="$0.5">
+                        Chính xác
+                      </Text>
+                    </View>
+                  </XStack>
+
+                  {/* Footnote Guide Hint (thay thế nút bấm trùng lặp) */}
+                  {!isOutOfStock && (
+                    <XStack backgroundColor="#f0fdf4" borderRadius={12} paddingVertical="$2" paddingHorizontal="$3" alignItems="center" gap="$2" marginTop="$3" borderWidth={1} borderColor="#dcfce7">
+                      <Navigation size={14} color="#00A550" />
+                      <Text fontSize={11.5} fontWeight="600" color="#166534" flex={1}>
+                        Bấm nút <Text fontWeight="900" color="#00A550">"Dẫn đường"</Text> bên dưới để Robot đưa bạn đến tận kệ này.
+                      </Text>
+                    </XStack>
+                  )}
+                </Card>
               )}
 
               {/* Health Tags */}

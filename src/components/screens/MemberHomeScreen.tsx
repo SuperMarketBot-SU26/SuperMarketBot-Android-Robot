@@ -23,6 +23,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 import { Image } from 'expo-image';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 const ROBOT_CODE = 'RB001';
 
@@ -678,19 +679,7 @@ export default function MemberHomeScreen() {
                         </Text>
 
                         {/* Shelf Location */}
-                        {product.location?.shelfName ? (
-                          <XStack alignItems="center" gap="$1">
-                            <MapPin size={10} color="#64748B" />
-                            <Text fontSize={10} color="#64748B" numberOfLines={1}>
-                              {product.location.zone ? `${product.location.zone} · ` : ''}{product.location.shelfName}
-                            </Text>
-                          </XStack>
-                        ) : (
-                          <XStack alignItems="center" gap="$1">
-                            <MapPin size={10} color="#94A3B8" />
-                            <Text fontSize={10} color="#94A3B8" numberOfLines={1}>Khu A · Quầy trung tâm</Text>
-                          </XStack>
-                        )}
+                        <ProductLocationBadge product={product} />
 
                         {/* Price & Guide Action */}
                         <YStack gap="$1.5" marginTop="$1">
@@ -816,6 +805,9 @@ export default function MemberHomeScreen() {
                         <Text fontSize={13} fontWeight="800" color="#0F172A" numberOfLines={2} height={36}>
                           {p?.productName || 'Sản phẩm gợi ý'}
                         </Text>
+
+                        {/* Shelf Location */}
+                        <ProductLocationBadge product={p} />
 
                         {/* Price */}
                         <Text fontSize={14} fontWeight="900" color="#00A550" marginTop="$0.5">

@@ -14,6 +14,7 @@ import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { RobotControlService } from '../../services/RobotControlService';
 import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 import { useRobotGuide } from '../../context/RobotGuideContext';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 export default function MemberOffersScreen() {
   const insets = useSafeAreaInsets();
@@ -311,6 +312,7 @@ export default function MemberOffersScreen() {
                       <XStack backgroundColor={tier.bg} paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={6} alignSelf="flex-start">
                         <Text fontSize={9} color={tier.color} fontWeight="bold">{tier.name.replace('Hạng', 'Thành viên')}</Text>
                       </XStack>
+                      <ProductLocationBadge product={deal} />
                       <Text fontSize={11} color="#666" numberOfLines={2} height={32} lineHeight={16}>
                         {deal.description || "Phù hợp với lịch sử mua sắm của bạn."}
                       </Text>

@@ -4,6 +4,7 @@ import { View, Text, XStack, YStack, Card, Image, Button } from 'tamagui';
 import { Sparkles, ShoppingCart } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { IngredientRecommendationDto } from '../../services/SearchService';
+import { ProductLocationBadge } from '../../utils/productLocation';
 
 interface RecipeRecommendationUIProps {
   ingredients: IngredientRecommendationDto[];
@@ -59,6 +60,9 @@ export const RecipeRecommendationUI: React.FC<RecipeRecommendationUIProps> = ({ 
                       • {item.quantityText.split(' - ')[0]}
                     </Text>
                   </XStack>
+
+                  {/* Shelf Location Badge */}
+                  <ProductLocationBadge product={item} variant="pill" />
                   
                   {/* AI Reason */}
                   <XStack 
