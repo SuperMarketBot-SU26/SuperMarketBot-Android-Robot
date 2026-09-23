@@ -437,32 +437,45 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
 
   const openPromotedProductsCatalog = useCallback(async (currentPlaylist?: PlaylistItem[]) => {
     const activeMission = missionRef.current;
-    console.log('[RobotMissionRuntime] Khách mở danh mục tất cả sản phẩm quảng cáo');
+    console.log('[RobotMissionRuntime] Khách mở danh mục sản phẩm quảng cáo');
 
     // 1. Dừng ngay lập tức toàn bộ giọng nói TTS
     VoiceService.stop();
     Speech.stop();
 
+    const resolvedIndex = activeWaypointIndex >= 0
+      ? activeWaypointIndex
+      : (activeWaypoint ? activeMission?.waypoints?.findIndex((w) => w.nodeId === activeWaypoint.nodeId) ?? 0 : 0);
+    const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
+    const currentWp = activeWaypoint || activeMission?.waypoints?.[currentIdx];
+
+    const isPerShelf = Boolean(
+      activeMission &&
+      !activeMission.isFreeRoam &&
+      (activeMission.adMode === 'shelf' || currentWp?.shelfId)
+    );
+
     // 2. Lưu playlist và trạng thái nhiệm vụ dở dang
-    const playlistToCache = (currentPlaylist && currentPlaylist.length > 0)
-      ? currentPlaylist
-      : (activePlaylist && activePlaylist.length > 0
-          ? activePlaylist
-          : (activeMission?.waypoints?.flatMap((w) => w.playlist || []) ?? []));
+    // Nếu là quảng cáo theo kệ: CHỈ lưu playlist của kệ hiện tại, KHÔNG flatMap toàn siêu thị
+    let playlistToCache: PlaylistItem[] = [];
+    if (currentPlaylist && currentPlaylist.length > 0) {
+      playlistToCache = currentPlaylist;
+    } else if (activePlaylist && activePlaylist.length > 0) {
+      playlistToCache = activePlaylist;
+    } else if (currentWp?.playlist && currentWp.playlist.length > 0) {
+      playlistToCache = currentWp.playlist;
+    } else if (!isPerShelf) {
+      playlistToCache = activeMission?.waypoints?.flatMap((w) => w.playlist || []) ?? [];
+    }
 
     if (playlistToCache.length > 0) {
       AdInterruptionService.setCachedAdPlaylist(playlistToCache);
     }
 
     if (activeMission && activeMission.flowType === 'ad') {
-      const resolvedIndex = activeWaypointIndex >= 0
-        ? activeWaypointIndex
-        : (activeWaypoint ? activeMission.waypoints.findIndex((w) => w.nodeId === activeWaypoint.nodeId) : 0);
-      const currentIdx = resolvedIndex >= 0 ? resolvedIndex : 0;
       const remainingWaypoints = activeMission.waypoints.slice(currentIdx);
       const remainingNodeIds = remainingWaypoints.map((w) => w.nodeId).filter((id) => id > 0);
       const remainingShelfIds = remainingWaypoints.map((w) => w.shelfId).filter((id): id is number => typeof id === 'number' && id > 0);
-      const isPerShelf = Boolean(!activeMission.isFreeRoam && (remainingShelfIds.length > 0 || activeMission.adMode === 'shelf'));
 
       const durMinutes = (activeMission as any).durationMinutes ?? (activeMission.estimatedDurationSeconds ? Math.ceil(activeMission.estimatedDurationSeconds / 60) : undefined);
       AdInterruptionService.saveInterruptedMission({
@@ -470,6 +483,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         robotCode: ROBOT_CODE,
         remainingNodeIds: remainingNodeIds.length > 0 ? remainingNodeIds : activeMission.waypoints.map((w) => w.nodeId).filter((id) => id > 0),
         remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+        currentShelfId: (currentWp?.shelfId && currentWp.shelfId > 0) ? currentWp.shelfId : undefined,
+        currentShelfName: currentWp?.shelfName || currentWp?.nodeName || undefined,
         isPerShelfAd: isPerShelf,
         isFreeRoam: Boolean(activeMission.isFreeRoam),
         floorId: activeMission.floorId ?? 1,
@@ -482,7 +497,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       });
 
       // 3. Tạm dừng di chuyển robot trên Backend để robot đứng yên chờ khách thao tác
-      fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/pause?reason=${encodeURIComponent('Customer viewing all promoted products')}`, {
+      fetch(`${API_BASE}/api/v1/navigation/robots/${ROBOT_CODE}/pause?reason=${encodeURIComponent('Customer viewing promoted products')}`, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true' },
       }).catch(() => undefined);
@@ -1034,8 +1049,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
         activePlaylist={activePlaylist}
         onStartGuide={interruptAdForGuidance}
         onSearchOther={searchOtherProductFromAd}
-        onOpenCatalog={() => {
-          void openPromotedProductsCatalog(activePlaylist);
+        onOpenCatalog={(passedPlaylist) => {
+          void openPromotedProductsCatalog(passedPlaylist || activePlaylist);
         }}
         onDismiss={() => {
           VoiceService.stop();

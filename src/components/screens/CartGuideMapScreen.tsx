@@ -218,9 +218,9 @@ export default function CartGuideMapScreen() {
 
   // Telemetry tọa độ Robot thời gian thực cho bản đồ 2D
   const [mapPose, setMapPose] = useState<RobotPoseState>({
-    x: SUPERMARKET_NODES[8].mapX,
-    y: SUPERMARKET_NODES[8].mapY,
-    headingDeg: SUPERMARKET_NODES[8].headingDeg,
+    x: SUPERMARKET_NODES[7].mapX,
+    y: SUPERMARKET_NODES[7].mapY,
+    headingDeg: SUPERMARKET_NODES[7].headingDeg,
     batteryPct: 85,
     statusText: 'Đang dẫn đường',
     isOnline: true,

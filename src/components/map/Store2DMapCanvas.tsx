@@ -157,12 +157,12 @@ export function Store2DMapCanvas({
         <Line x1={0} y1={3000} x2={3000} y2={3000} stroke={wallStroke} strokeWidth={38} strokeLinecap="round" />
 
         {/* Tường bên trái mở lối cho Cửa vào hành lang */}
-        <Line x1={0} y1={0} x2={0} y2={1500} stroke={wallStroke} strokeWidth={38} />
-        <Line x1={0} y1={2100} x2={0} y2={3000} stroke={wallStroke} strokeWidth={38} />
+        <Line x1={0} y1={0} x2={0} y2={640} stroke={wallStroke} strokeWidth={38} />
+        <Line x1={0} y1={1190} x2={0} y2={3000} stroke={wallStroke} strokeWidth={38} />
 
         {/* Mũi tên & Nhãn Cửa Vào */}
-        <Line x1={-60} y1={1800} x2={180} y2={1800} stroke="#16a34a" strokeWidth={20} strokeLinecap="round" />
-        <SvgText x={-90} y={1825} fill="#15803d" fontSize={70} fontWeight="800" textAnchor="end">
+        <Line x1={-60} y1={915} x2={180} y2={915} stroke="#16a34a" strokeWidth={20} strokeLinecap="round" />
+        <SvgText x={-90} y={940} fill="#15803d" fontSize={70} fontWeight="800" textAnchor="end">
           ➔ CỬA VÀO
         </SvgText>
       </G>

@@ -51,7 +51,7 @@ export interface AdMissionOverlayProps {
   activePlaylist: any[];
   onStartGuide?: (item: any) => void | Promise<void>;
   onSearchOther?: () => void | Promise<void>;
-  onOpenCatalog?: () => void;
+  onOpenCatalog?: (currentPlaylist?: any[]) => void;
   onDismiss?: () => void;
 }
 
@@ -86,12 +86,14 @@ export function AdMissionOverlay({
   const isArrivedAtShelf = status === 'ARRIVED' || status === 'PLAYLIST_PLAYING';
   const shouldShow = status !== 'ESTOP' && !isDismissed && (isFreeRoam || isArrivedAtShelf);
 
-  // Luôn đảm bảo playlist có sản phẩm (nếu activePlaylist tạm thời rỗng thì lấy từ cache hoặc từ mission waypoints)
+  // Luôn đảm bảo playlist có sản phẩm (nếu activePlaylist tạm thời rỗng thì lấy từ cache hoặc từ waypoint kệ hiện tại)
   const rawPlaylist = (activePlaylist && activePlaylist.length > 0)
     ? activePlaylist
-    : (AdInterruptionService.getCachedAdPlaylist()?.length
-        ? AdInterruptionService.getCachedAdPlaylist()
-        : mission.waypoints?.flatMap((w: any) => w.playlist || []) ?? []);
+    : (activeWaypoint?.playlist && activeWaypoint.playlist.length > 0
+        ? activeWaypoint.playlist
+        : (AdInterruptionService.getCachedAdPlaylist()?.length
+            ? AdInterruptionService.getCachedAdPlaylist()
+            : (!isFreeRoam ? [] : (mission.waypoints?.flatMap((w: any) => w.playlist || []) ?? []))));
 
   // Khử trùng lặp và sắp xếp theo thứ tự ưu tiên: AdScore gói (VIP > Pro > Standard) -> Điểm ưu tiên chiến dịch (Priority)
   const effectivePlaylist = React.useMemo(() => {
@@ -158,7 +160,7 @@ function AdInteractiveCarousel({
   activeWaypoint: any;
   onStartGuide?: (item: any) => void | Promise<void>;
   onSearchOther?: () => void | Promise<void>;
-  onOpenCatalog?: () => void;
+  onOpenCatalog?: (currentPlaylist?: any[]) => void;
   onDismiss?: () => void;
 }) {
   const router = useRouter();
@@ -469,7 +471,7 @@ function AdInteractiveCarousel({
 
     // 3. Mở màn hình chọn nhiều sản phẩm
     if (onOpenCatalog) {
-      onOpenCatalog();
+      onOpenCatalog(playlist);
     } else {
       router.push('/ad-multi-select' as any);
     }
@@ -752,7 +754,7 @@ function AdInteractiveCarousel({
 
           {/* HÀNG NÚT PHỤ: 2 NÚT CÂN ĐỐI 50% - 50% RỘNG RÃI, DỄ CHẠM */}
           <View style={styles.secondaryRow}>
-            {/* XEM TẤT CẢ CÁC MÓN ĐANG ĐƯỢC QUẢNG CÁO */}
+            {/* XEM CÁC MÓN ĐANG ĐƯỢC QUẢNG CÁO */}
             <TouchableOpacity
               style={styles.multiSelectButton}
               onPress={handleMultiProductGuide}
@@ -760,7 +762,7 @@ function AdInteractiveCarousel({
             >
               <Layers size={18} color="#c084fc" />
               <Text style={styles.multiSelectButtonText} numberOfLines={1}>
-                Xem tất cả món
+                {!isFreeRoam ? 'Xem món tại kệ' : 'Xem tất cả món'}
               </Text>
             </TouchableOpacity>
 
@@ -967,7 +969,9 @@ function AdInteractiveCarousel({
                     activeOpacity={0.85}
                   >
                     <Layers size={17} color="#c084fc" />
-                    <Text style={styles.detailSecondaryCatalogBtnText}>Xem tất cả món</Text>
+                    <Text style={styles.detailSecondaryCatalogBtnText}>
+                      {!isFreeRoam ? 'Xem món tại kệ' : 'Xem tất cả món'}
+                    </Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -981,7 +985,11 @@ function AdInteractiveCarousel({
                     activeOpacity={0.85}
                   >
                     <Layers size={18} color="white" />
-                    <Text style={styles.detailPrimaryCatalogBtnText}>Xem tất cả món đang quảng cáo</Text>
+                    <Text style={styles.detailPrimaryCatalogBtnText}>
+                      {!isFreeRoam
+                        ? (targetShelfName ? `Xem các món tại ${targetShelfName}` : 'Xem các món tại kệ này')
+                        : 'Xem tất cả món đang quảng cáo'}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity

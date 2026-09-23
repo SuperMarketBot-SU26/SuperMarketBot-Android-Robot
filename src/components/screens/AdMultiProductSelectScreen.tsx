@@ -56,7 +56,7 @@ export default function AdMultiProductSelectScreen() {
   const router = useRouter();
   const { member } = useRobotAuth();
   const { dispatchCart } = useRobotGuide();
-  const { activePlaylist, mission } = useRobotMissionRuntime();
+  const { activePlaylist, mission, activeWaypoint } = useRobotMissionRuntime();
   const { subscribeNavigationStatus } = useRobotRealtime();
 
   const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set());
@@ -122,6 +122,12 @@ export default function AdMultiProductSelectScreen() {
 
   // 2. Bộ đếm thời gian thực thời lượng quảng cáo (Ad Session Countdown)
   const interrupted = AdInterruptionService.getInterruptedMission();
+  const isShelfAd = Boolean(
+    interrupted?.isPerShelfAd ||
+    (!mission?.isFreeRoam && (mission?.adMode === 'shelf' || activeWaypoint?.shelfId || interrupted?.currentShelfId))
+  );
+  const currentShelfId = interrupted?.currentShelfId ?? activeWaypoint?.shelfId;
+  const displayShelfName = interrupted?.currentShelfName || activeWaypoint?.shelfName || (currentShelfId ? `Kệ #${currentShelfId}` : '');
   const totalDurationSec = useMemo(() => {
     if (interrupted?.estimatedDurationSeconds && interrupted.estimatedDurationSeconds > 0) {
       return interrupted.estimatedDurationSeconds;
@@ -227,21 +233,48 @@ export default function AdMultiProductSelectScreen() {
     return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // 1. Thu thập và khử trùng lặp toàn bộ sản phẩm trong phiên quảng cáo, sắp xếp theo thứ tự ưu tiên
+  // 1. Thu thập và khử trùng lặp sản phẩm trong phiên quảng cáo, sắp xếp theo thứ tự ưu tiên
   const products = useMemo(() => {
     const cached = (AdInterruptionService.getCachedAdPlaylist() ?? []) as PlaylistItem[];
     const active = activePlaylist ?? [];
-    const waypointsAds =
-      mission?.waypoints?.flatMap((w) =>
-        (w.playlist || []).map((p) => ({
-          ...p,
-          shelfName: w.shelfName || p.shelfName,
-          aisleName: w.aisleName || p.aisleName,
-          zoneName: w.zoneName || p.zoneName,
-        }))
-      ) ?? [];
 
-    const merged = [...cached, ...active, ...waypointsAds];
+    let merged: PlaylistItem[] = [];
+
+    if (isShelfAd) {
+      // QUẢNG CÁO THEO KỆ: CHỈ hiển thị các mặt hàng trên kệ hiện tại
+      if (cached.length > 0) {
+        const filtered = currentShelfId
+          ? cached.filter((item) => !item.shelfId || item.shelfId === currentShelfId)
+          : cached;
+        merged = filtered.length > 0 ? filtered : cached;
+      } else if (active.length > 0) {
+        const filtered = currentShelfId
+          ? active.filter((item) => !item.shelfId || item.shelfId === currentShelfId)
+          : active;
+        merged = filtered.length > 0 ? filtered : active;
+      } else if (currentShelfId && mission?.waypoints) {
+        const matchingWp = mission.waypoints.find((w) => w.shelfId === currentShelfId);
+        if (matchingWp?.playlist && matchingWp.playlist.length > 0) {
+          merged = [...matchingWp.playlist];
+        }
+      } else if (activeWaypoint?.playlist && activeWaypoint.playlist.length > 0) {
+        merged = [...activeWaypoint.playlist];
+      }
+    } else {
+      // QUẢNG CÁO TỰ DO (FREE ROAM): Thu thập toàn bộ sản phẩm quảng cáo trong siêu thị
+      const waypointsAds =
+        mission?.waypoints?.flatMap((w) =>
+          (w.playlist || []).map((p) => ({
+            ...p,
+            shelfName: w.shelfName || p.shelfName,
+            aisleName: w.aisleName || p.aisleName,
+            zoneName: w.zoneName || p.zoneName,
+          }))
+        ) ?? [];
+
+      merged = [...cached, ...active, ...waypointsAds];
+    }
+
     const uniqueMap = new Map<number | string, PlaylistItem>();
 
     for (const item of merged) {
@@ -263,7 +296,7 @@ export default function AdMultiProductSelectScreen() {
     });
 
     return result;
-  }, [activePlaylist, mission]);
+  }, [activePlaylist, mission, activeWaypoint, isShelfAd, currentShelfId]);
 
   // 2. Mặc định chọn tất cả sản phẩm khi vừa mở màn hình
   useEffect(() => {
@@ -278,12 +311,14 @@ export default function AdMultiProductSelectScreen() {
 
       const customerName = member?.fullName ? `${member.fullName}` : 'quý khách';
       Speech.speak(
-        `Chào ${customerName}! Dưới đây là tất cả các sản phẩm đang có chương trình khuyến mãi quảng cáo. Mời bạn xem qua nhé!`,
+        isShelfAd
+          ? `Chào ${customerName}! Dưới đây là các sản phẩm đang quảng cáo tại ${displayShelfName || 'kệ này'}. Mời bạn xem qua nhé!`
+          : `Chào ${customerName}! Dưới đây là tất cả các sản phẩm đang có chương trình khuyến mãi quảng cáo. Mời bạn xem qua nhé!`,
         { language: 'vi-VN', rate: 0.9 }
       );
     }
     setIsLoading(false);
-  }, [products.length]);
+  }, [products.length, isShelfAd, displayShelfName, member?.fullName]);
 
   // Chọn / Bỏ chọn 1 sản phẩm
   const toggleSelect = (key: number | string) => {
@@ -363,6 +398,8 @@ export default function AdMultiProductSelectScreen() {
           robotCode: mission.robotCode || ROBOT_CODE,
           remainingNodeIds,
           remainingShelfIds: remainingShelfIds.length > 0 ? remainingShelfIds : undefined,
+          currentShelfId: (activeWaypoint?.shelfId && activeWaypoint.shelfId > 0) ? activeWaypoint.shelfId : (currentShelfId ?? undefined),
+          currentShelfName: activeWaypoint?.shelfName || activeWaypoint?.nodeName || (displayShelfName || undefined),
           isPerShelfAd: !isFreeRoam,
           isFreeRoam,
           floorId: mission.floorId ?? 1,
@@ -534,9 +571,15 @@ export default function AdMultiProductSelectScreen() {
           </View>
 
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>Tất Cả Sản Phẩm Đang Quảng Cáo</Text>
+            <Text style={styles.headerTitle}>
+              {isShelfAd
+                ? (displayShelfName ? `Sản Phẩm Tại ${displayShelfName}` : 'Sản Phẩm Tại Kệ Này')
+                : 'Tất Cả Sản Phẩm Đang Quảng Cáo'}
+            </Text>
             <Text style={styles.headerSubtitle}>
-              Chọn các món bạn muốn để Robot dẫn đường gom hàng theo lộ trình tối ưu nhất
+              {isShelfAd
+                ? 'Các mặt hàng đang được trưng bày trên quầy kệ ngay trước mặt quý khách'
+                : 'Chọn các món bạn muốn để Robot dẫn đường gom hàng theo lộ trình tối ưu nhất'}
             </Text>
           </View>
         </View>

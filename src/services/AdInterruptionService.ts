@@ -19,6 +19,8 @@ export interface InterruptedAdMission {
   robotCode: string;
   remainingNodeIds: number[];
   remainingShelfIds?: number[];
+  currentShelfId?: number;
+  currentShelfName?: string;
   isPerShelfAd?: boolean;
   isFreeRoam?: boolean;
   floorId: number;
@@ -59,6 +61,8 @@ class AdInterruptionServiceManager {
       remainingNodeCount: data.remainingNodeIds.length,
       remainingNodeIds: data.remainingNodeIds,
       remainingShelfIds: data.remainingShelfIds,
+      currentShelfId: data.currentShelfId,
+      currentShelfName: data.currentShelfName,
       isPerShelfAd: data.isPerShelfAd,
       interruptedIndex: data.interruptedAtWaypointIndex,
     });

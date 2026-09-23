@@ -140,9 +140,9 @@ export const CASHIER = {
 /* ─── Door (Cửa vào - Cạnh bên trái bên dưới Thu Ngân) ─── */
 export const DOOR = {
   x: 0.0,
-  y: 1.70,
-  width: 0.40,
-  height: 0.40,
+  y: 0.67,
+  width: 0.18,
+  height: 0.49,
   label: 'CỬA VÀO ➔',
 };
 
@@ -176,8 +176,8 @@ export const SUPERMARKET_NODES: Record<number, SupermarketNode> = {
   4: { nodeId: 4, name: 'Kệ 4 - Mì ăn liền & Đóng gói', shelfId: 4, role: 'shelf', rosX: 1.5600, rosY: -1.7933, mapX: 1.56, mapY: 2.29, headingDeg: 270 },
   5: { nodeId: 5, name: 'Kệ 5 - Đồ gia dụng & Tiện ích', shelfId: 5, role: 'shelf', rosX: 0.4254, rosY: -1.7383, mapX: 0.43, mapY: 2.24, headingDeg: 270 },
   6: { nodeId: 6, name: 'Kệ 6 - Gia vị & Trà', shelfId: 6, role: 'shelf', rosX: 0.6543, rosY: -0.9325, mapX: 0.65, mapY: 1.43, headingDeg: 0 },
-  7: { nodeId: 7, name: 'Quầy Thu Ngân (TN)', role: 'cashier', rosX: 0.2257, rosY: 0.0809, mapX: 0.23, mapY: 0.42, headingDeg: 0 },
-  8: { nodeId: 8, name: 'Trạm Sạc Robot (Dock)', role: 'dock', rosX: 1.0683, rosY: 0.3709, mapX: 1.07, mapY: 0.13, headingDeg: 0 },
+  7: { nodeId: 7, name: 'Vị Trí Của Robot (Dock)', role: 'dock', rosX: 0.2787, rosY: -0.0549, mapX: 1.07, mapY: 0.22, headingDeg: 0 },
+  8: { nodeId: 8, name: 'Quầy Thu Ngân (POS)', role: 'cashier', rosX: 1.0402, rosY: 0.3161, mapX: 0.23, mapY: 0.42, headingDeg: 0 },
 };
 
 /**
@@ -193,7 +193,7 @@ export function resolveRobotPosition(payload: any, prev?: { x: number; y: number
     if (prev && Number.isFinite(prev.x) && Number.isFinite(prev.y)) {
       return prev;
     }
-    const def = SUPERMARKET_NODES[8];
+    const def = SUPERMARKET_NODES[7];
     return { x: def.mapX, y: def.mapY, headingDeg: def.headingDeg, nodeName: def.name };
   }
 
@@ -243,7 +243,7 @@ export function resolveRobotPosition(payload: any, prev?: { x: number; y: number
     return prev;
   }
 
-  // 4. Mặc định trạm sạc Dock Sạc (Node 8)
-  const def = SUPERMARKET_NODES[8];
+  // 4. Mặc định Vị Trí Của Robot / Dock Sạc (Node 7)
+  const def = SUPERMARKET_NODES[7];
   return { x: def.mapX, y: def.mapY, headingDeg: def.headingDeg, nodeName: def.name };
 }

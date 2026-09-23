@@ -71,11 +71,11 @@ export default function GuestStoreMapScreen() {
 
   // State vị trí & thông số Robot AMR
   const [robotPose, setRobotPose] = useState<RobotPoseState>({
-    x: SUPERMARKET_NODES[8].mapX,
-    y: SUPERMARKET_NODES[8].mapY,
-    headingDeg: SUPERMARKET_NODES[8].headingDeg,
+    x: SUPERMARKET_NODES[7].mapX,
+    y: SUPERMARKET_NODES[7].mapY,
+    headingDeg: SUPERMARKET_NODES[7].headingDeg,
     batteryPct: 80,
-    statusText: 'Trạm sạc (Dock)',
+    statusText: 'Vị Trí Của Robot (Dock)',
     isOnline: true,
   });
 
