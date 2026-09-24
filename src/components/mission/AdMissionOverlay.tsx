@@ -464,14 +464,28 @@ function AdInteractiveCarousel({
     if (slideAdvanceTimerRef.current) clearTimeout(slideAdvanceTimerRef.current);
     if (fallbackAdvanceTimerRef.current) clearTimeout(fallbackAdvanceTimerRef.current);
 
-    // 2. Lưu toàn bộ danh sách sản phẩm quảng cáo vào cache
-    if (playlist && playlist.length > 0) {
-      AdInterruptionService.setCachedAdPlaylist(playlist);
+    // 2. Xác định danh sách món hiển thị:
+    // Nếu là quảng cáo theo kệ (!isFreeRoam): CHỈ lấy món tại kệ hiện tại!
+    let targetList: any[] = [];
+    if (!isFreeRoam) {
+      if (activeWaypoint?.playlist && activeWaypoint.playlist.length > 0) {
+        targetList = activeWaypoint.playlist;
+      } else if (playlist && playlist.length > 0) {
+        const currentSid = activeWaypoint?.shelfId;
+        const filtered = currentSid ? playlist.filter((p: any) => p.shelfId === currentSid) : [];
+        targetList = filtered.length > 0 ? filtered : (currentItem ? [currentItem] : playlist);
+      }
+    } else {
+      targetList = playlist || [];
+    }
+
+    if (targetList.length > 0) {
+      AdInterruptionService.setCachedAdPlaylist(targetList);
     }
 
     // 3. Mở màn hình chọn nhiều sản phẩm
     if (onOpenCatalog) {
-      onOpenCatalog(playlist);
+      onOpenCatalog(targetList);
     } else {
       router.push('/ad-multi-select' as any);
     }

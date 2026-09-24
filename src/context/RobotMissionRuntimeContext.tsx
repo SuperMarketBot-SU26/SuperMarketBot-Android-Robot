@@ -165,6 +165,11 @@ function normalizeMission(raw: any): RobotMission | null {
 
   const waypoints: MissionWaypoint[] = rawWaypoints.map((item) => {
     const rawPlaylist = valueOf<any[]>(item, 'playlist', 'Playlist') ?? [];
+    const itemShelfId = valueOf<number>(item, 'shelfId', 'ShelfId');
+    const itemShelfName = valueOf<string>(item, 'shelfName', 'ShelfName');
+    const itemZoneName = valueOf<string>(item, 'zoneName', 'ZoneName');
+    const itemAisleName = valueOf<string>(item, 'aisleName', 'AisleName');
+
     const playlist: PlaylistItem[] = rawPlaylist.map((p) => ({
       id: valueOf<number>(p, 'id', 'Id'),
       sponsoredId: valueOf<number>(p, 'sponsoredId', 'SponsoredId'),
@@ -181,6 +186,13 @@ function normalizeMission(raw: any): RobotMission | null {
       imageUrl: valueOf<string>(p, 'imageUrl', 'ImageUrl'),
       description: valueOf<string>(p, 'description', 'Description'),
       mediaContents: valueOf<AdMedia[]>(p, 'mediaContents', 'MediaContents') ?? [],
+      shelfId: valueOf<number>(p, 'shelfId', 'ShelfId') ?? itemShelfId,
+      shelfName: valueOf<string>(p, 'shelfName', 'ShelfName') ?? itemShelfName,
+      zoneName: valueOf<string>(p, 'zoneName', 'ZoneName') ?? itemZoneName,
+      aisleName: valueOf<string>(p, 'aisleName', 'AisleName') ?? itemAisleName,
+      adScore: valueOf<number>(p, 'adScore', 'AdScore', 'packageScore', 'PackageScore'),
+      packageScore: valueOf<number>(p, 'packageScore', 'PackageScore', 'adScore', 'AdScore'),
+      priority: valueOf<number>(p, 'priority', 'Priority'),
     }));
 
     return {
@@ -188,10 +200,10 @@ function normalizeMission(raw: any): RobotMission | null {
       nodeName: String(valueOf(item, 'nodeName', 'NodeName') ?? ''),
       nodeRole: valueOf<string>(item, 'nodeRole', 'NodeRole', 'role', 'Role'),
       dwellTimeSeconds: Number(valueOf(item, 'dwellTimeSeconds', 'DwellTimeSeconds') ?? 0),
-      zoneName: valueOf<string>(item, 'zoneName', 'ZoneName'),
-      aisleName: valueOf<string>(item, 'aisleName', 'AisleName'),
-      shelfId: valueOf<number>(item, 'shelfId', 'ShelfId'),
-      shelfName: valueOf<string>(item, 'shelfName', 'ShelfName'),
+      zoneName: itemZoneName,
+      aisleName: itemAisleName,
+      shelfId: itemShelfId,
+      shelfName: itemShelfName,
       transitTtsMessage: valueOf<string>(item, 'transitTtsMessage', 'TransitTtsMessage'),
       playlist,
     };
@@ -458,14 +470,24 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     // 2. Lưu playlist và trạng thái nhiệm vụ dở dang
     // Nếu là quảng cáo theo kệ: CHỈ lưu playlist của kệ hiện tại, KHÔNG flatMap toàn siêu thị
     let playlistToCache: PlaylistItem[] = [];
-    if (currentPlaylist && currentPlaylist.length > 0) {
-      playlistToCache = currentPlaylist;
-    } else if (activePlaylist && activePlaylist.length > 0) {
-      playlistToCache = activePlaylist;
-    } else if (currentWp?.playlist && currentWp.playlist.length > 0) {
-      playlistToCache = currentWp.playlist;
-    } else if (!isPerShelf) {
-      playlistToCache = activeMission?.waypoints?.flatMap((w) => w.playlist || []) ?? [];
+    if (isPerShelf) {
+      if (currentPlaylist && currentPlaylist.length > 0) {
+        playlistToCache = currentPlaylist;
+      } else if (currentWp?.playlist && currentWp.playlist.length > 0) {
+        playlistToCache = currentWp.playlist;
+      } else if (activePlaylist && activePlaylist.length > 0) {
+        const sid = currentWp?.shelfId;
+        const filtered = sid ? activePlaylist.filter((p) => p.shelfId === sid) : [];
+        playlistToCache = filtered.length > 0 ? filtered : activePlaylist;
+      }
+    } else {
+      if (currentPlaylist && currentPlaylist.length > 0) {
+        playlistToCache = currentPlaylist;
+      } else if (activePlaylist && activePlaylist.length > 0) {
+        playlistToCache = activePlaylist;
+      } else {
+        playlistToCache = activeMission?.waypoints?.flatMap((w) => w.playlist || []) ?? [];
+      }
     }
 
     if (playlistToCache.length > 0) {
@@ -541,36 +563,42 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     capturedKeys.current.clear();
 
     if (normalized.flowType === 'ad') {
-      const allWaypointsPlaylist = normalized.waypoints.flatMap((w) => w.playlist || []);
-      // Khử trùng lặp sản phẩm giữa các waypoints đồng thời sắp xếp theo thứ tự ưu tiên (AdScore gói -> Priority chiến dịch)
-      const seen = new Set<string | number>();
-      const dedupedPlaylist: any[] = [];
-      for (const item of allWaypointsPlaylist) {
-        const key = item.productId || item.id || item.sponsoredId || item.productName;
-        if (key && !seen.has(key)) {
-          seen.add(key);
-          dedupedPlaylist.push(item);
-        }
-      }
-      dedupedPlaylist.sort((a, b) => {
-        const scoreA = Number(a.adScore ?? a.packageScore ?? 0);
-        const scoreB = Number(b.adScore ?? b.packageScore ?? 0);
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        const prioA = Number(a.priority ?? 0);
-        const prioB = Number(b.priority ?? 0);
-        return prioB - prioA;
-      });
+      let initialPlaylist: PlaylistItem[] = [];
 
-      const initialPlaylist = dedupedPlaylist.length > 0
-        ? dedupedPlaylist
-        : (normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? []);
+      if (!normalized.isFreeRoam) {
+        // Quảng cáo theo kệ: Chỉ lấy danh sách sản phẩm của kệ đích đầu tiên
+        const firstWp = normalized.waypoints[0];
+        initialPlaylist = firstWp?.playlist ?? [];
+        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo theo kệ (${firstWp?.shelfName || 'Kệ #' + firstWp?.shelfId}):`, initialPlaylist.length, 'sản phẩm');
+      } else {
+        // Quảng cáo tự do (free-roam): Tổng hợp tất cả các điểm trên lộ trình tuần tra
+        const allWaypointsPlaylist = normalized.waypoints.flatMap((w) => w.playlist || []);
+        const seen = new Set<string | number>();
+        const dedupedPlaylist: any[] = [];
+        for (const item of allWaypointsPlaylist) {
+          const key = item.productId || item.id || item.sponsoredId || item.productName;
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            dedupedPlaylist.push(item);
+          }
+        }
+        dedupedPlaylist.sort((a, b) => {
+          const scoreA = Number(a.adScore ?? a.packageScore ?? 0);
+          const scoreB = Number(b.adScore ?? b.packageScore ?? 0);
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          const prioA = Number(a.priority ?? 0);
+          const prioB = Number(b.priority ?? 0);
+          return prioB - prioA;
+        });
+
+        initialPlaylist = dedupedPlaylist.length > 0
+          ? dedupedPlaylist
+          : (normalized.waypoints.find((w) => w.playlist && w.playlist.length > 0)?.playlist ?? []);
+        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo tự do (${normalized.adMode}):`, initialPlaylist.length, 'sản phẩm ưu tiên');
+      }
 
       if (initialPlaylist.length > 0) {
         AdInterruptionService.setCachedAdPlaylist(initialPlaylist);
-      }
-
-      if (initialPlaylist.length > 0) {
-        console.log(`[RobotMissionRuntime] Kích hoạt phát quảng cáo (${normalized.adMode}):`, initialPlaylist.length, 'sản phẩm ưu tiên');
         setActivePlaylist(initialPlaylist);
         if (normalized.waypoints.length > 0) {
           setActiveWaypoint(normalized.waypoints[0]);

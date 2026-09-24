@@ -242,23 +242,25 @@ export default function AdMultiProductSelectScreen() {
 
     if (isShelfAd) {
       // QUẢNG CÁO THEO KỆ: CHỈ hiển thị các mặt hàng trên kệ hiện tại
-      if (cached.length > 0) {
-        const filtered = currentShelfId
-          ? cached.filter((item) => !item.shelfId || item.shelfId === currentShelfId)
-          : cached;
-        merged = filtered.length > 0 ? filtered : cached;
-      } else if (active.length > 0) {
-        const filtered = currentShelfId
-          ? active.filter((item) => !item.shelfId || item.shelfId === currentShelfId)
-          : active;
-        merged = filtered.length > 0 ? filtered : active;
+      // 1. Ưu tiên số 1: Lấy trực tiếp từ waypoint của kệ hiện tại
+      if (activeWaypoint?.playlist && activeWaypoint.playlist.length > 0) {
+        merged = [...activeWaypoint.playlist];
       } else if (currentShelfId && mission?.waypoints) {
         const matchingWp = mission.waypoints.find((w) => w.shelfId === currentShelfId);
         if (matchingWp?.playlist && matchingWp.playlist.length > 0) {
           merged = [...matchingWp.playlist];
         }
-      } else if (activeWaypoint?.playlist && activeWaypoint.playlist.length > 0) {
-        merged = [...activeWaypoint.playlist];
+      }
+
+      // 2. Nếu chưa có, lấy từ cached hoặc active nhưng lọc CHÍNH XÁC theo currentShelfId
+      if (merged.length === 0) {
+        const pool = cached.length > 0 ? cached : active;
+        if (currentShelfId) {
+          const filtered = pool.filter((item) => item.shelfId === currentShelfId);
+          merged = filtered.length > 0 ? filtered : pool;
+        } else {
+          merged = pool;
+        }
       }
     } else {
       // QUẢNG CÁO TỰ DO (FREE ROAM): Thu thập toàn bộ sản phẩm quảng cáo trong siêu thị
