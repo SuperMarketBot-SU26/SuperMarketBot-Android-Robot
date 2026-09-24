@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 type Member = {
   memberId: number | string;
@@ -22,18 +22,25 @@ export function RobotAuthProvider({ children }: { children: React.ReactNode }) {
   const [member, setMember] = useState<Member | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  const setSession = (newToken: string, newMember: Member) => {
+  const setSession = useCallback((newToken: string, newMember: Member) => {
     setToken(newToken);
     setMember(newMember);
-  };
+  }, []);
 
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     setToken(null);
     setMember(null);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    member,
+    token,
+    setSession,
+    clearSession,
+  }), [member, token, setSession, clearSession]);
 
   return (
-    <RobotAuthContext.Provider value={{ member, token, setSession, clearSession }}>
+    <RobotAuthContext.Provider value={value}>
       {children}
     </RobotAuthContext.Provider>
   );

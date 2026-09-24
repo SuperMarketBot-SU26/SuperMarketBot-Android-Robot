@@ -26,7 +26,7 @@ import {
   MapPin, Zap, Tag, Clock, Volume2, ShoppingBag, ArrowRight, Sparkles,
   Navigation, CheckCircle, ShoppingCart, X
 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { AdService, AdPlaylistItemDto } from '../../services/AdService';
 import { CartService } from '../../services/CartService';
 import { useGeofencing } from '../../context/GeofencingContext';
@@ -64,6 +64,7 @@ export default function ZoneAdOverlay() {
   const { sessionId, refreshSession, markProductFraud, isProductFraud } = useCustomerSession();
   const { mission } = useRobotMissionRuntime();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Stable refs for speak/stop (không gây re-run effect)
   const speakRef = useRef(speak);
@@ -277,6 +278,20 @@ export default function ZoneAdOverlay() {
 
   // ─── Mở overlay khi có zone/playlist mới ──────────────────────────────────
   useEffect(() => {
+    // 0. Tuyệt đối không mở overlay khi đang ở màn hình dẫn đường mua sắm hoặc màn hình chọn sản phẩm
+    if (
+      pathname?.includes('cart-guide') ||
+      pathname?.includes('ad-multi-select') ||
+      isGuideBusy ||
+      guideStatus === 'NAVIGATING' ||
+      guideStatus === 'ARRIVED' ||
+      guideStatus === 'DISPATCHING'
+    ) {
+      void stopRef.current();
+      setVisible(false);
+      return;
+    }
+
     // Nếu là quảng cáo lộ trình nhưng mission ad trên backend đã kết thúc hoặc không còn active
     if (currentZone?.isRouteAd && (!mission || mission.flowType !== 'ad')) {
       void stopRef.current();

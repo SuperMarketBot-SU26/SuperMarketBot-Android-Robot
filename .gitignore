@@ -52,3 +52,5 @@ setup_android_tools.bat
 *.jpg
 *.docx
 *.jpeg
+*.log
+log.txt

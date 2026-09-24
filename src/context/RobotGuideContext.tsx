@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as Speech from 'expo-speech';
 import { RobotControlService } from '../services/RobotControlService';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
@@ -84,7 +84,7 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   const [destination, setDestination] = useState<GuideDestination | null>(null);
   const [destinations, setDestinations] = useState<GuideDestination[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
-  const [robotPose, setRobotPose] = useState<GuideRobotPose | null>(null);
+  const robotPoseRef = useRef<GuideRobotPose | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [awaitingPickup, setAwaitingPickup] = useState(false);
   const missionRef = useRef<string | null>(null);
@@ -195,12 +195,12 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
     const y = Number(payload?.yCoord ?? payload?.YCoord);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const heading = Number(payload?.headingRad ?? payload?.HeadingRad);
-    setRobotPose({
+    robotPoseRef.current = {
       x,
       y,
       headingRad: Number.isFinite(heading) ? heading : null,
       timestampUtc: payload?.timestampUtc ?? payload?.TimestampUtc ?? null,
-    });
+    };
   }), [subscribeTelemetry]);
 
   useEffect(() => {
@@ -530,11 +530,40 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
   }, [clearTimeoutGuard]);
 
   const isBusy = missionId !== null || ['DISPATCHING', 'NAVIGATING', 'MOVING', 'ARRIVED'].includes(status);
+
+  const value = useMemo(() => ({
+    status,
+    missionId,
+    productName,
+    destination,
+    destinations,
+    currentWaypointIndex,
+    robotPose: robotPoseRef.current,
+    error,
+    awaitingPickup,
+    isBusy,
+    isHubConnected,
+    dispatchCart,
+    confirmPickup,
+    cancelGuide,
+  }), [
+    status,
+    missionId,
+    productName,
+    destination,
+    destinations,
+    currentWaypointIndex,
+    error,
+    awaitingPickup,
+    isBusy,
+    isHubConnected,
+    dispatchCart,
+    confirmPickup,
+    cancelGuide,
+  ]);
+
   return (
-    <RobotGuideContext.Provider value={{
-      status, missionId, productName, destination, destinations, currentWaypointIndex, robotPose, error, awaitingPickup, isBusy, isHubConnected,
-      dispatchCart, confirmPickup, cancelGuide,
-    }}>
+    <RobotGuideContext.Provider value={value}>
       {children}
     </RobotGuideContext.Provider>
   );

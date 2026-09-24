@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TextInput, ScrollView, Pressable, Image as RNImage, Alert, TouchableOpacity } from 'react-native';
 import { View, Text, XStack, YStack, Button, Input, Image, Card } from 'tamagui';
 import { Search, Mic, X, MapPin, ShoppingCart, Volume2, Sparkles, HelpCircle, Beef, Fish, Wheat, Carrot, Apple, Droplets, Milk, Coffee, ShoppingBag, Egg, CupSoda, Cookie, Snowflake, Drumstick, Navigation, ChevronRight } from 'lucide-react-native';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, ZoomIn, useSharedValue, withRepeat, withTiming, withSequence, useAnimatedStyle, Easing, interpolateColor } from 'react-native-reanimated';
 import { useRobotVoice, useVoiceRouter } from '../../hooks/useRobotVoice';
 import { AdInterruptionService } from '../../services/AdInterruptionService';
+import { Image as ExpoImage } from 'expo-image';
 
 function SearchSkeleton() {
   const opacity = useSharedValue(0.4);
@@ -158,7 +159,138 @@ import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 import { SHELVES_6 } from '../map/StoreLayoutConstants';
 
-const PRODUCT_DATABASE: any[] = []; // Bỏ qua mảng mock dài
+interface SearchResultCardProps {
+  product: any;
+  index: number;
+  onPress: (id: number) => void;
+  onGuide: (product: any) => void;
+  onVoice: (voiceText: string) => void;
+  onAddToCart: (product: any) => void;
+}
+
+const SearchResultCard = React.memo(function SearchResultCard({
+  product,
+  index,
+  onPress,
+  onGuide,
+  onVoice,
+  onAddToCart,
+}: SearchResultCardProps) {
+  return (
+    <Animated.View entering={index < 8 ? FadeInDown.delay((index + 1) * 60).duration(300) : undefined}>
+      <Pressable onPress={() => onPress(product.id)}>
+        <Card
+          borderWidth={1}
+          borderColor="#e2ede5"
+          borderRadius={24}
+          backgroundColor="white"
+          padding="$4"
+          shadowColor="#00A550"
+          shadowRadius={15}
+          shadowOpacity={0.02}
+          style={{ elevation: 2 }}
+        >
+          <XStack gap="$4" alignItems="center">
+            {/* Image & Badge */}
+            <View position="relative" width={85} height={85} borderRadius={14} overflow="hidden" backgroundColor="#f5f5f5">
+              <ExpoImage
+                source={{ uri: product.image }}
+                style={{ width: '100%', height: '100%' }}
+                contentFit="cover"
+                transition={150}
+                cachePolicy="memory-disk"
+              />
+              <View position="absolute" top={4} left={4} backgroundColor={product.badgeColor} paddingHorizontal="$1.5" paddingVertical="$0.5" borderRadius={6}>
+                <Text color="white" fontSize={8.5} fontWeight="bold">{product.badge}</Text>
+              </View>
+            </View>
+
+            {/* Product Info & Shelf Position */}
+            <YStack flex={1} gap="$1.5">
+              {product.relevanceScore > 0 && (
+                <XStack backgroundColor="#ECFDF5" alignSelf="flex-start" paddingHorizontal="$2" paddingVertical="$1" borderRadius={6} alignItems="center" gap="$1">
+                  <Sparkles size={10} color="#059669" />
+                  <Text fontSize={9} fontWeight="bold" color="#059669">
+                    Độ phù hợp: {product.relevanceScore}%
+                  </Text>
+                </XStack>
+              )}
+              <Text fontSize={15} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={20}>{product.name}</Text>
+
+              <XStack gap="$2" alignItems="center">
+                {product.originalPrice ? (
+                  <Text fontSize={12} color="#999" textDecorationLine="line-through">{product.originalPrice}</Text>
+                ) : null}
+                <Text fontSize={16} fontWeight="900" color="#00A550">{product.price}</Text>
+              </XStack>
+
+              {/* Shelf Location Indicator */}
+              <Pressable
+                onPress={() => onGuide(product)}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.85 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                <XStack
+                  backgroundColor="#f0fdf4"
+                  borderWidth={1}
+                  borderColor="#bbf7d0"
+                  borderRadius={12}
+                  paddingHorizontal="$2.5"
+                  paddingVertical="$1.5"
+                  alignItems="center"
+                  gap="$1.5"
+                  marginTop="$1"
+                >
+                  <MapPin size={13} color="#166534" />
+                  <Text fontSize={11.5} fontWeight="700" color="#166534" flex={1} numberOfLines={1} ellipsizeMode="tail">
+                    {product.location}
+                  </Text>
+                  <ChevronRight size={14} color="#00A550" />
+                </XStack>
+              </Pressable>
+            </YStack>
+
+            {/* Interactive Voice and Direction CTA Buttons */}
+            <YStack gap="$2" justifyContent="center">
+              <Button
+                circular
+                size="$3.5"
+                backgroundColor="#eff6ff"
+                borderWidth={1}
+                borderColor="#bfdbfe"
+                icon={<Volume2 size={16} color="#2563eb" />}
+                pressStyle={{ scale: 0.9, backgroundColor: '#dbeafe' }}
+                onPress={() => onVoice(product.voiceText)}
+              />
+
+              <Button
+                circular
+                size="$3.5"
+                backgroundColor="#00A550"
+                icon={<Navigation size={15} color="white" />}
+                pressStyle={{ scale: 0.9, backgroundColor: '#008740' }}
+                onPress={() => onGuide(product)}
+              />
+
+              <Button
+                circular
+                size="$3.5"
+                backgroundColor="#f0fdf4"
+                borderWidth={1}
+                borderColor="#bbf7d0"
+                icon={<ShoppingCart size={16} color="#16a34a" />}
+                pressStyle={{ scale: 0.9, backgroundColor: '#dcfce7' }}
+                onPress={() => onAddToCart(product)}
+              />
+            </YStack>
+          </XStack>
+        </Card>
+      </Pressable>
+    </Animated.View>
+  );
+});
 
 export default function MemberSearchScreen() {
   const insets = useSafeAreaInsets();
@@ -420,11 +552,15 @@ export default function MemberSearchScreen() {
     executeSearch(item);
   };
 
-  const handleProductVoiceSpeak = (voiceText: string) => {
-    speak(voiceText);
-  };
+  const handlePressProduct = useCallback((id: number) => {
+    router.push(`/product/${id}` as any);
+  }, [router]);
 
-  const handleGuideToProduct = async (product: { id: number; name: string; image?: string; price?: any; location?: string; shelfName?: string }) => {
+  const handleProductVoiceSpeak = useCallback((voiceText: string) => {
+    speak(voiceText);
+  }, [speak]);
+
+  const handleGuideToProduct = useCallback(async (product: { id: number; name: string; image?: string; price?: any; location?: string; shelfName?: string }) => {
     try {
       AdInterruptionService.clear();
       const targetShelf = product.shelfName || product.location || `quầy ${product.name}`;
@@ -458,7 +594,34 @@ export default function MemberSearchScreen() {
         type: 'error',
       });
     }
-  };
+  }, [speak, showNotification, dispatchCart, router]);
+
+  const handleAddToCartFromCard = useCallback(async (product: any) => {
+    if (token) {
+      try {
+        await CartService.addItem(product.id, 1, token);
+        showNotification({ message: 'Đã thêm vào giỏ hàng', type: 'success' });
+      } catch (error) {
+        showNotification({ message: 'Thêm giỏ hàng thất bại', type: 'error' });
+      }
+    } else {
+      Alert.alert(
+        'Giỏ Hàng Thành Viên',
+        'Tính năng giỏ hàng lưu trữ dành cho khách thành viên. Bạn muốn đăng nhập Face ID hay để Robot dẫn đường đến quầy lấy sản phẩm?',
+        [
+          {
+            text: '🚀 Dẫn đường đến quầy',
+            onPress: () => handleGuideToProduct(product),
+          },
+          {
+            text: '👑 Quét Face ID',
+            onPress: () => router.push('/face-scan' as any),
+          },
+          { text: 'Đóng', style: 'cancel' },
+        ]
+      );
+    }
+  }, [token, showNotification, handleGuideToProduct, router]);
 
   return (
     <View flex={1} backgroundColor="#f4f7f5" paddingLeft={Math.max(insets.left, 16)} paddingRight={Math.max(insets.right, 16)} paddingTop={insets.top + 12} paddingBottom={insets.bottom + 12}>
@@ -608,140 +771,15 @@ export default function MemberSearchScreen() {
                 {results.length > 0 ? (
                   <YStack gap="$4">
                     {results.map((product, index) => (
-                      <Animated.View key={product.id} entering={FadeInDown.delay((index + 1) * 100).duration(400)}>
-                        <Pressable onPress={() => router.push(`/product/${product.id}`)}>
-                          <Card
-                            borderWidth={1}
-                            borderColor="#e2ede5"
-                            borderRadius={24}
-                            backgroundColor="white"
-                            padding="$4"
-                            shadowColor="#00A550"
-                            shadowRadius={15}
-                            shadowOpacity={0.02}
-                            style={{ elevation: 2 }}
-                          >
-                            <XStack gap="$4" alignItems="center">
-                              {/* Image & Badge */}
-                              <View position="relative" width={85} height={85} borderRadius={14} overflow="hidden" backgroundColor="#f5f5f5">
-                                <Image src={product.image} width="100%" height="100%" objectFit="cover" />
-                                <View position="absolute" top={4} left={4} backgroundColor={product.badgeColor} paddingHorizontal="$1.5" paddingVertical="$0.5" borderRadius={6}>
-                                  <Text color="white" fontSize={8.5} fontWeight="bold">{product.badge}</Text>
-                                </View>
-                              </View>
-
-                              {/* Product Info & Shelf Position */}
-                              <YStack flex={1} gap="$1.5">
-                                {product.relevanceScore > 0 && (
-                                  <XStack backgroundColor="#ECFDF5" alignSelf="flex-start" paddingHorizontal="$2" paddingVertical="$1" borderRadius={6} alignItems="center" gap="$1">
-                                    <Sparkles size={10} color="#059669" />
-                                    <Text fontSize={9} fontWeight="bold" color="#059669">
-                                      Độ phù hợp: {product.relevanceScore}%
-                                    </Text>
-                                  </XStack>
-                                )}
-                                <Text fontSize={15} fontWeight="bold" color="#333" numberOfLines={2} lineHeight={20}>{product.name}</Text>
-
-                                <XStack gap="$2" alignItems="center">
-                                  {product.originalPrice ? (
-                                    <Text fontSize={12} color="#999" textDecorationLine="line-through">{product.originalPrice}</Text>
-                                  ) : null}
-                                  <Text fontSize={16} fontWeight="900" color="#00A550">{product.price}</Text>
-                                </XStack>
-
-                                {/* Shelf Location Indicator - Rõ ràng, không bị che khuất */}
-                                <Pressable
-                                  onPress={() => handleGuideToProduct(product)}
-                                  style={({ pressed }) => ({
-                                    opacity: pressed ? 0.85 : 1,
-                                    transform: [{ scale: pressed ? 0.98 : 1 }],
-                                  })}
-                                >
-                                  <XStack
-                                    backgroundColor="#f0fdf4"
-                                    borderWidth={1}
-                                    borderColor="#bbf7d0"
-                                    borderRadius={12}
-                                    paddingHorizontal="$2.5"
-                                    paddingVertical="$1.5"
-                                    alignItems="center"
-                                    gap="$1.5"
-                                    marginTop="$1"
-                                  >
-                                    <MapPin size={13} color="#166534" />
-                                    <Text fontSize={11.5} fontWeight="700" color="#166534" flex={1} numberOfLines={1} ellipsizeMode="tail">
-                                      {product.location}
-                                    </Text>
-                                    <ChevronRight size={14} color="#00A550" />
-                                  </XStack>
-                                </Pressable>
-                              </YStack>
-
-                              {/* Interactive Voice and Direction CTA Buttons */}
-                              <YStack gap="$2" justifyContent="center">
-                                {/* Voice Speak Product Location */}
-                                <Button
-                                  circular
-                                  size="$3.5"
-                                  backgroundColor="#eff6ff"
-                                  borderWidth={1}
-                                  borderColor="#bfdbfe"
-                                  icon={<Volume2 size={16} color="#2563eb" />}
-                                  pressStyle={{ scale: 0.9, backgroundColor: '#dbeafe' }}
-                                  onPress={() => handleProductVoiceSpeak(product.voiceText)}
-                                />
-
-                                {/* Autonomous Robot Guidance to Shelf */}
-                                <Button
-                                  circular
-                                  size="$3.5"
-                                  backgroundColor="#00A550"
-                                  icon={<Navigation size={15} color="white" />}
-                                  pressStyle={{ scale: 0.9, backgroundColor: '#008740' }}
-                                  onPress={() => handleGuideToProduct(product)}
-                                />
-
-                                {/* Add to Cart */}
-                                <Button
-                                  circular
-                                  size="$3.5"
-                                  backgroundColor="#f0fdf4"
-                                  borderWidth={1}
-                                  borderColor="#bbf7d0"
-                                  icon={<ShoppingCart size={16} color="#16a34a" />}
-                                  pressStyle={{ scale: 0.9, backgroundColor: '#dcfce7' }}
-                                  onPress={async () => {
-                                    if (token) {
-                                      try {
-                                        await CartService.addItem(product.id, 1, token);
-                                        showNotification({ message: 'Đã thêm vào giỏ hàng', type: 'success' });
-                                      } catch (error) {
-                                        showNotification({ message: 'Thêm giỏ hàng thất bại', type: 'error' });
-                                      }
-                                    } else {
-                                      Alert.alert(
-                                        'Giỏ Hàng Thành Viên',
-                                        'Tính năng giỏ hàng lưu trữ dành cho khách thành viên. Bạn muốn đăng nhập Face ID hay để Robot dẫn đường đến quầy lấy sản phẩm?',
-                                        [
-                                          {
-                                            text: '🚀 Dẫn đường đến quầy',
-                                            onPress: () => handleGuideToProduct(product),
-                                          },
-                                          {
-                                            text: '👑 Quét Face ID',
-                                            onPress: () => router.push('/face-scan' as any),
-                                          },
-                                          { text: 'Đóng', style: 'cancel' },
-                                        ]
-                                      );
-                                    }
-                                  }}
-                                />
-                              </YStack>
-                            </XStack>
-                          </Card>
-                        </Pressable>
-                      </Animated.View>
+                      <SearchResultCard
+                        key={product.id}
+                        product={product}
+                        index={index}
+                        onPress={handlePressProduct}
+                        onGuide={handleGuideToProduct}
+                        onVoice={handleProductVoiceSpeak}
+                        onAddToCart={handleAddToCartFromCard}
+                      />
                     ))}
                   </YStack>
                 ) : (

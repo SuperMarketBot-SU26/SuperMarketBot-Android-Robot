@@ -558,6 +558,8 @@ export default function GuestHomeScreen() {
                           source={{ uri: product.imageUrl || 'https://via.placeholder.com/300x300.png?text=SmartMarket' }}
                           style={{ width: '85%', height: '85%' }}
                           contentFit="contain"
+                          cachePolicy="memory-disk"
+                          transition={150}
                         />
                         {product.discountPercent ? (
                           <View position="absolute" top={8} left={8} backgroundColor="#EF4444" paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={8}>

@@ -62,6 +62,8 @@ import {
 import { useRobotVoice } from '../../hooks/useRobotVoice';
 import { useRobotAuth } from '../../context/RobotAuthContext';
 import { CartService } from '../../services/CartService';
+import { AdInterruptionService } from '../../services/AdInterruptionService';
+import { RobotControlService } from '../../services/RobotControlService';
 
 /**
  * Trợ giúp phân giải thông tin kệ hàng thân thiện từ destination
@@ -367,12 +369,40 @@ export default function CartGuideMapScreen() {
     }
 
     if (status === 'COMPLETED' || status === 'CANCELLED') {
-      const timer = setTimeout(() => {
-        router.replace(returnRoute as any);
+      const timer = setTimeout(async () => {
+        if (status === 'COMPLETED' && AdInterruptionService.hasInterruptedMission()) {
+          const interrupted = AdInterruptionService.getInterruptedMission()!;
+          console.log('[CartGuideMapScreen] Hoàn tất dẫn đường, khôi phục phiên quảng cáo dở dang:', interrupted);
+          try {
+            speak('Cảm ơn quý khách đã mua sắm cùng robot. Robot xin phép tiếp tục phiên quảng cáo nhé!');
+          } catch {}
+
+          const estDuration = interrupted.pausedRemainingSeconds ?? interrupted.estimatedDurationSeconds;
+          await RobotControlService.dispatchAutonomous({
+            robotCode: interrupted.robotCode || ROBOT_CODE,
+            flowType: 'ad',
+            nodeIds: interrupted.remainingNodeIds,
+            shelfIds: interrupted.remainingShelfIds,
+            floorId: interrupted.floorId || 1,
+            campaignId: interrupted.campaignId ?? undefined,
+            isFreeRoam: interrupted.isFreeRoam,
+            adMode: interrupted.isFreeRoam ? 'freeroam' : 'shelf',
+            durationMinutes: estDuration ? Math.max(1, Math.ceil(estDuration / 60)) : (interrupted.durationMinutes ?? 3),
+            estimatedDurationSeconds: estDuration,
+            source: 'RobotKiosk',
+            dispatchedBy: 'Khôi phục tự động sau khi dẫn đường',
+            targetSummary: `Tiếp tục quảng cáo (${interrupted.isFreeRoam ? 'Tự do' : 'Theo kệ'})`,
+          }).catch((err) => console.warn('[CartGuideMapScreen] Khôi phục quảng cáo thất bại:', err));
+
+          AdInterruptionService.clear();
+          router.replace('/' as any);
+        } else {
+          router.replace(returnRoute as any);
+        }
       }, status === 'CANCELLED' ? 1500 : 3500);
       return () => clearTimeout(timer);
     }
-  }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute]);
+  }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute, speak]);
 
   const handleConfirmPickup = async () => {
     try {

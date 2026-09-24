@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { TamaguiProvider } from 'tamagui';
 import tamaguiConfig from '../theme/tamagui.config';
 import { View, LogBox } from 'react-native';
@@ -30,8 +30,24 @@ import { useKeepAwake } from 'expo-keep-awake';
  */
 function AdAwareZoneOverlay() {
   const { mission } = useRobotMissionRuntime();
-  // Nếu robot đang chạy ad mission thật → nhường cho AdMissionOverlay hiển thị
-  if (mission?.flowType === 'ad') return null;
+  const { isBusy: isGuideBusy, status: guideStatus } = useRobotGuide();
+  const pathname = usePathname();
+
+  // Ẩn hoàn toàn ZoneAdOverlay khi:
+  // 1. Robot đang chạy ad mission thật (đã có AdMissionOverlay)
+  // 2. Robot đang dẫn đường mua sắm (isGuideBusy hoặc guideStatus NAVIGATING/ARRIVED)
+  // 3. Khách đang ở màn hình bản đồ dẫn đường hoặc chọn món
+  if (
+    mission?.flowType === 'ad' ||
+    isGuideBusy ||
+    guideStatus === 'NAVIGATING' ||
+    guideStatus === 'ARRIVED' ||
+    guideStatus === 'DISPATCHING' ||
+    pathname?.includes('cart-guide') ||
+    pathname?.includes('ad-multi-select')
+  ) {
+    return null;
+  }
   return <ZoneAdOverlay />;
 }
 

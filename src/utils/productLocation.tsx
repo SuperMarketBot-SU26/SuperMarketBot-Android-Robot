@@ -13,6 +13,8 @@ export interface ResolvedLocation {
   fullLocation: string;
 }
 
+const locationCache = new Map<string, ResolvedLocation>();
+
 /**
  * Universal resolver to get exact shelf, aisle, and zone for ANY product in the supermarket.
  * Uses exact DB relations first, then keyword-based heuristic fallback matched against the 6 physical shelves.
@@ -28,6 +30,11 @@ export function resolveProductLocation(product: any): ResolvedLocation {
       displayTag: 'Kệ 1 · Dãy A01',
       fullLocation: 'Kệ 1: Đồ Ăn Vặt & Bánh Kẹo · Dãy A01',
     };
+  }
+
+  const cacheKey = String(product.productId ?? product.id ?? `${product.productName || product.name}_${product.shelfId || ''}`);
+  if (cacheKey && locationCache.has(cacheKey)) {
+    return locationCache.get(cacheKey)!;
   }
 
   const loc = product.location || {};
@@ -118,7 +125,7 @@ export interface ProductLocationBadgeProps {
 /**
  * Reusable Tamagui component to display product's physical shelf & aisle badge nicely.
  */
-export const ProductLocationBadge: React.FC<ProductLocationBadgeProps> = ({
+export const ProductLocationBadge: React.FC<ProductLocationBadgeProps> = React.memo(({
   product,
   variant = 'compact',
   color = '#166534',
@@ -188,4 +195,4 @@ export const ProductLocationBadge: React.FC<ProductLocationBadgeProps> = ({
       </Text>
     </XStack>
   );
-};
+});

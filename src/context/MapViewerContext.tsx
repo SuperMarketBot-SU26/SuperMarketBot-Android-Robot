@@ -182,19 +182,32 @@ export function MapViewerProvider({ children }: { children: React.ReactNode }) {
     [currentMap],
   );
 
+  const value = React.useMemo(() => ({
+    isLidarConnected,
+    latestFrame,
+    robotPose,
+    currentMap,
+    startLidar,
+    stopLidar,
+    loadMap,
+    loadActiveMap,
+    isLoadingMap,
+    rosToPixel,
+  }), [
+    isLidarConnected,
+    latestFrame,
+    robotPose,
+    currentMap,
+    startLidar,
+    stopLidar,
+    loadMap,
+    loadActiveMap,
+    isLoadingMap,
+    rosToPixel,
+  ]);
+
   return (
-    <MapViewerContext.Provider value={{
-      isLidarConnected,
-      latestFrame,
-      robotPose,
-      currentMap,
-      startLidar,
-      stopLidar,
-      loadMap,
-      loadActiveMap,
-      isLoadingMap,
-      rosToPixel,
-    }}>
+    <MapViewerContext.Provider value={value}>
       {children}
     </MapViewerContext.Provider>
   );

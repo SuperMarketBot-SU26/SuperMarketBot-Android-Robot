@@ -215,15 +215,19 @@ export function GeofencingProvider({ children }: { children: React.ReactNode }) 
     });
   }, [clearZone, currentZone, subscribeNavigationStatus]);
 
+  const isInZone = currentZone !== null;
+
+  const value = React.useMemo(() => ({
+    isHubConnected: isConnected,
+    currentZone,
+    currentPlaylist,
+    isInZone,
+    isLoadingPlaylist,
+    clearZone,
+  }), [isConnected, currentZone, currentPlaylist, isInZone, isLoadingPlaylist, clearZone]);
+
   return (
-    <GeofencingContext.Provider value={{
-      isHubConnected: isConnected,
-      currentZone,
-      currentPlaylist,
-      isInZone: currentZone !== null,
-      isLoadingPlaylist,
-      clearZone,
-    }}>
+    <GeofencingContext.Provider value={value}>
       {children}
     </GeofencingContext.Provider>
   );

@@ -213,6 +213,8 @@ class RobotControlServiceClass {
     source?: string;
     dispatchedBy?: string;
     targetSummary?: string;
+    isFreeRoam?: boolean;
+    estimatedDurationSeconds?: number;
     dwellTimeSeconds?: number;
     durationMinutes?: number;
     loopCount?: number;

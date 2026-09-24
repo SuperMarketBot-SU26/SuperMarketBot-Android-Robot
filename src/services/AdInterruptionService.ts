@@ -32,6 +32,7 @@ export interface InterruptedAdMission {
   durationMinutes?: number;
   estimatedDurationSeconds?: number;
   savedTimestamp: number;
+  pausedRemainingSeconds?: number;
 }
 
 type Listener = (mission: InterruptedAdMission | null) => void;

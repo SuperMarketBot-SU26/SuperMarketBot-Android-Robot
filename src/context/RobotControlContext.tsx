@@ -6,7 +6,7 @@
  */
 
 import React, {
-  createContext, useContext, useEffect, useRef, useState, useCallback,
+  createContext, useContext, useEffect, useRef, useState, useCallback, useMemo,
 } from 'react';
 import { RobotControlService } from '../services/RobotControlService';
 
@@ -79,15 +79,17 @@ export function RobotControlProvider({ children }: { children: React.ReactNode }
     RobotControlService.sendMotorTest(slot, speedPct);
   }, []);
 
+  const value = useMemo(() => ({
+    isConnected,
+    motorLayout,
+    setMotorLayout,
+    setWheelMode,
+    saveMotorLayout,
+    testMotor,
+  }), [isConnected, motorLayout, setMotorLayout, setWheelMode, saveMotorLayout, testMotor]);
+
   return (
-    <RobotControlContext.Provider value={{
-      isConnected,
-      motorLayout,
-      setMotorLayout,
-      setWheelMode,
-      saveMotorLayout,
-      testMotor,
-    }}>
+    <RobotControlContext.Provider value={value}>
       {children}
     </RobotControlContext.Provider>
   );

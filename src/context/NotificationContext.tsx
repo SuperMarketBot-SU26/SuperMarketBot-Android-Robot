@@ -41,8 +41,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     [showNotification]
   );
 
+  const value = React.useMemo(() => ({
+    showNotification,
+    showToast,
+    hideNotification,
+  }), [showNotification, showToast, hideNotification]);
+
   return (
-    <NotificationContext.Provider value={{ showNotification, showToast, hideNotification }}>
+    <NotificationContext.Provider value={value}>
       {children}
       <SystemNotificationToast notification={notification} onDismiss={hideNotification} />
     </NotificationContext.Provider>

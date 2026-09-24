@@ -24,6 +24,11 @@ export function CustomerSessionProvider({ children }: { children: React.ReactNod
   const fraudProductsRef = useRef<Set<number>>(new Set());
   const [fraudState, setFraudState] = useState<Set<number>>(new Set());
 
+  const sessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   // Kết thúc phiên hiện tại và reset
   const endSession = useCallback(() => {
     if (timerRef.current) {
@@ -33,11 +38,12 @@ export function CustomerSessionProvider({ children }: { children: React.ReactNod
     fraudProductsRef.current.clear();
     setFraudState(new Set());
     const nextId = generateNewSessionId();
+    sessionIdRef.current = nextId;
     setSessionId(nextId);
     console.log(`[CustomerSession] Phiên kết thúc. Khởi tạo session mới: ${nextId}`);
   }, []);
 
-  // Làm mới hoặc gia hạn phiên khi có thao tác người dùng
+  // Làm mới hoặc gia hạn phiên khi có thao tác người dùng (stable callback)
   const refreshSession = useCallback((): string => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -47,8 +53,8 @@ export function CustomerSessionProvider({ children }: { children: React.ReactNod
       endSession();
     }, SESSION_TIMEOUT_MS);
 
-    return sessionId;
-  }, [sessionId, endSession]);
+    return sessionIdRef.current;
+  }, [endSession]);
 
   const markProductFraud = useCallback((productId: number) => {
     fraudProductsRef.current.add(productId);
@@ -67,17 +73,17 @@ export function CustomerSessionProvider({ children }: { children: React.ReactNod
     };
   }, [refreshSession]);
 
+  const value = React.useMemo(() => ({
+    sessionId,
+    refreshSession,
+    endSession,
+    fraudProductIds: fraudState,
+    markProductFraud,
+    isProductFraud,
+  }), [sessionId, refreshSession, endSession, fraudState, markProductFraud, isProductFraud]);
+
   return (
-    <CustomerSessionContext.Provider
-      value={{
-        sessionId,
-        refreshSession,
-        endSession,
-        fraudProductIds: fraudState,
-        markProductFraud,
-        isProductFraud,
-      }}
-    >
+    <CustomerSessionContext.Provider value={value}>
       {children}
     </CustomerSessionContext.Provider>
   );

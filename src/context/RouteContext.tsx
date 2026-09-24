@@ -85,18 +85,18 @@ export function RouteProvider({ children }: { children: React.ReactNode }) {
     [routes, selectedRouteId],
   );
 
+  const value = useMemo(() => ({
+    routes,
+    selectedRoute,
+    selectedRouteId,
+    isLoading,
+    error,
+    selectRoute,
+    refresh,
+  }), [routes, selectedRoute, selectedRouteId, isLoading, error, selectRoute, refresh]);
+
   return (
-    <RouteContext.Provider
-      value={{
-        routes,
-        selectedRoute,
-        selectedRouteId,
-        isLoading,
-        error,
-        selectRoute,
-        refresh,
-      }}
-    >
+    <RouteContext.Provider value={value}>
       {children}
     </RouteContext.Provider>
   );

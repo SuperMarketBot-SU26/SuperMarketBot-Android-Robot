@@ -51,47 +51,41 @@ export default function MemberHomeScreen() {
     ? cart.items.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
     : (Number(cart?.totalItems) || 0);
 
-  // Focus effect: Load all member data, deals, recommendations & cart
+  // Focus effect: Load all member data, deals, recommendations & cart in a single batched pass
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
 
-      if (member?.memberId) {
+      const fetchAllData = async () => {
+        if (!member?.memberId) return;
         const id = Number(member.memberId);
-        MemberService.getMemberDeals(id).then(res => {
-          if (mounted) setDeals(res?.deals || []);
-        }).catch(console.error);
 
-        MemberService.getSponsoredRecommendations(id).then(res => {
-          if (mounted) setSponsoredRecs(res?.items || []);
-        }).catch(console.error);
+        try {
+          const [dealsRes, recsRes, alertsRes, persProdRes, persMealRes, sysDealsRes, cartRes] = await Promise.allSettled([
+            MemberService.getMemberDeals(id),
+            MemberService.getSponsoredRecommendations(id),
+            MemberService.getMemberAlerts(id),
+            MemberService.getPersonalizedProducts(token || ''),
+            MemberService.getPersonalizedMeals(token || ''),
+            SearchService.getDeals(id),
+            token ? CartService.getCart(token) : Promise.resolve(null),
+          ]);
 
-        MemberService.getMemberAlerts(id).then(res => {
-          if (mounted) setAlerts(res?.alerts || []);
-        }).catch(console.error);
+          if (!mounted) return;
 
-        MemberService.getPersonalizedProducts(token || '').then(res => {
-          if (mounted) setPersonalizedProducts(res || []);
-        }).catch(console.error);
+          if (dealsRes.status === 'fulfilled') setDeals(dealsRes.value?.deals || []);
+          if (recsRes.status === 'fulfilled') setSponsoredRecs(recsRes.value?.items || []);
+          if (alertsRes.status === 'fulfilled') setAlerts(alertsRes.value?.alerts || []);
+          if (persProdRes.status === 'fulfilled') setPersonalizedProducts(persProdRes.value || []);
+          if (persMealRes.status === 'fulfilled') setPersonalizedMeals(persMealRes.value || []);
+          if (sysDealsRes.status === 'fulfilled') setSystemDeals(Array.isArray(sysDealsRes.value) ? sysDealsRes.value : []);
+          if (cartRes.status === 'fulfilled' && cartRes.value) setCart(cartRes.value);
+        } catch (err) {
+          console.error('[MemberHome] fetchAllData failed:', err);
+        }
+      };
 
-        MemberService.getPersonalizedMeals(token || '').then(res => {
-          if (mounted) setPersonalizedMeals(res || []);
-        }).catch(console.error);
-
-        SearchService.getDeals(id).then(res => {
-          if (mounted) setSystemDeals(Array.isArray(res) ? res : []);
-        }).catch(err => {
-          console.error('[MemberHome] getDeals failed:', err);
-          if (mounted) setSystemDeals([]);
-        });
-      }
-
-      // Auto sync cart
-      if (token) {
-        CartService.getCart(token).then(res => {
-          if (mounted) setCart(res);
-        }).catch(e => console.log('Cart Error:', e));
-      }
+      fetchAllData();
 
       return () => {
         mounted = false;
@@ -660,6 +654,8 @@ export default function MemberHomeScreen() {
                           source={{ uri: product.imageUrl || 'https://via.placeholder.com/300x300.png?text=SmartMarket' }}
                           style={{ width: '85%', height: '85%' }}
                           contentFit="contain"
+                          cachePolicy="memory-disk"
+                          transition={150}
                         />
                         {product.discountPercent ? (
                           <View position="absolute" top={8} left={8} backgroundColor="#EF4444" paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={8}>
@@ -794,6 +790,8 @@ export default function MemberHomeScreen() {
                           source={{ uri: (typeof p.imageUrl === 'string' && p.imageUrl.startsWith('http')) ? p.imageUrl : 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?q=80&w=400' }}
                           style={{ width: '85%', height: '85%' }}
                           contentFit="contain"
+                          cachePolicy="memory-disk"
+                          transition={150}
                         />
                         <View position="absolute" top={8} left={8} backgroundColor="#00A550" paddingHorizontal="$2" paddingVertical="$0.5" borderRadius={8}>
                           <Text color="white" fontSize={9} fontWeight="900">AI MATCH</Text>
@@ -919,6 +917,8 @@ export default function MemberHomeScreen() {
                         source={{ uri: meal?.imageUrl || 'https://images.unsplash.com/photo-1547592180-85f173990554?q=80&w=400' }}
                         style={{ width: 84, height: 84, borderRadius: 14 }}
                         contentFit="cover"
+                        cachePolicy="memory-disk"
+                        transition={150}
                       />
                       <YStack flex={1} gap="$1" justifyContent="space-between">
                         <XStack alignItems="center" gap="$1">

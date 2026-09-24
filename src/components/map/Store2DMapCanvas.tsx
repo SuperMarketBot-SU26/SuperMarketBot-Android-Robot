@@ -49,7 +49,22 @@ interface Store2DMapCanvasProps {
   showDimensions?: boolean;
 }
 
-export function Store2DMapCanvas({
+function arePropsEqual(prev: Store2DMapCanvasProps, next: Store2DMapCanvasProps) {
+  if (prev.selectedShelfId !== next.selectedShelfId) return false;
+  if (prev.width !== next.width || prev.height !== next.height) return false;
+  if (prev.showDimensions !== next.showDimensions) return false;
+  if (prev.shelves !== next.shelves) return false;
+  if (prev.robotPose === next.robotPose) return true;
+  if (!prev.robotPose || !next.robotPose) return false;
+  return (
+    prev.robotPose.x === next.robotPose.x &&
+    prev.robotPose.y === next.robotPose.y &&
+    prev.robotPose.headingDeg === next.robotPose.headingDeg &&
+    prev.robotPose.batteryPct === next.robotPose.batteryPct
+  );
+}
+
+export const Store2DMapCanvas = React.memo(function Store2DMapCanvas({
   shelves,
   robotPose,
   selectedShelfId,
@@ -524,4 +539,4 @@ export function Store2DMapCanvas({
       </G>
     </Svg>
   );
-}
+}, arePropsEqual);

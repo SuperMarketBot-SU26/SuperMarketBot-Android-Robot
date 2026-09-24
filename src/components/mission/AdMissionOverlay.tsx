@@ -73,7 +73,17 @@ export function AdMissionOverlay({
   }, [activeWaypoint?.nodeId]);
 
   const pathname = usePathname();
-  if (!mission || mission.flowType !== 'ad' || pathname === '/ad-multi-select' || pathname?.includes('ad-multi-select')) return null;
+  if (
+    !mission ||
+    mission.flowType !== 'ad' ||
+    pathname === '/ad-multi-select' ||
+    pathname?.includes('ad-multi-select') ||
+    pathname === '/cart-guide-map' ||
+    pathname?.includes('cart-guide') ||
+    AdInterruptionService.hasInterruptedMission()
+  ) {
+    return null;
+  }
 
   const isFreeRoam = mission.isFreeRoam
     || mission.adMode === 'freeroam'
@@ -244,6 +254,8 @@ function AdInteractiveCarousel({
   // 2. Đồng bộ thời gian phiên quảng cáo với Web Admin (theo estimatedDurationSeconds)
   const sessionTotalSec = mission?.estimatedDurationSeconds ?? (isFreeRoam ? 120 : 257);
   const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number>(sessionTotalSec);
+  const pausedAtRef = useRef<number | null>(null);
+  const pausedAccumulatedMsRef = useRef<number>(0);
 
   useEffect(() => {
     if (!mission) return;
@@ -254,8 +266,27 @@ function AdInteractiveCarousel({
       ? new Date(mission.dispatchedAt).getTime()
       : Date.now();
 
+    const isCurrentlyPaused = status === 'PAUSED' || status === 'IDLE' || AdInterruptionService.hasInterruptedMission();
+
+    if (isCurrentlyPaused) {
+      if (pausedAtRef.current === null) {
+        pausedAtRef.current = Date.now();
+      }
+    } else {
+      if (pausedAtRef.current !== null) {
+        pausedAccumulatedMsRef.current += (Date.now() - pausedAtRef.current);
+        pausedAtRef.current = null;
+      }
+    }
+
     const updateSessionTimer = () => {
-      const elapsedSec = Math.floor((Date.now() - dispatchedMs) / 1000);
+      if (isCurrentlyPaused) {
+        // Đóng băng timer khi robot bị tạm dừng hoặc đang dẫn đường cho khách
+        return;
+      }
+      const currentPausedMs = pausedAccumulatedMsRef.current + (pausedAtRef.current ? Date.now() - pausedAtRef.current : 0);
+      const effectiveElapsedMs = Math.max(0, Date.now() - dispatchedMs - currentPausedMs);
+      const elapsedSec = Math.floor(effectiveElapsedMs / 1000);
       const remaining = Math.max(0, durSec - elapsedSec);
       setSessionSecondsLeft(remaining);
     };
@@ -263,7 +294,7 @@ function AdInteractiveCarousel({
     updateSessionTimer();
     const interval = setInterval(updateSessionTimer, 1000);
     return () => clearInterval(interval);
-  }, [mission?.missionId, mission?.estimatedDurationSeconds, mission?.dispatchedAt]);
+  }, [mission?.missionId, mission?.estimatedDurationSeconds, mission?.dispatchedAt, status]);
 
   const slideAdvanceTimerRef = useRef<any>(null);
   const fallbackAdvanceTimerRef = useRef<any>(null);

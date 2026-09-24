@@ -153,24 +153,21 @@ export default function AdMultiProductSelectScreen() {
   }, [mission?.dispatchedAt, interrupted?.savedTimestamp]);
 
   const [remainingSec, setRemainingSec] = useState<number>(() => {
+    if (interrupted?.pausedRemainingSeconds && interrupted.pausedRemainingSeconds > 0) {
+      return interrupted.pausedRemainingSeconds;
+    }
     const elapsed = Math.floor((Date.now() - missionStartTime) / 1000);
     return Math.max(0, totalDurationSec - elapsed);
   });
 
+  // Khi đang ở màn hình chọn món, robot đang PAUSED chờ khách thao tác.
+  // Đóng băng bộ đếm ngược quảng cáo (không giảm từng giây) để khách thoải mái chọn đồ.
+  // Việc thoát tự động đã có Kiosk Inactivity Guard (60s không chạm) quản lý an toàn.
   useEffect(() => {
-    const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - missionStartTime) / 1000);
-      const remaining = Math.max(0, totalDurationSec - elapsed);
-      setRemainingSec(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(timer);
-        handleAutoExit('Hết thời lượng phiên quảng cáo (duration countdown)');
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [totalDurationSec, missionStartTime, handleAutoExit]);
+    if (interrupted?.pausedRemainingSeconds && interrupted.pausedRemainingSeconds > 0) {
+      setRemainingSec(interrupted.pausedRemainingSeconds);
+    }
+  }, [interrupted?.pausedRemainingSeconds]);
 
   // 3. Polling dự phòng kiểm tra trạng thái máy chủ Backend
   useEffect(() => {
@@ -323,7 +320,7 @@ export default function AdMultiProductSelectScreen() {
   }, [products.length, isShelfAd, displayShelfName, member?.fullName]);
 
   // Chọn / Bỏ chọn 1 sản phẩm
-  const toggleSelect = (key: number | string) => {
+  const toggleSelect = useCallback((key: number | string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -333,7 +330,7 @@ export default function AdMultiProductSelectScreen() {
       }
       return next;
     });
-  };
+  }, []);
 
   // Chọn tất cả
   const selectAll = () => {
@@ -386,8 +383,14 @@ export default function AdMultiProductSelectScreen() {
       // 3.1 Dừng động cơ robot để đảm bảo an toàn tuyệt đối
       RobotControlService.sendMove(0, 0, 0);
 
-      // 3.2 Lưu trạng thái quảng cáo dở dang vào AdInterruptionService
-      if (!AdInterruptionService.hasInterruptedMission() && mission && mission.flowType === 'ad') {
+      // 3.2 Lưu trạng thái quảng cáo dở dang vào AdInterruptionService kèm pausedRemainingSeconds
+      const prevInterrupted = AdInterruptionService.getInterruptedMission();
+      if (prevInterrupted) {
+        AdInterruptionService.saveInterruptedMission({
+          ...prevInterrupted,
+          pausedRemainingSeconds: remainingSec > 0 ? remainingSec : prevInterrupted.pausedRemainingSeconds,
+        });
+      } else if (mission && mission.flowType === 'ad') {
         const waypoints = mission.waypoints ?? [];
         const remainingNodeIds = waypoints.map((w) => w.nodeId).filter((id) => id > 0);
         const remainingShelfIds = waypoints
@@ -409,6 +412,7 @@ export default function AdMultiProductSelectScreen() {
           interruptedAtWaypointIndex: 0,
           totalWaypoints: waypoints.length,
           savedTimestamp: Date.now(),
+          pausedRemainingSeconds: remainingSec > 0 ? remainingSec : undefined,
         });
       }
 
@@ -453,11 +457,18 @@ export default function AdMultiProductSelectScreen() {
         { language: 'vi-VN', rate: 0.9 }
       );
 
-      // 3.6 Phát lệnh lập tuyến TSP dẫn đường
-      await dispatchCart(cartItems);
+      // 3.6 Phát lệnh lập tuyến TSP dẫn đường (truyền options: { fromAd: true } để bảo lưu AdInterruptionService)
+      await dispatchCart(cartItems, { fromAd: true });
 
-      // 3.7 Chuyển sang màn hình bản đồ dẫn đường
-      router.push('/cart-guide-map' as any);
+      // 3.7 Chuyển sang màn hình bản đồ dẫn đường kèm params
+      router.push({
+        pathname: '/cart-guide-map',
+        params: {
+          fromAd: '1',
+          productNames: names.join('||'),
+          productIds: cartItems.map((c) => c.productId).join(','),
+        },
+      } as any);
     } catch (err: any) {
       console.warn('[AdMultiProductSelectScreen] Start guide error:', err);
       isSubmittingRef.current = false;
@@ -661,90 +672,14 @@ export default function AdMultiProductSelectScreen() {
               {products.map((item, idx) => {
                 const key = item.productId || item.id || item.productName || item.name || idx;
                 const isSelected = selectedIds.has(key);
-                const price = Number(item.productPrice ?? item.unitPrice ?? 0);
-                const promoPrice = item.promotionPrice ? Number(item.promotionPrice) : null;
-                const imageUrl = item.imageUrl || item.mediaContents?.[0]?.resourceUrl;
-                const name = item.productName || item.name || 'Sản phẩm khuyến mãi';
-                
-                // Vị trí quầy kệ gọn gàng, không lấy tên chiến dịch dài ngoằng
-                const shelfLocation =
-                  item.shelfName || (item.aisleName ? `Dãy ${item.aisleName}` : 'Quầy kệ siêu thị');
-
                 return (
-                  <TouchableOpacity
+                  <ProductGridCard
                     key={String(key)}
-                    style={[
-                      styles.productCard,
-                      isSelected ? styles.productCardSelected : styles.productCardUnselected,
-                    ]}
-                    onPress={() => toggleSelect(key)}
-                    activeOpacity={0.85}
-                  >
-                    {/* HÌNH ẢNH SẢN PHẨM */}
-                    <View style={styles.cardImageContainer}>
-                      {imageUrl ? (
-                        <Image
-                          source={{ uri: imageUrl }}
-                          style={styles.productImage}
-                          contentFit="contain"
-                          transition={200}
-                        />
-                      ) : (
-                        <View style={styles.imageFallback}>
-                          <Package size={44} color="#475569" />
-                        </View>
-                      )}
-
-                      {/* BADGE ƯU ĐÃI GÓC TRÊN TRÁI */}
-                      <View style={styles.cardPromoBadge}>
-                        <Tag size={11} color="white" />
-                        <Text style={styles.cardPromoBadgeText}>ƯU ĐÃI</Text>
-                      </View>
-
-                      {/* NÚT CHECKBOX TRÒN GÓC TRÊN PHẢI */}
-                      <View style={[styles.checkboxWrap, isSelected && styles.checkboxWrapActive]}>
-                        {isSelected ? (
-                          <CheckCircle2 size={26} color="#10b981" />
-                        ) : (
-                          <Circle size={26} color="#64748b" />
-                        )}
-                      </View>
-                    </View>
-
-                    {/* THÔNG TIN CHI TIẾT */}
-                    <View style={styles.cardContent}>
-                      {/* TÊN SẢN PHẨM (2 DÒNG ĐỀU ĐẶN) */}
-                      <Text style={styles.productTitle} numberOfLines={2}>
-                        {name}
-                      </Text>
-
-                      {/* GIÁ TIỀN RÕ RÀNG */}
-                      <View style={styles.priceRow}>
-                        {promoPrice && promoPrice < price ? (
-                          <>
-                            <Text style={styles.promoPriceText}>
-                              {promoPrice.toLocaleString('vi-VN')} đ
-                            </Text>
-                            <Text style={styles.originalPriceText}>
-                              {price.toLocaleString('vi-VN')} đ
-                            </Text>
-                          </>
-                        ) : (
-                          <Text style={styles.regularPriceText}>
-                            {price > 0 ? `${price.toLocaleString('vi-VN')} đ` : 'Giá ưu đãi tại quầy'}
-                          </Text>
-                        )}
-                      </View>
-
-                      {/* VỊ TRÍ KỆ HÀNG */}
-                      <View style={styles.locationChip}>
-                        <MapPin size={13} color="#10b981" />
-                        <Text style={styles.locationChipText} numberOfLines={1}>
-                          {shelfLocation}
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
+                    item={item}
+                    itemKey={key}
+                    isSelected={isSelected}
+                    onToggle={toggleSelect}
+                  />
                 );
               })}
             </View>
@@ -847,6 +782,104 @@ export default function AdMultiProductSelectScreen() {
     </SafeAreaView>
   );
 }
+
+interface ProductGridCardProps {
+  item: PlaylistItem;
+  itemKey: number | string;
+  isSelected: boolean;
+  onToggle: (key: number | string) => void;
+}
+
+const ProductGridCard = React.memo(function ProductGridCard({
+  item,
+  itemKey,
+  isSelected,
+  onToggle,
+}: ProductGridCardProps) {
+  const price = Number(item.productPrice ?? item.unitPrice ?? 0);
+  const promoPrice = item.promotionPrice ? Number(item.promotionPrice) : null;
+  const imageUrl = item.imageUrl || item.mediaContents?.[0]?.resourceUrl;
+  const name = item.productName || item.name || 'Sản phẩm khuyến mãi';
+  const shelfLocation =
+    item.shelfName || (item.aisleName ? `Dãy ${item.aisleName}` : 'Quầy kệ siêu thị');
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.productCard,
+        isSelected ? styles.productCardSelected : styles.productCardUnselected,
+      ]}
+      onPress={() => onToggle(itemKey)}
+      activeOpacity={0.85}
+    >
+      {/* HÌNH ẢNH SẢN PHẨM */}
+      <View style={styles.cardImageContainer}>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.productImage}
+            contentFit="contain"
+            transition={150}
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={styles.imageFallback}>
+            <Package size={44} color="#475569" />
+          </View>
+        )}
+
+        {/* BADGE ƯU ĐÃI GÓC TRÊN TRÁI */}
+        <View style={styles.cardPromoBadge}>
+          <Tag size={11} color="white" />
+          <Text style={styles.cardPromoBadgeText}>ƯU ĐÃI</Text>
+        </View>
+
+        {/* NÚT CHECKBOX TRÒN GÓC TRÊN PHẢI */}
+        <View style={[styles.checkboxWrap, isSelected && styles.checkboxWrapActive]}>
+          {isSelected ? (
+            <CheckCircle2 size={26} color="#10b981" />
+          ) : (
+            <Circle size={26} color="#64748b" />
+          )}
+        </View>
+      </View>
+
+      {/* THÔNG TIN CHI TIẾT */}
+      <View style={styles.cardContent}>
+        {/* TÊN SẢN PHẨM (2 DÒNG ĐỀU ĐẶN) */}
+        <Text style={styles.productTitle} numberOfLines={2}>
+          {name}
+        </Text>
+
+        {/* GIÁ TIỀN RÕ RÀNG */}
+        <View style={styles.priceRow}>
+          {promoPrice && promoPrice < price ? (
+            <>
+              <Text style={styles.promoPriceText}>
+                {promoPrice.toLocaleString('vi-VN')} đ
+              </Text>
+              <Text style={styles.originalPriceText}>
+                {price.toLocaleString('vi-VN')} đ
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.regularPriceText}>
+              {price > 0 ? `${price.toLocaleString('vi-VN')} đ` : 'Giá ưu đãi tại quầy'}
+            </Text>
+          )}
+        </View>
+
+        {/* VỊ TRÍ KỆ HÀNG */}
+        <View style={styles.locationChip}>
+          <MapPin size={13} color="#10b981" />
+          <Text style={styles.locationChipText} numberOfLines={1}>
+            {shelfLocation}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 const styles = StyleSheet.create({
   safeArea: {

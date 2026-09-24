@@ -1,16 +1,11 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Speech from 'expo-speech';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter } from 'expo-router';
-import {
-  X, Plus, Scan, Camera, ArrowRight, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Navigation
-} from 'lucide-react-native';
 import React, {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
-import { ActivityIndicator, AppState, AppStateStatus, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { AdMissionOverlay } from '../components/mission/AdMissionOverlay';
 import { PatrolMissionOverlay } from '../components/mission/PatrolMissionOverlay';
 import { ROBOT_CODE, useRobotRealtime } from './RobotRealtimeContext';
@@ -23,7 +18,7 @@ const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 const ROBOT_ID = Number(process.env.EXPO_PUBLIC_ROBOT_ID ?? '1');
 
 export type MissionFlow = 'patrol' | 'ad';
-export type MissionStatus = 'IDLE' | 'DISPATCHED' | 'NAVIGATING' | 'MOVING' | 'ARRIVED'
+export type MissionStatus = 'IDLE' | 'DISPATCHED' | 'NAVIGATING' | 'MOVING' | 'ARRIVED' | 'PAUSED' | 'RESUMED'
   | 'PLAYLIST_PLAYING' | 'PLAYLIST_COMPLETE' | 'WAYPOINT_COMPLETED'
   | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'ESTOP' | 'WAYPOINT_FAILED';
 
@@ -897,8 +892,8 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           setLastScan(null);
           setMission(null);
           missionRef.current = null;
-          AdInterruptionService.clear();
           if (!isInterruptedForGuide) {
+            AdInterruptionService.clear();
             try { router.replace('/' as any); } catch {}
           }
         }
@@ -962,6 +957,11 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     const durSec = activeMission.estimatedDurationSeconds;
     if (!durSec || durSec <= 0) return;
 
+    // Không đếm thời gian hết hạn khi robot đang tạm dừng (PAUSED) hoặc đang bị gián đoạn dẫn đường
+    if (status === 'PAUSED' || status === 'IDLE' || AdInterruptionService.hasInterruptedMission()) {
+      return;
+    }
+
     const dispatchedMs = activeMission.dispatchedAt
       ? new Date(activeMission.dispatchedAt).getTime()
       : Date.now();
@@ -1014,7 +1014,7 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
     }, remainingMs);
 
     return () => clearTimeout(timer);
-  }, [mission?.missionId, mission?.estimatedDurationSeconds]);
+  }, [mission?.missionId, mission?.estimatedDurationSeconds, status]);
 
   const value = useMemo<RuntimeContextValue>(() => ({
     mission,
@@ -1089,514 +1089,9 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
   );
 }
 
-function MissionOverlay({
-  mission, status, activeWaypoint, activePlaylist, pendingScans, completedScans, failedScans,
-  lastScan, cameraRef, cameraPermission, isAligning, onCameraReady, onDismiss, onCapture, onResumeNext,
-}: {
-  mission: RobotMission | null;
-  status: MissionStatus;
-  activeWaypoint: MissionWaypoint | null;
-  activePlaylist: PlaylistItem[];
-  pendingScans: number;
-  completedScans: number;
-  failedScans: number;
-  lastScan: ScanResult | null;
-  cameraRef: React.RefObject<CameraView | null>;
-  cameraPermission: boolean;
-  isAligning: boolean;
-  onCameraReady: () => void;
-  onDismiss: () => void;
-  onCapture?: () => void;
-  onResumeNext?: () => void;
-}) {
-  const [zoom, setZoom] = useState(0); // 0 = 0.6x Ultra-wide / widest view on Redmi Note 13 Pro
-  const [countdownToNext, setCountdownToNext] = useState<number | null>(null);
-
-  // Tự động đếm ngược 6s để chuyển sang kệ tiếp theo khi có kết quả phân tích AI
-  useEffect(() => {
-    if (lastScan && pendingScans === 0 && status === 'ARRIVED') {
-      setCountdownToNext(6);
-      const timer = setInterval(() => {
-        setCountdownToNext((prev) => {
-          if (prev === null || prev <= 1) {
-            clearInterval(timer);
-            onResumeNext?.();
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    } else {
-      setCountdownToNext(null);
-    }
-  }, [lastScan, pendingScans, status, onResumeNext]);
-
-  // Camera Raspi trên robot đã xử lý việc quan sát/chụp quét AI kệ hàng, không mở camera sau điện thoại
-  return null;
-
-  return (
-    <Modal visible animationType="fade" statusBarTranslucent>
-      <View style={styles.root}>
-        {cameraPermission
-          ? <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" zoom={zoom} onCameraReady={onCameraReady} />
-          : <View style={styles.center}><Text style={styles.error}>Camera chưa được cấp quyền</Text></View>}
-        <View style={styles.scrim} />
-
-        {/* Header with Close Button */}
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>AI VISION PATROL · {ROBOT_CODE}</Text>
-            <Text style={styles.title} numberOfLines={1}>{activeWaypoint?.shelfName || activeWaypoint?.nodeName || 'Đang tới kệ tiếp theo'}</Text>
-            <Text style={styles.subtitle}>{activeWaypoint?.zoneName} {activeWaypoint?.aisleName ? `· ${activeWaypoint?.aisleName}` : ''}</Text>
-          </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <X size={20} color="white" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Center Target Reticle [ + ] for Shelf Marker Alignment */}
-        <View style={styles.centerReticleContainer} pointerEvents="none">
-          <View style={styles.targetBox}>
-            {/* 4 Corners */}
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-
-            {/* Center Crosshair '+' */}
-            <View style={styles.crosshairCenter}>
-              <View style={styles.crosshairH} />
-              <View style={styles.crosshairV} />
-            </View>
-
-            {/* Laser scan line */}
-            <View style={styles.laserLine} />
-          </View>
-          <View style={styles.reticleBadge}>
-            <Scan size={12} color="#00A550" />
-            <Text style={styles.reticleText}>CĂN CHỈNH TÂM MỐC KỆ [ + ]</Text>
-          </View>
-        </View>
-
-        {/* Floating Zoom Control (0.6x / 1x / 2x) */}
-        <View style={styles.zoomContainer}>
-          <TouchableOpacity
-            style={[styles.zoomBtn, zoom === 0 && styles.zoomBtnActive]}
-            onPress={() => setZoom(0)}
-          >
-            <Text style={[styles.zoomText, zoom === 0 && styles.zoomTextActive]}>0.6x</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.zoomBtn, zoom === 0.15 && styles.zoomBtnActive]}
-            onPress={() => setZoom(0.15)}
-          >
-            <Text style={[styles.zoomText, zoom === 0.15 && styles.zoomTextActive]}>1x</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.zoomBtn, zoom === 0.35 && styles.zoomBtnActive]}
-            onPress={() => setZoom(0.35)}
-          >
-            <Text style={[styles.zoomText, zoom === 0.35 && styles.zoomTextActive]}>2x</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Footer with Scan Metrics & AI Analysis Result */}
-        <View style={styles.footer}>
-          <View style={styles.metrics}>
-            <Metric label="Đã quét" value={completedScans} />
-            <Metric label="Đang xử lý" value={pendingScans} />
-            <Metric label="Lỗi" value={failedScans} danger={failedScans > 0} />
-          </View>
-
-          <Text style={styles.status}>
-            {pendingScans > 0
-              ? '⏳ Đang gửi ảnh và phân tích AI Vision...'
-              : status === 'ARRIVED'
-                ? (lastScan ? 'Đã có kết quả phân tích kệ!' : 'Đã đến vị trí. Hãy nhấn nút chụp!')
-                : `Robot: ${status}`}
-          </Text>
-          
-          {/* Nút Chụp Ảnh Thủ Công khi đã đến nơi và chưa có kết quả */}
-          {status === 'ARRIVED' && !lastScan && (
-            <TouchableOpacity 
-              style={[styles.captureBtn, pendingScans > 0 && styles.captureBtnDisabled]}
-              onPress={onCapture}
-              disabled={pendingScans > 0}
-              activeOpacity={0.8}
-            >
-              {pendingScans > 0 ? (
-                <View style={styles.btnRow}>
-                  <ActivityIndicator color="white" size="small" />
-                  <Text style={styles.captureBtnText}>🔍 ĐANG PHÂN TÍCH BẰNG AI...</Text>
-                </View>
-              ) : (
-                <View style={styles.btnRow}>
-                  <Camera size={20} color="white" />
-                  <Text style={styles.captureBtnText}>📸 CHỤP ẢNH KỆ HÀNG (KIỂM TRA TỒN KHO)</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Card Kết Quả Phân Tích AI */}
-          {lastScan && (
-            <View style={[styles.resultCard, lastScan?.needsRestock ? styles.resultWarning : styles.resultSuccess]}>
-              <View style={styles.resultHeader}>
-                {lastScan?.needsRestock ? (
-                  <AlertTriangle size={22} color="#FBBF24" />
-                ) : (
-                  <CheckCircle2 size={22} color="#34D399" />
-                )}
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.resultTitle}>
-                    {lastScan?.analysisStatus === 'Failed'
-                      ? 'Không phân tích được ảnh'
-                      : lastScan?.needsRestock
-                        ? `⚠️ CẦN BỔ SUNG HÀNG (${lastScan?.emptySlotCount ?? 0} VỊ TRÍ TRỐNG)`
-                        : `✅ KỆ ĐÃ ĐẦY ĐỦ HÀNG (${lastScan?.occupancyRatePct}%)`}
-                  </Text>
-                  {lastScan?.analysisStatus !== 'Failed' && (
-                    <Text style={styles.resultSubText}>
-                      {activeWaypoint?.shelfName || 'Kệ hàng'}: Tỷ lệ lấp đầy {lastScan?.occupancyRatePct}% · Trống {lastScan?.emptySlotCount ?? 0} ô
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              {lastScan?.errorMessage && <Text style={styles.error}>{lastScan?.errorMessage}</Text>}
-
-              {/* Nút Chuyển Tiếp Sang Kệ Sau */}
-              {status === 'ARRIVED' && (
-                <TouchableOpacity
-                  style={styles.nextShelfBtn}
-                  onPress={() => {
-                    setCountdownToNext(null);
-                    onResumeNext?.();
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.nextShelfBtnText}>
-                    🚀 TIẾP TỤC SANG KỆ TIẾP THEO {countdownToNext !== null ? `(${countdownToNext}s)` : ''}
-                  </Text>
-                  <ArrowRight size={18} color="white" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function Metric({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
-  return <View style={styles.metric}><Text style={[styles.metricValue, danger && styles.error]}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
-}
-
-function AdCarousel({ playlist }: { playlist: PlaylistItem[] }) {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    if (playlist.length < 2) return;
-    const duration = (playlist[index]?.durationSeconds ?? playlist[index]?.displayDurationSeconds ?? 10) * 1000;
-    const timer = setTimeout(() => setIndex((current) => (current + 1) % playlist.length), duration);
-    return () => clearTimeout(timer);
-  }, [index, playlist]);
-  const item = playlist[index % Math.max(playlist.length, 1)];
-  const media = item?.mediaContents?.[0];
-  const type = String(media?.resourceType ?? '').toUpperCase();
-  const url = media?.resourceUrl || item?.imageUrl || '';
-  return <AdCreative type={type} url={url} title={item?.name || item?.productName || 'Ưu đãi hôm nay'} text={media?.contentText} />;
-}
-
-function AdCreative({ type, url, title, text }: { type: string; url: string; title: string; text?: string | null }) {
-  const isVideo = type.includes('VIDEO') || /\.(mp4|webm|mov)(\?|$)/i.test(url);
-  const player = useVideoPlayer(isVideo && url ? url : null, (instance) => {
-    instance.loop = true;
-    instance.play();
-  });
-  return (
-    <View style={styles.creative}>
-      {isVideo && url
-        ? <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} />
-        : url
-          ? <Image source={{ uri: url }} style={StyleSheet.absoluteFill} contentFit="contain" />
-          : null}
-      <View style={styles.creativeCaption}>
-        <Text style={styles.creativeTitle}>{title}</Text>
-        {!!text && <Text style={styles.creativeText}>{text}</Text>}
-      </View>
-    </View>
-  );
-}
 
 export function useRobotMissionRuntime() {
   const value = useContext(RuntimeContext);
   if (!value) throw new Error('useRobotMissionRuntime must be used inside RobotMissionRuntimeProvider');
   return value;
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07101f' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 },
-  scrim: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(3,10,22,0.30)' },
-  header: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    top: 44,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor: 'rgba(4,14,29,0.85)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 10,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  eyebrow: { color: '#6ee7b7', fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
-  title: { color: 'white', fontSize: 24, fontWeight: '900', marginTop: 4 },
-  subtitle: { color: '#cbd5e1', fontSize: 14, marginTop: 3 },
-
-  // Center Reticle Styles
-  centerReticleContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '30%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  targetBox: {
-    width: 220,
-    height: 180,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  corner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: '#00A550',
-  },
-  topLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 6 },
-  topRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 6 },
-  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 6 },
-  bottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 6 },
-  crosshairCenter: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crosshairH: {
-    position: 'absolute',
-    width: 26,
-    height: 2,
-    backgroundColor: '#00A550',
-  },
-  crosshairV: {
-    position: 'absolute',
-    height: 26,
-    width: 2,
-    backgroundColor: '#00A550',
-  },
-  laserLine: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    height: 1.5,
-    backgroundColor: 'rgba(0, 165, 80, 0.6)',
-    shadowColor: '#00A550',
-    shadowOpacity: 0.8,
-    shadowRadius: 5,
-  },
-  reticleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(4,14,29,0.85)',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 12,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 165, 80, 0.4)',
-  },
-  reticleText: {
-    color: '#00A550',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-
-  zoomContainer: {
-    position: 'absolute',
-    right: 20,
-    top: 170,
-    backgroundColor: 'rgba(4,14,29,0.85)',
-    borderRadius: 24,
-    padding: 4,
-    gap: 6,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  zoomBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zoomBtnActive: {
-    backgroundColor: '#00A550',
-  },
-  zoomText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  zoomTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-  },
-  footer: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 30,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor: 'rgba(4,14,29,0.94)',
-    zIndex: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  metrics: { flexDirection: 'row', gap: 10 },
-  metric: { flex: 1, padding: 10, borderRadius: 14, backgroundColor: '#122238', alignItems: 'center' },
-  metricValue: { color: '#6ee7b7', fontSize: 22, fontWeight: '900' },
-  metricLabel: { color: '#94a3b8', fontSize: 11 },
-  status: { color: 'white', fontSize: 14, fontWeight: '700', marginTop: 10, textAlign: 'center' },
-  
-  // Nút chụp ảnh
-  captureBtn: {
-    marginTop: 12,
-    backgroundColor: '#00A550',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#00A550',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  captureBtnDisabled: {
-    backgroundColor: '#374151',
-  },
-  captureBtnText: {
-    color: 'white',
-    fontWeight: '900',
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
-  btnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  // Result card
-  resultCard: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  resultSuccess: {
-    backgroundColor: 'rgba(6, 78, 59, 0.9)',
-    borderColor: '#059669',
-  },
-  resultWarning: {
-    backgroundColor: 'rgba(124, 45, 18, 0.9)',
-    borderColor: '#DC2626',
-  },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  resultTitle: {
-    color: 'white',
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  resultSubText: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  occupancyBarContainer: {
-    marginTop: 8,
-  },
-  occupancyBarTrack: {
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  occupancyBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  barSuccess: {
-    backgroundColor: '#10B981',
-  },
-  barWarning: {
-    backgroundColor: '#EF4444',
-  },
-  occupancyText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 4,
-  },
-
-  // Nút di chuyển tiếp theo
-  nextShelfBtn: {
-    marginTop: 10,
-    backgroundColor: '#1D4ED8',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  nextShelfBtnText: {
-    color: 'white',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-
-  error: { color: '#fca5a5', fontWeight: '700', marginTop: 4, fontSize: 12 },
-  adRoot: { flex: 1, backgroundColor: '#030712' },
-  adWaiting: { color: 'white', fontSize: 22, fontWeight: '700' },
-  adBadge: { position: 'absolute', right: 24, top: 36, paddingHorizontal: 16, paddingVertical: 9, backgroundColor: 'rgba(15,23,42,.82)', borderRadius: 999 },
-  adBadgeText: { color: '#6ee7b7', fontWeight: '800' },
-  creative: { flex: 1, justifyContent: 'flex-end' },
-  creativeCaption: { padding: 34, backgroundColor: 'rgba(3,7,18,.72)' },
-  creativeTitle: { color: 'white', fontSize: 38, fontWeight: '900' },
-  creativeText: { color: '#e2e8f0', fontSize: 22, marginTop: 8 },
-});
