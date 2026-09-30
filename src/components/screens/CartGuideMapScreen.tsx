@@ -37,6 +37,7 @@ import {
   CreditCard,
   Flame,
   Home,
+  ListOrdered,
   Map as MapIcon,
   MapPin,
   Navigation,
@@ -47,6 +48,7 @@ import {
   Search,
   ShoppingBag,
   Sparkles,
+  Square,
   Store,
   Zap,
 } from 'lucide-react-native';
@@ -128,6 +130,32 @@ function getShelfData(item?: GuideDestination | null, fallbackShelfName?: string
         : foundShelf?.sampleProducts?.slice(0, 3) || ['Sản phẩm trong giỏ'],
   };
 }
+
+/**
+ * Phân giải danh sách sản phẩm cần lấy tại một waypoint / kệ cụ thể trong hành trình
+ */
+function getProductsForDestination(
+  dest: GuideDestination | null | undefined,
+  fallbackNames: string[] = [],
+  destIndex: number = 0,
+  totalDestinations: number = 1
+): string[] {
+  if (dest?.productNames && dest.productNames.length > 0) {
+    return dest.productNames;
+  }
+  if (fallbackNames.length > 0) {
+    if (totalDestinations <= 1) {
+      return fallbackNames;
+    }
+    const perDest = Math.ceil(fallbackNames.length / totalDestinations);
+    const slice = fallbackNames.slice(destIndex * perDest, (destIndex + 1) * perDest);
+    if (slice.length > 0) return slice;
+  }
+  const shelf = getShelfData(dest);
+  return shelf.products && shelf.products.length > 0 ? shelf.products.slice(0, 2) : [shelf.name];
+}
+
+const getProductKey = (shelfIdx: number, pName: string) => `${shelfIdx}__${(pName || '').trim().toLowerCase()}`;
 
 export default function CartGuideMapScreen() {
   const router = useRouter();
@@ -213,11 +241,16 @@ export default function CartGuideMapScreen() {
   }, [params.productId, params.productIds, params.productName, status]);
 
 
+  // Trích xuất danh sách sản phẩm từ URL params
+  const adImages = useMemo(() => (params.productImages ? params.productImages.split('||') : params.productImage ? [params.productImage] : []), [params.productImages, params.productImage]);
+  const adNames = useMemo(() => (params.productNames ? params.productNames.split('||') : params.productName ? [params.productName] : []), [params.productNames, params.productName]);
+  const adPrices = useMemo(() => (params.productPrices ? params.productPrices.split(',').map(Number) : params.productPrice ? [Number(params.productPrice)] : []), [params.productPrices, params.productPrice]);
+
   // Chế độ xem: 'timeline' (Lộ trình & Sản phẩm) | 'map' (Sơ đồ 2D siêu thị)
   const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
 
-  // Trạng thái đánh dấu đã nhặt sản phẩm trên màn hình
-  const [checkedProducts, setCheckedProducts] = useState<Record<string, boolean>>({});
+  // Trạng thái đánh dấu đã lấy từng sản phẩm theo khóa: ${shelfIdx}__${productName}
+  const [pickedProductKeys, setPickedProductKeys] = useState<Record<string, boolean>>({});
 
   // Telemetry tọa độ Robot thời gian thực cho bản đồ 2D
   const [mapPose, setMapPose] = useState<RobotPoseState>({
@@ -235,6 +268,72 @@ export default function CartGuideMapScreen() {
     () => getShelfData(destination, params.shelfName || params.aisleName),
     [destination, params.shelfName, params.aisleName]
   );
+
+  // Phân tích danh sách toàn bộ các chặng dừng và sản phẩm tương ứng trong toàn bộ lộ trình
+  const allStopsProducts = useMemo(() => {
+    if (destinations.length > 0) {
+      return destinations.map((dest, idx) => ({
+        stopIndex: idx,
+        dest,
+        shelf: getShelfData(dest),
+        products: getProductsForDestination(dest, adNames, idx, destinations.length),
+      }));
+    }
+    if (destination) {
+      return [{
+        stopIndex: 0,
+        dest: destination,
+        shelf: currentShelf,
+        products: getProductsForDestination(destination, adNames, 0, 1),
+      }];
+    }
+    return [];
+  }, [destinations, destination, adNames, currentShelf]);
+
+  // Danh sách sản phẩm cụ thể của kệ hiện tại
+  const currentShelfProducts = useMemo(() => {
+    if (allStopsProducts.length > 0 && currentWaypointIndex < allStopsProducts.length) {
+      return allStopsProducts[currentWaypointIndex].products;
+    }
+    return getProductsForDestination(destination, adNames, currentWaypointIndex, totalStops);
+  }, [allStopsProducts, currentWaypointIndex, destination, adNames, totalStops]);
+
+  // Số lượng sản phẩm đã xác nhận lấy trên kệ hiện tại
+  const pickedCountOnCurrentShelf = useMemo(() => {
+    return currentShelfProducts.filter(p => pickedProductKeys[getProductKey(currentWaypointIndex, p)]).length;
+  }, [currentShelfProducts, pickedProductKeys, currentWaypointIndex]);
+
+  // Đã lấy đủ toàn bộ sản phẩm trên kệ hiện tại chưa?
+  const isAllCurrentShelfProductsPicked = currentShelfProducts.length > 0
+    && pickedCountOnCurrentShelf === currentShelfProducts.length;
+
+  // Tổng số lượng sản phẩm trên toàn bộ hành trình
+  const totalProductsCount = useMemo(() => {
+    return allStopsProducts.reduce((sum, stop) => sum + stop.products.length, 0);
+  }, [allStopsProducts]);
+
+  // Tổng số sản phẩm đã lấy trên toàn bộ hành trình
+  const totalProductsPicked = useMemo(() => {
+    let count = 0;
+    allStopsProducts.forEach(stop => {
+      stop.products.forEach(p => {
+        if (pickedProductKeys[getProductKey(stop.stopIndex, p)]) count++;
+      });
+    });
+    return count;
+  }, [allStopsProducts, pickedProductKeys]);
+
+  // Hàm chuyển đổi trạng thái đã lấy của sản phẩm trên kệ hiện tại
+  const toggleProductPicked = (pName: string) => {
+    const key = getProductKey(currentWaypointIndex, pName);
+    setPickedProductKeys((prev) => {
+      const nextVal = !prev[key];
+      if (nextVal) {
+        speak(`Đã lấy ${pName}.`);
+      }
+      return { ...prev, [key]: nextVal };
+    });
+  };
 
   // Bộ đếm ngược 30 giây tự động khi đã đến kệ
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
@@ -339,12 +438,18 @@ export default function CartGuideMapScreen() {
     }
   }, [awaitingPickup]);
 
-  // Tự động chuyển kệ khi hết 30s
+  // Tự động chuyển kệ khi hết 30s (chỉ khi ĐÃ LẤY ĐỦ SẢN PHẨM tại kệ hiện tại)
   useEffect(() => {
     if (autoCountdown === 0 && awaitingPickup) {
-      handleConfirmPickup();
+      if (isAllCurrentShelfProductsPicked) {
+        handleConfirmPickup();
+      } else {
+        // Chưa lấy đủ các món tại kệ này -> Tiếp tục chờ khách, không tự ý chuyển kệ
+        setAutoCountdown(30);
+        speak('Quý khách vẫn còn sản phẩm chưa lấy tại kệ này. Robot sẽ tiếp tục chờ nhé!');
+      }
     }
-  }, [autoCountdown, awaitingPickup]);
+  }, [autoCountdown, awaitingPickup, isAllCurrentShelfProductsPicked]);
 
   // Giọng nói thông báo thân thiện
   const lastVoiceRef = useRef<string>('');
@@ -353,7 +458,15 @@ export default function CartGuideMapScreen() {
       const voiceKey = `ARRIVED-${destination.nodeId}-${currentWaypointIndex}`;
       if (lastVoiceRef.current !== voiceKey) {
         lastVoiceRef.current = voiceKey;
-        speak(`Robot đã đến ${currentShelf.name}. Mời quý khách lấy sản phẩm nhé!`);
+        const pCount = currentShelfProducts.length;
+        const pListStr = currentShelfProducts.join(', ');
+        if (pCount > 1) {
+          speak(`Robot đã đến ${currentShelf.name}. Kệ này có ${pCount} sản phẩm cần lấy là: ${pListStr}. Quý khách vui lòng lấy và chạm xác nhận từng món trên màn hình nhé!`);
+        } else if (pCount === 1) {
+          speak(`Robot đã đến ${currentShelf.name}. Mời quý khách lấy ${pListStr} và chạm xác nhận trên màn hình nhé!`);
+        } else {
+          speak(`Robot đã đến ${currentShelf.name}. Mời quý khách lấy sản phẩm nhé!`);
+        }
       }
     } else if (status === 'COMPLETED') {
       if (lastVoiceRef.current !== 'COMPLETED') {
@@ -365,7 +478,7 @@ export default function CartGuideMapScreen() {
         }
       }
     }
-  }, [status, awaitingPickup, destination, currentWaypointIndex, currentShelf, speak]);
+  }, [status, awaitingPickup, destination, currentWaypointIndex, currentShelf, currentShelfProducts, speak]);
 
   // Tự động chuyển về Home sau khi hoàn tất & Lưu lịch sử mua sắm / Hóa đơn cho Member
   useEffect(() => {
@@ -465,6 +578,36 @@ export default function CartGuideMapScreen() {
   }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute, speak, cashierPhase]);
 
   const handleConfirmPickup = async () => {
+    if (!isAllCurrentShelfProductsPicked) {
+      const remaining = currentShelfProducts.filter(p => !pickedProductKeys[getProductKey(currentWaypointIndex, p)]);
+      Alert.alert(
+        'Chưa xác nhận đủ sản phẩm',
+        `Tại kệ này (${currentShelf.name}) còn ${remaining.length} món chưa xác nhận lấy:\n\n• ${remaining.join('\n• ')}\n\nQuý khách đã lấy đủ các món này vào giỏ chưa?`,
+        [
+          { text: 'Chờ lấy thêm', style: 'cancel' },
+          {
+            text: 'Đã lấy hết, đi tiếp',
+            onPress: async () => {
+              // Tự động đánh dấu tất cả các món trên kệ này là đã lấy
+              setPickedProductKeys((prev) => {
+                const updated = { ...prev };
+                currentShelfProducts.forEach(p => {
+                  updated[getProductKey(currentWaypointIndex, p)] = true;
+                });
+                return updated;
+              });
+              try {
+                await confirmPickup();
+              } catch (err: any) {
+                Alert.alert('Chưa thể tiếp tục', err?.message || 'Không gửi được tín hiệu tiếp tục đến Robot.');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     try {
       await confirmPickup();
     } catch (err: any) {
@@ -488,13 +631,6 @@ export default function CartGuideMapScreen() {
         },
       ],
     );
-  };
-
-  const toggleProductCheck = (key: string) => {
-    setCheckedProducts((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
   };
 
   // Trạng thái đang gửi lệnh tự hành sau khi dẫn đường (Về thu ngân hoặc Về trạm sạc)
@@ -588,10 +724,7 @@ export default function CartGuideMapScreen() {
   };
 
 
-  // ─── Derive ad product info from params ───────────────────────────────────
-  const adImages   = params.productImages  ? params.productImages.split('||')  : params.productImage  ? [params.productImage]  : [];
-  const adNames    = params.productNames   ? params.productNames.split('||')   : params.productName   ? [params.productName]   : [];
-  const adPrices   = params.productPrices  ? params.productPrices.split(',').map(Number)  : params.productPrice  ? [Number(params.productPrice)] : [];
+  // ─── Derive product display info ───────────────────────────────────
   const primaryImage  = adImages[0]  || '';
   const primaryName   = adNames[0]   || (destination?.productNames?.[0] ?? currentShelf.name);
   const primaryPrice  = adPrices[0]  || 0;
@@ -853,10 +986,163 @@ export default function CartGuideMapScreen() {
               </Text>
             </View>
 
+            {/* ── SHELF PICKUP CHECKLIST (khi robot dừng chờ khách lấy hàng) ── */}
+            {awaitingPickup && (
+              <View style={s.shelfChecklistBox}>
+                <View style={s.shelfChecklistHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <PackageCheck size={20} color={isAllCurrentShelfProductsPicked ? '#16a34a' : '#d97706'} />
+                    <Text style={s.shelfChecklistTitle}>
+                      Món cần lấy tại kệ ({pickedCountOnCurrentShelf}/${currentShelfProducts.length})
+                    </Text>
+                  </View>
+                  <View style={[
+                    s.shelfChecklistBadge,
+                    isAllCurrentShelfProductsPicked ? s.badgeSuccess : s.badgeWarning
+                  ]}>
+                    <Text style={[
+                      s.shelfChecklistBadgeText,
+                      isAllCurrentShelfProductsPicked ? s.badgeTextSuccess : s.badgeTextWarning
+                    ]}>
+                      {isAllCurrentShelfProductsPicked ? '✓ Đã đủ' : 'Chưa đủ'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={s.shelfChecklistSub}>
+                  Quý khách vui lòng chạm vào từng món bên dưới để xác nhận đã lấy vào giỏ:
+                </Text>
+
+                <View style={s.shelfItemsList}>
+                  {currentShelfProducts.map((pName, pIdx) => {
+                    const isPicked = Boolean(pickedProductKeys[getProductKey(currentWaypointIndex, pName)]);
+                    return (
+                      <TouchableOpacity
+                        key={pIdx}
+                        style={[s.shelfItemRow, isPicked && s.shelfItemRowPicked]}
+                        onPress={() => toggleProductPicked(pName)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[s.shelfItemCheck, isPicked && s.shelfItemCheckPicked]}>
+                          {isPicked ? (
+                            <CheckCircle2 size={24} color="#16a34a" />
+                          ) : (
+                            <Square size={22} color="#94a3b8" />
+                          )}
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={[s.shelfItemName, isPicked && s.shelfItemNamePicked]}>
+                            {pName}
+                          </Text>
+                          <Text style={[s.shelfItemHint, isPicked && s.shelfItemHintPicked]}>
+                            {isPicked ? '✓ Đã lấy vào giỏ hàng' : 'Chạm để xác nhận đã lấy món này'}
+                          </Text>
+                        </View>
+                        <View style={[s.shelfItemPill, isPicked && s.shelfItemPillPicked]}>
+                          <Text style={[s.shelfItemPillText, isPicked && s.shelfItemPillTextPicked]}>
+                            {isPicked ? 'Đã lấy' : 'Cần lấy'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* ── HÀNG ĐỢI DẪN ĐƯỜNG MUA SẮM (SHOPPING QUEUE) ── */}
+            <View style={s.queueContainer}>
+              <View style={s.queueHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                  <ListOrdered size={20} color="#1e293b" />
+                  <Text style={s.queueTitle}>Hàng Đợi Dẫn Đường Mua Sắm</Text>
+                </View>
+                <View style={s.queueCounterBadge}>
+                  <Text style={s.queueCounterText}>
+                    {totalProductsPicked}/{totalProductsCount} món
+                  </Text>
+                </View>
+              </View>
+
+              <View style={s.queueTimeline}>
+                {allStopsProducts.map((stop, sIdx) => {
+                  const isPast = sIdx < currentWaypointIndex;
+                  const isCurrent = sIdx === currentWaypointIndex;
+                  const isUpcoming = sIdx > currentWaypointIndex;
+                  const stopPickedCount = stop.products.filter(p => pickedProductKeys[getProductKey(stop.stopIndex, p)]).length;
+                  const isStopAllPicked = stop.products.length > 0 && stopPickedCount === stop.products.length;
+
+                  return (
+                    <View key={sIdx} style={[s.queueStopCard, isCurrent && s.queueStopCardActive, isPast && s.queueStopCardDone]}>
+                      <View style={s.queueStopHeader}>
+                        <View style={s.queueStopIconWrap}>
+                          <Text style={{ fontSize: 16 }}>{stop.shelf.icon || '📍'}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={s.queueStopShelfName} numberOfLines={1}>{stop.shelf.name}</Text>
+                            <Text style={s.queueStopAisleText}>({stop.shelf.aisleCode || `Chặng ${sIdx + 1}`})</Text>
+                          </View>
+                          <Text style={s.queueStopCategoryText}>{stop.shelf.category}</Text>
+                        </View>
+                        <View style={[
+                          s.queueStopBadge,
+                          isPast || isStopAllPicked ? s.stopBadgeDone :
+                          isCurrent ? (awaitingPickup ? s.stopBadgeArrived : s.stopBadgeMoving) :
+                          s.stopBadgeUpcoming
+                        ]}>
+                          <Text style={[
+                            s.queueStopBadgeText,
+                            isPast || isStopAllPicked ? s.stopBadgeTextDone :
+                            isCurrent ? (awaitingPickup ? s.stopBadgeTextArrived : s.stopBadgeTextMoving) :
+                            s.stopBadgeTextUpcoming
+                          ]}>
+                            {isPast || isStopAllPicked
+                              ? '✓ Đã xong'
+                              : isCurrent
+                              ? (awaitingPickup ? '📍 Đang dừng' : '➡ Đang tới')
+                              : '⏳ Chờ lấy'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Danh sách sản phẩm của từng chặng trong hàng đợi */}
+                      <View style={s.queueStopProductsList}>
+                        {stop.products.map((pName, pIdx) => {
+                          const isPicked = Boolean(pickedProductKeys[getProductKey(stop.stopIndex, pName)]);
+                          return (
+                            <View key={pIdx} style={[s.queueProductRow, isPicked && s.queueProductRowPicked]}>
+                              <View style={s.queueProductBullet}>
+                                {isPicked ? (
+                                  <Check size={14} color="#16a34a" />
+                                ) : isCurrent ? (
+                                  <View style={s.bulletCurrent} />
+                                ) : (
+                                  <View style={s.bulletUpcoming} />
+                                )}
+                              </View>
+                              <Text style={[s.queueProductName, isPicked && s.queueProductNamePicked]} numberOfLines={1}>
+                                {pName}
+                              </Text>
+                              <View style={[s.queueProductStatusPill, isPicked && s.queueProductStatusPillPicked]}>
+                                <Text style={[s.queueProductStatusText, isPicked && s.queueProductStatusTextPicked]}>
+                                  {isPicked ? '✓ Đã lấy' : isCurrent ? 'Cần lấy' : 'Chờ lấy'}
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* ── MULTI-PRODUCT THUMBNAILS (if > 1 item) ── */}
             {isMultiProduct && adNames.length > 1 && (
               <View style={s.multiRow}>
-                <Text style={s.multiLabel}>Các sản phẩm trong hành trình:</Text>
+                <Text style={s.multiLabel}>Ảnh các sản phẩm trong chuyến đi:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.multiScroll}>
                   {adNames.map((name, i) => (
                     <View key={i} style={[s.thumbCard, i === 0 && s.thumbCardFirst]}>
@@ -877,42 +1163,22 @@ export default function CartGuideMapScreen() {
               </View>
             )}
 
-            {/* ── DESTINATIONS LIST (compact chips, for multi-stop) ── */}
-            {destinations.length > 1 && (
-              <View style={s.destListBox}>
-                <Text style={s.destListLabel}>Lộ trình dừng:</Text>
-                <View style={s.destChipsRow}>
-                  {destinations.map((dest, idx) => {
-                    const si = getShelfData(dest);
-                    const isDone    = idx < currentWaypointIndex;
-                    const isCur     = idx === currentWaypointIndex && status !== 'FAILED' && status !== 'CANCELLED';
-                    return (
-                      <View key={idx} style={[
-                        s.destChip,
-                        isDone && s.destChipDone,
-                        isCur  && s.destChipActive,
-                      ]}>
-                        <Text style={{ fontSize: 13 }}>{isDone ? '✅' : isCur ? '📍' : si.icon}</Text>
-                        <Text style={[
-                          s.destChipText,
-                          isDone && s.destChipTextDone,
-                          isCur  && s.destChipTextActive,
-                        ]} numberOfLines={1}>{si.name}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
             {/* ── COUNTDOWN when awaiting pickup ── */}
             {awaitingPickup && autoCountdown !== null && (
               <View style={s.countdownBox}>
                 <Text style={s.countdownLabel}>
-                  Tự động tiếp tục sau <Text style={s.countdownNum}>{autoCountdown}s</Text>
+                  {isAllCurrentShelfProductsPicked
+                    ? `Tự động tiếp tục sau ${autoCountdown}s`
+                    : `Đang chờ quý khách lấy đủ sản phẩm (${autoCountdown}s)`}
                 </Text>
                 <View style={s.countdownTrack}>
-                  <View style={[s.countdownFill, { width: `${(autoCountdown / 30) * 100}%` as any }]} />
+                  <View style={[
+                    s.countdownFill,
+                    {
+                      width: `${(autoCountdown / 30) * 100}%` as any,
+                      backgroundColor: isAllCurrentShelfProductsPicked ? '#16a34a' : '#f59e0b',
+                    }
+                  ]} />
                 </View>
               </View>
             )}
@@ -923,13 +1189,33 @@ export default function CartGuideMapScreen() {
       {/* ── FIXED BOTTOM CONFIRM BUTTON (only when awaiting pickup) ── */}
       {awaitingPickup && (
         <View style={s.bottomBar}>
-          <TouchableOpacity style={s.confirmBtn} onPress={handleConfirmPickup} activeOpacity={0.88}>
-            <CheckCircle2 size={22} color="#fff" />
-            <Text style={s.confirmBtnText}>
-              {isFinalStop
-                ? `Đã lấy xong — Hoàn tất ✓${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`
-                : `Đã lấy hàng — Đi tiếp ➜${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`}
-            </Text>
+          <TouchableOpacity
+            style={[
+              s.confirmBtn,
+              !isAllCurrentShelfProductsPicked && s.confirmBtnIncomplete,
+            ]}
+            onPress={handleConfirmPickup}
+            activeOpacity={0.88}
+          >
+            {isAllCurrentShelfProductsPicked ? (
+              <CheckCircle2 size={24} color="#fff" />
+            ) : (
+              <PackageCheck size={22} color="#fff" />
+            )}
+            <View style={{ alignItems: 'center' }}>
+              <Text style={s.confirmBtnText}>
+                {isAllCurrentShelfProductsPicked
+                  ? (isFinalStop
+                      ? `Đã lấy xong ${currentShelfProducts.length} món — Hoàn tất ✓${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`
+                      : `Đã lấy đủ ${currentShelfProducts.length} món — Đi tiếp ➜${autoCountdown !== null ? ` (${autoCountdown}s)` : ''}`)
+                  : `Lấy đủ sản phẩm để tiếp tục (${pickedCountOnCurrentShelf}/${currentShelfProducts.length})${autoCountdown !== null ? ` · ${autoCountdown}s` : ''}`}
+              </Text>
+              {!isAllCurrentShelfProductsPicked && (
+                <Text style={s.confirmBtnSubText}>
+                  (Chạm tick chọn các món đã lấy vào giỏ ở danh sách phía trên)
+                </Text>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
       )}
@@ -1034,6 +1320,71 @@ const s = StyleSheet.create({
 
   /* Bottom confirm bar */
   bottomBar:  { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -2 }, elevation: 10 },
-  confirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16a34a', borderRadius: 18, paddingVertical: 17, paddingHorizontal: 24 },
-  confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  confirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16a34a', borderRadius: 18, paddingVertical: 15, paddingHorizontal: 20 },
+  confirmBtnIncomplete: { backgroundColor: '#d97706' },
+  confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
+  confirmBtnSubText: { color: '#fff', fontSize: 11, fontWeight: '500', opacity: 0.9, marginTop: 2, textAlign: 'center' },
+
+  /* Shelf Checklist */
+  shelfChecklistBox: { backgroundColor: '#fff', borderRadius: 20, padding: 16, borderWidth: 1.5, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2, gap: 10 },
+  shelfChecklistHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  shelfChecklistTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  shelfChecklistBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  badgeSuccess: { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#86efac' },
+  badgeWarning: { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fcd34d' },
+  shelfChecklistBadgeText: { fontSize: 11, fontWeight: '800' },
+  badgeTextSuccess: { color: '#15803d' },
+  badgeTextWarning: { color: '#b45309' },
+  shelfChecklistSub: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  shelfItemsList: { gap: 8, marginTop: 2 },
+  shelfItemRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: '#f8fafc', borderWidth: 1.5, borderColor: '#e2e8f0' },
+  shelfItemRowPicked: { backgroundColor: '#f0fdf4', borderColor: '#86efac' },
+  shelfItemCheck: { width: 26, alignItems: 'center', justifyContent: 'center' },
+  shelfItemCheckPicked: {},
+  shelfItemName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  shelfItemNamePicked: { color: '#15803d', textDecorationLine: 'line-through' },
+  shelfItemHint: { fontSize: 11, color: '#64748b' },
+  shelfItemHintPicked: { color: '#16a34a', fontWeight: '600' },
+  shelfItemPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#f1f5f9' },
+  shelfItemPillPicked: { backgroundColor: '#dcfce7' },
+  shelfItemPillText: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+  shelfItemPillTextPicked: { color: '#15803d' },
+
+  /* Shopping Queue Container */
+  queueContainer: { backgroundColor: '#fff', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2, gap: 12 },
+  queueHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  queueTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  queueCounterBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#bfdbfe' },
+  queueCounterText: { fontSize: 11, fontWeight: '700', color: '#1d4ed8' },
+  queueTimeline: { gap: 10 },
+  queueStopCard: { borderRadius: 16, padding: 12, backgroundColor: '#f8fafc', borderWidth: 1.5, borderColor: '#e2e8f0', gap: 8 },
+  queueStopCardActive: { borderColor: '#3b82f6', backgroundColor: '#f0f9ff' },
+  queueStopCardDone: { borderColor: '#86efac', backgroundColor: '#f0fdf4' },
+  queueStopHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  queueStopIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
+  queueStopShelfName: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
+  queueStopAisleText: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+  queueStopCategoryText: { fontSize: 11, color: '#64748b' },
+  queueStopBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  stopBadgeDone: { backgroundColor: '#dcfce7' },
+  stopBadgeArrived: { backgroundColor: '#fef3c7' },
+  stopBadgeMoving: { backgroundColor: '#dbeafe' },
+  stopBadgeUpcoming: { backgroundColor: '#f1f5f9' },
+  queueStopBadgeText: { fontSize: 10, fontWeight: '800' },
+  stopBadgeTextDone: { color: '#15803d' },
+  stopBadgeTextArrived: { color: '#b45309' },
+  stopBadgeTextMoving: { color: '#1d4ed8' },
+  stopBadgeTextUpcoming: { color: '#64748b' },
+  queueStopProductsList: { paddingLeft: 8, gap: 6, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingTop: 8 },
+  queueProductRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  queueProductRowPicked: { opacity: 0.85 },
+  queueProductBullet: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  bulletCurrent: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6' },
+  bulletUpcoming: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#cbd5e1' },
+  queueProductName: { fontSize: 12, fontWeight: '600', color: '#334155', flex: 1 },
+  queueProductNamePicked: { color: '#15803d', textDecorationLine: 'line-through' },
+  queueProductStatusPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: '#f1f5f9' },
+  queueProductStatusPillPicked: { backgroundColor: '#dcfce7' },
+  queueProductStatusText: { fontSize: 10, fontWeight: '700', color: '#64748b' },
+  queueProductStatusTextPicked: { color: '#15803d' },
 });

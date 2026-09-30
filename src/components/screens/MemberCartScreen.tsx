@@ -360,6 +360,8 @@ export default function MemberCartScreen() {
                             from: 'cart',
                             productIds: cart.items.map(i => i.productId).join(','),
                             productPrices: cart.items.map(i => i.unitPrice).join(','),
+                            productNames: cart.items.map(i => i.productName).join('||'),
+                            productImages: cart.items.map(i => (i as any).imageUrl || (i as any).productImage || '').join('||'),
                           },
                         } as any);
                       } catch (error: any) {
