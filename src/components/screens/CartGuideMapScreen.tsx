@@ -239,6 +239,11 @@ export default function CartGuideMapScreen() {
   // Bộ đếm ngược 30 giây tự động khi đã đến kệ
   const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
 
+  // Quản lý giai đoạn dẫn khách ra quầy thu ngân và tự động về trạm sau khi thanh toán
+  const [cashierPhase, setCashierPhase] = useState<'idle' | 'moving_to_cashier' | 'at_cashier'>('idle');
+  const cashierPhaseRef = useRef<'idle' | 'moving_to_cashier' | 'at_cashier'>('idle');
+  const [cashierCountdown, setCashierCountdown] = useState<number | null>(null);
+
   // Subscribe SignalR Telemetry để vẽ vị trí Robot chính xác trên Bản Đồ 2D
   useEffect(() => {
     const unsubTelemetry = subscribeTelemetry((payload) => {
@@ -250,6 +255,19 @@ export default function CartGuideMapScreen() {
           headingDeg: prev.headingDeg,
           nodeName: prev.statusText || '',
         });
+
+        // Bổ sung kiểm tra theo khoảng cách toạ độ tới Quầy Thu Ngân Node 8 (x: 0.23, y: 0.42)
+        if (cashierPhaseRef.current === 'moving_to_cashier') {
+          const distToCashier = Math.hypot(resolved.x - SUPERMARKET_NODES[8].mapX, resolved.y - SUPERMARKET_NODES[8].mapY);
+          if (distToCashier < 0.3) {
+            console.log('[CartGuideMapScreen] Robot đã đến sát Quầy Thu Ngân theo toạ độ SLAM!');
+            cashierPhaseRef.current = 'at_cashier';
+            setCashierPhase('at_cashier');
+            setCashierCountdown(10);
+            speak('Đã đến quầy thu ngân. Cảm ơn quý khách đã mua sắm và sử dụng dịch vụ của tôi! Robot xin phép tự động quay về trạm sạc sau 10 giây.');
+          }
+        }
+
         return {
           x: resolved.x,
           y: resolved.y,
@@ -263,6 +281,21 @@ export default function CartGuideMapScreen() {
 
     const unsubNav = subscribeNavigationStatus((payload) => {
       if (!payload) return;
+      const navStat = String(payload?.navStatus ?? payload?.NavStatus ?? payload?.status ?? payload?.Status ?? '').toUpperCase();
+      const nodeRole = String(payload?.nodeRole ?? payload?.NodeRole ?? '').toLowerCase();
+      const targetNodeId = Number(payload?.targetNodeId ?? payload?.TargetNodeId ?? payload?.nodeId ?? payload?.NodeId ?? 0);
+
+      // Nhận diện khi robot đến Quầy Thu Ngân (Node 8) qua SignalR
+      if (cashierPhaseRef.current === 'moving_to_cashier') {
+        if (navStat === 'ARRIVED' || navStat === 'COMPLETED' || nodeRole === 'cashier' || targetNodeId === 8) {
+          console.log('[CartGuideMapScreen] Đã đến Quầy Thu Ngân (Node 8) qua navigationStatus!');
+          cashierPhaseRef.current = 'at_cashier';
+          setCashierPhase('at_cashier');
+          setCashierCountdown(10);
+          speak('Đã đến quầy thu ngân. Cảm ơn quý khách đã mua sắm và sử dụng dịch vụ của tôi! Robot xin phép tự động quay về trạm sạc sau 10 giây.');
+        }
+      }
+
       setMapPose((prev) => {
         const resolved = resolveRobotPosition(payload, {
           x: prev.x,
@@ -285,7 +318,7 @@ export default function CartGuideMapScreen() {
       unsubTelemetry();
       unsubNav();
     };
-  }, [subscribeTelemetry, subscribeNavigationStatus]);
+  }, [subscribeTelemetry, subscribeNavigationStatus, speak]);
 
   // Bộ đếm ngược 30 giây khi robot dừng chờ khách lấy hàng
   useEffect(() => {
@@ -409,6 +442,8 @@ export default function CartGuideMapScreen() {
         return () => clearTimeout(timer);
       } else {
         // Trường hợp B: Dẫn đường độc lập — cho khách 60 giây lựa chọn trước khi tự động quay về trạm
+        if (cashierPhase !== 'idle') return;
+
         const idleTimer = setTimeout(async () => {
           console.log('[CartGuideMapScreen] Hết thời gian chờ lựa chọn (60s), tự động quay về vị trí chờ...');
           try {
@@ -427,7 +462,7 @@ export default function CartGuideMapScreen() {
         return () => clearTimeout(idleTimer);
       }
     }
-  }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute, speak]);
+  }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute, speak, cashierPhase]);
 
   const handleConfirmPickup = async () => {
     try {
@@ -470,7 +505,7 @@ export default function CartGuideMapScreen() {
     if (isDispatchingPostGuide) return;
     setIsDispatchingPostGuide(true);
     try {
-      speak('Robot đang dẫn quý khách đến quầy thu ngân để thanh toán.');
+      speak('Robot đang dẫn quý khách đến quầy thu ngân để thanh toán. Mời quý khách đi theo robot nhé!');
       const res = await RobotControlService.dispatchAutonomous({
         robotCode: ROBOT_CODE,
         flowType: 'return',
@@ -483,13 +518,48 @@ export default function CartGuideMapScreen() {
       if (!res.ok) {
         throw new Error(res.data?.detail || 'Không thể gửi lệnh tới robot');
       }
-      router.replace('/' as any);
+      cashierPhaseRef.current = 'moving_to_cashier';
+      setCashierPhase('moving_to_cashier');
     } catch (e: any) {
       Alert.alert('Chưa thể dẫn đường', e?.message || 'Không gửi được tín hiệu dẫn tới quầy thu ngân.');
     } finally {
       setIsDispatchingPostGuide(false);
     }
   };
+
+  // 1.1 Tự động quay về trạm sạc sau khi hoàn tất tại quầy thu ngân
+  const handleAutoReturnFromCashier = useCallback(async () => {
+    try {
+      speak('Cảm ơn quý khách đã sử dụng dịch vụ của tôi. Robot xin phép quay về trạm sạc. Hẹn gặp lại quý khách!');
+      await RobotControlService.dispatchAutonomous({
+        robotCode: ROBOT_CODE,
+        flowType: 'return',
+        nodeIds: [7],
+        floorId: 1,
+        source: 'RobotKiosk',
+        dispatchedBy: 'Tự động quay về sau khi hoàn tất tại thu ngân',
+        targetSummary: 'Quay về vị trí robot / Dock (Node 7)',
+      });
+    } catch (e) {
+      console.warn('[CartGuideMapScreen] Lỗi tự động về trạm từ thu ngân:', e);
+    } finally {
+      router.replace('/' as any);
+    }
+  }, [router, speak]);
+
+  // Đếm ngược 10 giây tại quầy thu ngân trước khi robot tự động lăn bánh về Node 7
+  useEffect(() => {
+    if (cashierPhase === 'at_cashier' && cashierCountdown !== null) {
+      if (cashierCountdown <= 0) {
+        void handleAutoReturnFromCashier();
+        return;
+      }
+      const timer = setTimeout(() => {
+        setCashierCountdown((prev) => (prev !== null ? prev - 1 : null));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cashierPhase, cashierCountdown, handleAutoReturnFromCashier]);
 
   // 2. Kết thúc mua sắm - Robot tự động quay về Vị trí robot / Trạm sạc (Node 7)
   const handleFinishShopping = async () => {
@@ -594,11 +664,17 @@ export default function CartGuideMapScreen() {
             )}
             <Text style={[
               s.statusChipText,
+              cashierPhase === 'at_cashier' ? { color: '#059669' } :
+              cashierPhase === 'moving_to_cashier' ? { color: '#0284c7' } :
               awaitingPickup   ? { color: '#15803d' } :
               status === 'COMPLETED' ? { color: '#059669' } :
               { color: '#0284c7' },
             ]}>
-              {awaitingPickup
+              {cashierPhase === 'moving_to_cashier'
+                ? '💳 Đang đến quầy thu ngân…'
+                : cashierPhase === 'at_cashier'
+                ? '🎉 Đã đến quầy thu ngân'
+                : awaitingPickup
                 ? '📍 Đã đến điểm hẹn'
                 : status === 'COMPLETED'
                 ? '✅ Hoàn tất mua sắm!'
@@ -607,8 +683,59 @@ export default function CartGuideMapScreen() {
           </View>
         </View>
 
-        {/* ── COMPLETED STATE ── */}
-        {status === 'COMPLETED' ? (
+        {/* ── TRẠNG THÁI DẪN ĐƯỜNG ĐẾN THU NGÂN / TẠI THU NGÂN / HOÀN TẤT ── */}
+        {cashierPhase === 'moving_to_cashier' ? (
+          <View style={s.completedBox}>
+            <View style={s.actionIconWrapCashier}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+            <Text style={s.completedTitle}>Đang Dẫn Đến Quầy Thu Ngân</Text>
+            <Text style={s.completedSub}>
+              Xin mời quý khách tiếp tục đi cùng robot đến quầy thanh toán POS (Node 8). Robot sẽ dẫn quý khách đến tận nơi!
+            </Text>
+            <View style={[s.actionCard, s.cashierCard, { width: '100%', marginTop: 8 }]}>
+              <Bot size={28} color="#059669" />
+              <View style={{ flex: 1 }}>
+                <Text style={s.actionCardTitle}>Robot Đang Di Chuyển</Text>
+                <Text style={s.actionCardSub}>Điểm đến: Quầy Thu Ngân (Node 8)</Text>
+              </View>
+            </View>
+          </View>
+        ) : cashierPhase === 'at_cashier' ? (
+          <View style={s.completedBox}>
+            <Text style={s.completedEmoji}>🎉</Text>
+            <Text style={s.completedTitle}>Cảm Ơn Quý Khách Đã Sử Dụng Dịch Vụ Của Tôi!</Text>
+            <Text style={s.completedSub}>
+              Đã đến Quầy Thu Ngân an toàn. Chúc quý khách thanh toán thuận tiện và có một ngày mua sắm thật vui vẻ!
+            </Text>
+
+            <View style={[s.countdownBox, { width: '100%', marginTop: 8 }]}>
+              <Text style={s.countdownLabel}>
+                Robot sẽ tự động quay về trạm sạc sau: <Text style={s.countdownNum}>{cashierCountdown ?? 10}s</Text>
+              </Text>
+              <View style={s.countdownTrack}>
+                <View
+                  style={[
+                    s.countdownFill,
+                    {
+                      width: `${Math.max(0, Math.min(100, ((cashierCountdown ?? 10) / 10) * 100))}%` as any,
+                      backgroundColor: '#4f46e5',
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[s.homeBtn, { backgroundColor: '#4f46e5', width: '100%', marginTop: 8 }]}
+              onPress={handleAutoReturnFromCashier}
+              activeOpacity={0.85}
+            >
+              <Home size={18} color="#fff" />
+              <Text style={s.homeBtnText}>Quay Về Trạm Sạc Ngay</Text>
+            </TouchableOpacity>
+          </View>
+        ) : status === 'COMPLETED' ? (
           <View style={s.completedBox}>
             <Text style={s.completedEmoji}>🎉</Text>
             <Text style={s.completedTitle}>Đã hoàn thành lộ trình mua sắm!</Text>
