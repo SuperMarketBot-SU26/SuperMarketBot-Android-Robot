@@ -477,7 +477,6 @@ export function RobotGuideProvider({ children }: { children: ReactNode }) {
         setMissionId(null);
         setStatus('COMPLETED');
         setError(null);
-        AdInterruptionService.clear();
 
         void VoiceService.speak('Robot đã dẫn bạn đến đúng vị trí sản phẩm. Quý khách vui lòng kiểm tra sản phẩm và tiếp tục mua sắm nhé!');
       } else {
