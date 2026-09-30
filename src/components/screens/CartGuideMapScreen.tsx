@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -324,7 +325,11 @@ export default function CartGuideMapScreen() {
     } else if (status === 'COMPLETED') {
       if (lastVoiceRef.current !== 'COMPLETED') {
         lastVoiceRef.current = 'COMPLETED';
-        speak('Hành trình dẫn đường mua sắm đã hoàn tất. Cảm ơn quý khách!');
+        if (!AdInterruptionService.hasInterruptedMission()) {
+          speak('Hành trình dẫn đường mua sắm đã hoàn tất. Quý khách muốn robot dẫn đến quầy thu ngân hay kết thúc mua sắm?');
+        } else {
+          speak('Hành trình dẫn đường mua sắm đã hoàn tất. Cảm ơn quý khách!');
+        }
       }
     }
   }, [status, awaitingPickup, destination, currentWaypointIndex, currentShelf, speak]);
@@ -369,38 +374,58 @@ export default function CartGuideMapScreen() {
     }
 
     if (status === 'COMPLETED' || status === 'CANCELLED') {
-      const timer = setTimeout(async () => {
-        if (status === 'COMPLETED' && AdInterruptionService.hasInterruptedMission()) {
-          const interrupted = AdInterruptionService.getInterruptedMission()!;
-          console.log('[CartGuideMapScreen] Hoàn tất dẫn đường, khôi phục phiên quảng cáo dở dang:', interrupted);
+      if (status === 'CANCELLED' || AdInterruptionService.hasInterruptedMission()) {
+        const timer = setTimeout(async () => {
+          if (status === 'COMPLETED' && AdInterruptionService.hasInterruptedMission()) {
+            const interrupted = AdInterruptionService.getInterruptedMission()!;
+            console.log('[CartGuideMapScreen] Hoàn tất dẫn đường, khôi phục phiên quảng cáo dở dang:', interrupted);
+            try {
+              speak('Cảm ơn quý khách đã mua sắm cùng robot. Robot xin phép tiếp tục phiên quảng cáo nhé!');
+            } catch {}
+
+            const estDuration = interrupted.pausedRemainingSeconds ?? interrupted.estimatedDurationSeconds;
+            await RobotControlService.dispatchAutonomous({
+              robotCode: interrupted.robotCode || ROBOT_CODE,
+              flowType: 'ad',
+              nodeIds: interrupted.remainingNodeIds,
+              shelfIds: interrupted.remainingShelfIds,
+              floorId: interrupted.floorId || 1,
+              campaignId: interrupted.campaignId ?? undefined,
+              isFreeRoam: interrupted.isFreeRoam,
+              adMode: interrupted.isFreeRoam ? 'freeroam' : 'shelf',
+              durationMinutes: estDuration ? Math.max(1, Math.ceil(estDuration / 60)) : (interrupted.durationMinutes ?? 3),
+              estimatedDurationSeconds: estDuration,
+              source: 'RobotKiosk',
+              dispatchedBy: 'Khôi phục tự động sau khi dẫn đường',
+              targetSummary: `Tiếp tục quảng cáo (${interrupted.isFreeRoam ? 'Tự do' : 'Theo kệ'})`,
+            }).catch((err) => console.warn('[CartGuideMapScreen] Khôi phục quảng cáo thất bại:', err));
+
+            AdInterruptionService.clear();
+            router.replace('/' as any);
+          } else {
+            router.replace(returnRoute as any);
+          }
+        }, status === 'CANCELLED' ? 1500 : 3500);
+        return () => clearTimeout(timer);
+      } else {
+        // Trường hợp B: Dẫn đường độc lập — cho khách 60 giây lựa chọn trước khi tự động quay về trạm
+        const idleTimer = setTimeout(async () => {
+          console.log('[CartGuideMapScreen] Hết thời gian chờ lựa chọn (60s), tự động quay về vị trí chờ...');
           try {
-            speak('Cảm ơn quý khách đã mua sắm cùng robot. Robot xin phép tiếp tục phiên quảng cáo nhé!');
+            await RobotControlService.dispatchAutonomous({
+              robotCode: ROBOT_CODE,
+              flowType: 'return',
+              nodeIds: [7],
+              floorId: 1,
+              source: 'RobotKiosk',
+              dispatchedBy: 'Tự động quay về sau 60s',
+              targetSummary: 'Quay về vị trí robot / Dock (Node 7)',
+            });
           } catch {}
-
-          const estDuration = interrupted.pausedRemainingSeconds ?? interrupted.estimatedDurationSeconds;
-          await RobotControlService.dispatchAutonomous({
-            robotCode: interrupted.robotCode || ROBOT_CODE,
-            flowType: 'ad',
-            nodeIds: interrupted.remainingNodeIds,
-            shelfIds: interrupted.remainingShelfIds,
-            floorId: interrupted.floorId || 1,
-            campaignId: interrupted.campaignId ?? undefined,
-            isFreeRoam: interrupted.isFreeRoam,
-            adMode: interrupted.isFreeRoam ? 'freeroam' : 'shelf',
-            durationMinutes: estDuration ? Math.max(1, Math.ceil(estDuration / 60)) : (interrupted.durationMinutes ?? 3),
-            estimatedDurationSeconds: estDuration,
-            source: 'RobotKiosk',
-            dispatchedBy: 'Khôi phục tự động sau khi dẫn đường',
-            targetSummary: `Tiếp tục quảng cáo (${interrupted.isFreeRoam ? 'Tự do' : 'Theo kệ'})`,
-          }).catch((err) => console.warn('[CartGuideMapScreen] Khôi phục quảng cáo thất bại:', err));
-
-          AdInterruptionService.clear();
           router.replace('/' as any);
-        } else {
-          router.replace(returnRoute as any);
-        }
-      }, status === 'CANCELLED' ? 1500 : 3500);
-      return () => clearTimeout(timer);
+        }, 60000);
+        return () => clearTimeout(idleTimer);
+      }
     }
   }, [status, router, token, params.fromAd, params.productId, params.productIds, returnRoute, speak]);
 
@@ -435,6 +460,61 @@ export default function CartGuideMapScreen() {
       ...prev,
       [key]: !prev[key],
     }));
+  };
+
+  // Trạng thái đang gửi lệnh tự hành sau khi dẫn đường (Về thu ngân hoặc Về trạm sạc)
+  const [isDispatchingPostGuide, setIsDispatchingPostGuide] = useState(false);
+
+  // 1. Dẫn khách đến Quầy Thu Ngân (Node 8)
+  const handleGoToCashier = async () => {
+    if (isDispatchingPostGuide) return;
+    setIsDispatchingPostGuide(true);
+    try {
+      speak('Robot đang dẫn quý khách đến quầy thu ngân để thanh toán.');
+      const res = await RobotControlService.dispatchAutonomous({
+        robotCode: ROBOT_CODE,
+        flowType: 'return',
+        nodeIds: [8],
+        floorId: 1,
+        source: 'RobotKiosk',
+        dispatchedBy: 'Khách chọn đến quầy thu ngân',
+        targetSummary: 'Dẫn khách tới Quầy Thu Ngân (Node 8)',
+      });
+      if (!res.ok) {
+        throw new Error(res.data?.detail || 'Không thể gửi lệnh tới robot');
+      }
+      router.replace('/' as any);
+    } catch (e: any) {
+      Alert.alert('Chưa thể dẫn đường', e?.message || 'Không gửi được tín hiệu dẫn tới quầy thu ngân.');
+    } finally {
+      setIsDispatchingPostGuide(false);
+    }
+  };
+
+  // 2. Kết thúc mua sắm - Robot tự động quay về Vị trí robot / Trạm sạc (Node 7)
+  const handleFinishShopping = async () => {
+    if (isDispatchingPostGuide) return;
+    setIsDispatchingPostGuide(true);
+    try {
+      speak('Cảm ơn quý khách đã mua sắm cùng robot. Robot xin phép quay về vị trí ban đầu.');
+      const res = await RobotControlService.dispatchAutonomous({
+        robotCode: ROBOT_CODE,
+        flowType: 'return',
+        nodeIds: [7],
+        floorId: 1,
+        source: 'RobotKiosk',
+        dispatchedBy: 'Khách kết thúc mua sắm',
+        targetSummary: 'Quay về vị trí robot / Dock (Node 7)',
+      });
+      if (!res.ok) {
+        throw new Error(res.data?.detail || 'Không thể gửi lệnh tới robot');
+      }
+      router.replace('/' as any);
+    } catch (e: any) {
+      Alert.alert('Chưa thể kết thúc', e?.message || 'Không gửi được tín hiệu quay về vị trí robot.');
+    } finally {
+      setIsDispatchingPostGuide(false);
+    }
   };
 
 
@@ -531,32 +611,69 @@ export default function CartGuideMapScreen() {
         {status === 'COMPLETED' ? (
           <View style={s.completedBox}>
             <Text style={s.completedEmoji}>🎉</Text>
-            <Text style={s.completedTitle}>Đã đến đúng vị trí sản phẩm!</Text>
+            <Text style={s.completedTitle}>Đã hoàn thành lộ trình mua sắm!</Text>
             <Text style={s.completedSub}>
-              Mời quý khách kiểm tra và lấy sản phẩm trên quầy kệ. Robot sẽ tự động quay lại màn hình tra cứu sau vài giây.
+              Mời quý khách kiểm tra và lấy sản phẩm trên quầy kệ. Quý khách muốn robot tiếp tục dẫn đến quầy thanh toán hay kết thúc chuyến đi?
             </Text>
+
+            {/* ── 2 NÚT HÀNH ĐỘNG TỰ HÀNH: THU NGÂN (NODE 8) & VỀ TRẠM (NODE 7) ── */}
+            <View style={s.completedActionGrid}>
+              <TouchableOpacity
+                style={[s.actionCard, s.cashierCard, isDispatchingPostGuide && { opacity: 0.6 }]}
+                onPress={handleGoToCashier}
+                disabled={isDispatchingPostGuide}
+                activeOpacity={0.85}
+              >
+                <View style={s.actionIconWrapCashier}>
+                  {isDispatchingPostGuide ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <CreditCard size={26} color="#fff" />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.actionCardTitle}>Đến Quầy Thu Ngân</Text>
+                  <Text style={s.actionCardSub}>Robot sẽ dẫn quý khách đến quầy POS tính tiền (Node 8)</Text>
+                </View>
+                <ArrowRight size={22} color="#059669" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.actionCard, s.finishCard, isDispatchingPostGuide && { opacity: 0.6 }]}
+                onPress={handleFinishShopping}
+                disabled={isDispatchingPostGuide}
+                activeOpacity={0.85}
+              >
+                <View style={s.actionIconWrapFinish}>
+                  {isDispatchingPostGuide ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Home size={26} color="#fff" />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.actionCardTitle}>Kết Thúc Mua Sắm</Text>
+                  <Text style={s.actionCardSub}>Robot tự động quay về trạm sạc / vị trí ban đầu (Node 7)</Text>
+                </View>
+                <ArrowRight size={22} color="#4f46e5" />
+              </TouchableOpacity>
+            </View>
+
+            {/* ── NÚT PHỤ: QUAY LẠI GIỎ HÀNG / TRA CỨU TIẾP ── */}
             <View style={{ width: '100%', gap: 10, marginTop: 12 }}>
               <TouchableOpacity
-                style={s.homeBtn}
+                style={[s.homeBtn, { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' }]}
                 onPress={() => router.replace(returnRoute as any)}
                 activeOpacity={0.85}
               >
                 {returnRoute === '/member-cart' ? (
-                  <ShoppingBag size={18} color="#fff" />
+                  <ShoppingBag size={18} color="#475569" />
                 ) : (
-                  <Search size={18} color="#fff" />
+                  <Search size={18} color="#475569" />
                 )}
-                <Text style={s.homeBtnText}>
-                  {returnRoute === '/member-cart' ? 'Quay Lại Giỏ Hàng' : 'Tiếp Tục Tra Cứu Hàng'}
+                <Text style={[s.homeBtnText, { color: '#475569' }]}>
+                  {returnRoute === '/member-cart' ? 'Quay Lại Giỏ Hàng' : 'Tiếp Tục Tra Cứu Hàng Hóa'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.homeBtn, { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' }]}
-                onPress={() => router.replace('/' as any)}
-                activeOpacity={0.85}
-              >
-                <Home size={18} color="#475569" />
-                <Text style={[s.homeBtnText, { color: '#475569' }]}>Về Màn Hình Chờ</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -773,12 +890,20 @@ const s = StyleSheet.create({
   countdownFill:  { height: 6, backgroundColor: '#16a34a', borderRadius: 3 },
 
   /* Completed */
-  completedBox:   { alignItems: 'center', paddingVertical: 40, gap: 12 },
-  completedEmoji: { fontSize: 56 },
-  completedTitle: { fontSize: 22, fontWeight: '900', color: '#0f172a' },
-  completedSub:   { fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 21 },
-  homeBtn:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, backgroundColor: '#16a34a', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16 },
-  homeBtnText:    { color: '#fff', fontWeight: '800', fontSize: 14 },
+  completedBox:        { alignItems: 'center', paddingVertical: 24, gap: 12 },
+  completedEmoji:      { fontSize: 52 },
+  completedTitle:      { fontSize: 22, fontWeight: '900', color: '#0f172a', textAlign: 'center' },
+  completedSub:        { fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 21, paddingHorizontal: 12 },
+  completedActionGrid: { width: '100%', gap: 12, marginTop: 14 },
+  actionCard:          { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 20, borderWidth: 1.5, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  cashierCard:         { borderColor: '#a7f3d0', backgroundColor: '#f0fdf4' },
+  finishCard:          { borderColor: '#c7d2fe', backgroundColor: '#eef2ff' },
+  actionIconWrapCashier:{ width: 48, height: 48, borderRadius: 14, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' },
+  actionIconWrapFinish: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' },
+  actionCardTitle:     { fontSize: 16, fontWeight: '800', color: '#0f172a' },
+  actionCardSub:       { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
+  homeBtn:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, backgroundColor: '#16a34a', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16 },
+  homeBtnText:         { color: '#fff', fontWeight: '800', fontSize: 14 },
 
   /* Bottom confirm bar */
   bottomBar:  { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 24, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -2 }, elevation: 10 },
