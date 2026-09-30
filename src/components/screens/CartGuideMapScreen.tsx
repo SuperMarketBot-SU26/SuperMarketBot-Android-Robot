@@ -234,11 +234,11 @@ export default function CartGuideMapScreen() {
     }
 
     hasAutoDispatchedRef.current = true;
-    dispatchCart(items).catch(err => {
+    dispatchCart(items, { fromAd: params.fromAd === '1' }).catch(err => {
       console.warn('[CartGuideMapScreen] Auto-dispatch thất bại:', err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.productId, params.productIds, params.productName, status]);
+  }, [params.productId, params.productIds, params.productName, status, params.fromAd]);
 
 
   // Trích xuất danh sách sản phẩm từ URL params
@@ -386,7 +386,9 @@ export default function CartGuideMapScreen() {
 
       // Nhận diện khi robot đến Quầy Thu Ngân (Node 8) qua SignalR
       if (cashierPhaseRef.current === 'moving_to_cashier') {
-        if (navStat === 'ARRIVED' || navStat === 'COMPLETED' || nodeRole === 'cashier' || targetNodeId === 8) {
+        const isArrivedOrCompleted = navStat === 'ARRIVED' || navStat === 'COMPLETED';
+        const isCashierTarget = targetNodeId === 8 || nodeRole === 'cashier' || targetNodeId === 0;
+        if (isArrivedOrCompleted && isCashierTarget) {
           console.log('[CartGuideMapScreen] Đã đến Quầy Thu Ngân (Node 8) qua navigationStatus!');
           cashierPhaseRef.current = 'at_cashier';
           setCashierPhase('at_cashier');
@@ -626,6 +628,18 @@ export default function CartGuideMapScreen() {
           style: 'destructive',
           onPress: async () => {
             await cancelGuide().catch(() => undefined);
+            try {
+              await RobotControlService.dispatchAutonomous({
+                robotCode: ROBOT_CODE,
+                flowType: 'return',
+                nodeIds: [7],
+                floorId: 1,
+                source: 'RobotKiosk',
+                dispatchedBy: 'CustomerCancelledGuide',
+              });
+            } catch (err) {
+              console.warn('[CartGuideMapScreen] Return on cancel warning:', err);
+            }
             router.replace(returnRoute as any);
           },
         },

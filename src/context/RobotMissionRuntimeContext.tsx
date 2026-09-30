@@ -806,8 +806,9 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
       }
       if (['ARRIVED', 'PLAYLIST_PLAYING'].includes(nextStatus) && waypoint) {
         const role = String(valueOf(payload, 'role', 'Role') ?? waypoint.nodeRole ?? '').toLowerCase();
-        if (activeMission.flowType === 'patrol' && (role === 'photo' || role === 'scan')) {
+        if (activeMission.flowType === 'patrol') {
           Speech.speak(`Đã đến ${waypoint.shelfName || waypoint.nodeName}. Đang tiến hành quét phân tích kệ hàng.`, { language: 'vi-VN', rate: 0.9 });
+          void captureAtWaypoint(activeMission, waypoint, matchedIdx);
         }
         if (activeMission.flowType === 'ad') {
           const statusPlaylist = valueOf<PlaylistItem[]>(payload, 'playlist', 'Playlist');
@@ -1070,6 +1071,14 @@ export function RobotMissionRuntimeProvider({ children }: { children: ReactNode 
           missionRef.current = null;
         }}
       />
+      {permission?.granted && (
+        <CameraView
+          ref={cameraRef}
+          style={{ width: 1, height: 1, opacity: 0, position: 'absolute' }}
+          facing="back"
+          onCameraReady={() => setCameraMounted(true)}
+        />
+      )}
       <AdMissionOverlay
         mission={mission}
         status={status}

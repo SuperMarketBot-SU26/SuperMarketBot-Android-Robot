@@ -124,9 +124,14 @@ export function PatrolMissionOverlay({
     };
   }, [isPatrol, pulseAnim, rotateAnim, scanLineAnim]);
 
-  // Countdown timer to next shelf after scan
+  // Countdown timer to next shelf after scan (kèm cơ chế tự giải phóng an toàn sau 15s)
   useEffect(() => {
-    if (lastScan && pendingScans === 0 && status === 'ARRIVED') {
+    if (!isPatrol || status !== 'ARRIVED') {
+      setCountdownToNext(null);
+      return;
+    }
+
+    if (lastScan && pendingScans === 0) {
       setCountdownToNext(6);
       const timer = setInterval(() => {
         setCountdownToNext((prev) => {
@@ -139,10 +144,15 @@ export function PatrolMissionOverlay({
         });
       }, 1000);
       return () => clearInterval(timer);
-    } else {
-      setCountdownToNext(null);
+    } else if (!lastScan) {
+      // Fallback: nếu AI scan mất quá 15s, tự động đếm và tiếp tục sang kệ kế tiếp để không bao giờ bị đơ
+      const fallbackTimer = setTimeout(() => {
+        console.warn('[PatrolMissionOverlay] AI scan fallback: tự động tiếp tục sau 15s.');
+        onResumeNext?.();
+      }, 15000);
+      return () => clearTimeout(fallbackTimer);
     }
-  }, [lastScan, pendingScans, status, onResumeNext]);
+  }, [isPatrol, lastScan, pendingScans, status, onResumeNext]);
 
   if (!isPatrol) return null;
 
@@ -347,32 +357,46 @@ export function PatrolMissionOverlay({
               )}
             </View>
           ) : (
-            /* Live Mission Metrics Strip */
-            <View style={styles.metricsStrip}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricNum}>{completedScans}</Text>
-                <Text style={styles.metricLabel}>Đã kiểm tra</Text>
+            <>
+              {/* Live Mission Metrics Strip */}
+              <View style={styles.metricsStrip}>
+                <View style={styles.metricItem}>
+                  <Text style={styles.metricNum}>{completedScans}</Text>
+                  <Text style={styles.metricLabel}>Đã kiểm tra</Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metricItem}>
+                  <Text style={[styles.metricNum, { color: '#38bdf8' }]}>
+                    {pendingScans}
+                  </Text>
+                  <Text style={styles.metricLabel}>Đang xử lý AI</Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metricItem}>
+                  <Text
+                    style={[
+                      styles.metricNum,
+                      { color: failedScans > 0 ? '#ef4444' : '#94a3b8' },
+                    ]}
+                  >
+                    {failedScans}
+                  </Text>
+                  <Text style={styles.metricLabel}>Cảnh báo lỗi</Text>
+                </View>
               </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={[styles.metricNum, { color: '#38bdf8' }]}>
-                  {pendingScans}
-                </Text>
-                <Text style={styles.metricLabel}>Đang xử lý AI</Text>
-              </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text
-                  style={[
-                    styles.metricNum,
-                    { color: failedScans > 0 ? '#ef4444' : '#94a3b8' },
-                  ]}
-                >
-                  {failedScans}
-                </Text>
-                <Text style={styles.metricLabel}>Cảnh báo lỗi</Text>
-              </View>
-            </View>
+              {isArrived && (
+                <View style={{ marginTop: 12, alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={styles.resumeNextBtn}
+                    onPress={onResumeNext}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.resumeNextText}>Tiếp tục sang kệ sau</Text>
+                    <ArrowRight size={14} color="white" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
         </View>
       </View>

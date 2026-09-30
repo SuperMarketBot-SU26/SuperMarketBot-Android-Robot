@@ -24,8 +24,7 @@ import { RobotControlService } from '../../services/RobotControlService';
 import { useRobotGuide } from '../../context/RobotGuideContext';
 import { Image } from 'expo-image';
 import { ProductLocationBadge } from '../../utils/productLocation';
-
-const ROBOT_CODE = 'RB001';
+import { ROBOT_CODE } from '../../context/RobotRealtimeContext';
 
 export default function MemberHomeScreen() {
   const { member, token } = useRobotAuth();
@@ -93,10 +92,13 @@ export default function MemberHomeScreen() {
     }, [member, token])
   );
 
-  // Friendly voice greeting on screen entry
+  // Friendly voice greeting on screen entry (chỉ chào 1 lần khi bắt đầu phiên đăng nhập)
+  const hasGreetedRef = React.useRef(false);
   useEffect(() => {
-    const firstName = member?.fullName ? member.fullName.split(' ').pop() : 'quý khách';
-    speak(`Chào mừng ${firstName} trở lại với Smart Market Bot! Hãy chọn tính năng bạn cần hoặc chạm vào biểu tượng micro để nói chuyện với tôi.`);
+    if (hasGreetedRef.current || !member?.fullName) return;
+    hasGreetedRef.current = true;
+    const firstName = member.fullName.split(' ').pop() || 'quý khách';
+    speak(`Chào mừng ${firstName} đến với Smart Market Bot! Chúc bạn có trải nghiệm mua sắm tuyệt vời.`);
     return () => {
       stop();
     };
