@@ -21,13 +21,6 @@ export default function MemberCartScreen() {
     isBusy: isRobotBusy,
     isHubConnected,
     status: guideStatus,
-    destination: guideDestination,
-    destinations: guideDestinations,
-    currentWaypointIndex,
-    error: guideError,
-    awaitingPickup,
-    confirmPickup,
-    cancelGuide,
   } = useRobotGuide();
 
   const [cart, setCart] = useState<CartDto | null>(null);
@@ -133,72 +126,6 @@ export default function MemberCartScreen() {
         </Animated.View>
       )}
 
-      {(isRobotBusy || guideError != null || ['ARRIVED', 'COMPLETED', 'FAILED', 'TIMEOUT'].includes(guideStatus)) && (
-        <YStack
-          marginHorizontal="$4"
-          marginTop="$3"
-          padding="$3"
-          borderRadius={16}
-          borderWidth={1}
-          backgroundColor={guideError ? '#fff1f2' : guideStatus === 'ARRIVED' ? '#f0fdf4' : '#eff6ff'}
-          borderColor={guideError ? '#fecdd3' : guideStatus === 'ARRIVED' ? '#86efac' : '#bfdbfe'}
-        >
-          <Text fontSize={16} fontWeight="900" color="#0f172a">
-            {guideError ? '⚠️ Nhiệm vụ dẫn đường gặp lỗi' : guideStatus === 'COMPLETED' ? '✅ Đã đi hết danh sách kệ' : '🤖 Hãy đi theo tôi'}
-          </Text>
-          <Text marginTop="$1" fontSize={13} color="#475569">
-            {guideError || [guideDestination?.zoneName, guideDestination?.aisleName, guideDestination?.shelfName]
-              .filter(Boolean).join(' • ') || `Trạng thái: ${guideStatus}`}
-          </Text>
-          {guideDestinations.length > 0 && (
-            <Text marginTop="$1" fontSize={12} color="#64748b">
-              {guideDestinations.length} điểm kệ trong lộ trình
-            </Text>
-          )}
-          {awaitingPickup && (
-            <Button
-              marginTop="$3"
-              backgroundColor="#00A550"
-              color="white"
-              fontWeight="900"
-              onPress={async () => {
-                try {
-                  await confirmPickup();
-                } catch (error: any) {
-                  Alert.alert('Chưa thể đi tiếp', error?.message || 'Không gửi được xác nhận lấy hàng.');
-                }
-              }}
-            >
-              {guideDestinations.length > 0 && currentWaypointIndex >= guideDestinations.length - 1
-                ? 'Tôi đã lấy sản phẩm — Hoàn thành'
-                : 'Tôi đã lấy sản phẩm — Đi tiếp'}
-            </Button>
-          )}
-          {(isRobotBusy || guideError != null || ['FAILED', 'TIMEOUT'].includes(guideStatus)) && (
-            <Button
-              marginTop="$2"
-              backgroundColor="#dc2626"
-              color="white"
-              fontWeight="900"
-              onPress={() => Alert.alert(
-                'Dừng / Hủy nhiệm vụ?',
-                'Robot sẽ dừng nhiệm vụ hiện tại và giải phóng lộ trình.',
-                [
-                  { text: 'Không', style: 'cancel' },
-                  {
-                    text: 'Dừng nhiệm vụ',
-                    style: 'destructive',
-                    onPress: () => cancelGuide().catch((error: any) =>
-                      Alert.alert('Không thể dừng', error?.message || 'Không gửi được lệnh dừng.')),
-                  },
-                ],
-              )}
-            >
-              {guideError ? 'Giải phóng robot / Hủy nhiệm vụ kẹt' : 'Dừng dẫn đường'}
-            </Button>
-          )}
-        </YStack>
-      )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
         {loading ? (
