@@ -218,6 +218,13 @@ export default function CartGuideMapScreen() {
   const hasAutoDispatchedRef = useRef(false);
   useEffect(() => {
     if (hasAutoDispatchedRef.current) return;
+    hasAutoDispatchedRef.current = true; // Khóa ngay lập tức từ lần mount đầu tiên
+
+    // Nếu đã có mission đang hoạt động (do màn hình trước đó đã gọi dispatchCart),
+    // tuyệt đối không bao giờ dispatch đè để tránh hủy và lặp lại hành trình khi robot ARRIVED.
+    if (missionId || (status && status !== 'IDLE')) {
+      return;
+    }
 
     // Xây dựng danh sách sản phẩm từ params
     let items: { productId: number; productName: string }[] = [];
@@ -233,17 +240,11 @@ export default function CartGuideMapScreen() {
 
     if (items.length === 0) return;
 
-    // Nếu mission hiện tại đã đang điều hướng thì không dispatch đè
-    if (status === 'NAVIGATING' || status === 'MOVING' || status === 'DISPATCHING') {
-      return;
-    }
-
-    hasAutoDispatchedRef.current = true;
     dispatchCart(items, { fromAd: params.fromAd === '1' }).catch(err => {
       console.warn('[CartGuideMapScreen] Auto-dispatch thất bại:', err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.productId, params.productIds, params.productName, status, params.fromAd]);
+  }, []); // Chạy duy nhất 1 lần khi mount, không re-trigger khi status chuyển sang ARRIVED
 
 
   // Trích xuất danh sách sản phẩm từ URL params
