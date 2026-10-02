@@ -51,7 +51,8 @@
       "expo-image",
       "expo-audio",
       "expo-video",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withVoiceQueries"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -40,6 +40,10 @@ if (fs.existsSync(manifestPath)) {
     manifest = manifest.replace(/<uses-sdk tools:overrideLibrary="com\.facebook\.react"\s*\/>/, '');
     modified = true;
   }
+  if (!manifest.includes('RecognitionService')) {
+    manifest = manifest.replace('</manifest>', '    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n</manifest>');
+    modified = true;
+  }
   if (modified) {
     fs.writeFileSync(manifestPath, manifest, 'utf8');
     console.log('Successfully patched @react-native-voice/voice AndroidManifest.xml.');

@@ -25,6 +25,14 @@ import Voice, { isNativeVoiceSupported } from '../../utils/safeVoice';
 // Import logo robot cute từ thư mục assets
 const logoCuteSource = require('../../../assets/images/logocute.png');
 
+const POPULAR_DISHES = [
+  { name: 'Lẩu Thái Hải Sản', icon: '🍲' },
+  { name: 'Canh Chua Cá Lóc', icon: '🥘' },
+  { name: 'Sườn Xào Chua Ngọt', icon: '🥩' },
+  { name: 'Thịt Kho Tàu', icon: '🍛' },
+  { name: 'Bò Xào Rau Củ', icon: '🥗' },
+];
+
 const cleanSearchQuery = (query: string): string => {
   if (!query) return '';
   // Bỏ hoàn toàn các ký tự Tiếng Trung (Unicode \u4e00-\u9fa5 từ Xiaomi XiaoAI)
@@ -163,10 +171,20 @@ export default function VoiceSearchScreen() {
         }
       };
       Voice.onSpeechError = (e: any) => {
+        console.warn('[VoiceSearch] onSpeechError:', e);
         if (isMounted.current) {
           setStatus('initial');
-          setTranscript('Không nghe rõ. Nhấn Mic để thử lại.');
-          speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+          const errorMsg = String(e?.error?.message || e?.error || '');
+          if (errorMsg.includes('5') || errorMsg.includes('client') || errorMsg.includes('not available')) {
+            setTranscript('Thiết bị chưa kích hoạt Google Voice. Bạn có thể chọn món ăn gợi ý bên dưới hoặc bấm nhập chữ nhé!');
+            speak('Thiết bị chưa kích hoạt dịch vụ giọng nói Google. Bạn hãy chọn món ăn gợi ý bên dưới nhé!');
+          } else if (errorMsg.includes('7') || errorMsg.includes('match') || errorMsg.includes('No match')) {
+            setTranscript('Không nghe rõ. Nhấn Mic để thử lại hoặc chọn món ăn bên dưới.');
+            speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+          } else {
+            setTranscript('Không nghe rõ. Nhấn Mic để thử lại hoặc chọn món ăn gợi ý bên dưới.');
+            speak('Xin lỗi, tôi không nghe rõ, vui lòng thử lại.');
+          }
         }
       };
     } catch (err) {
@@ -299,19 +317,29 @@ export default function VoiceSearchScreen() {
         await Voice.stop();
       } catch (err) {}
 
-      const isAvailable = await Voice.isAvailable().catch(() => false);
-      if (!isAvailable) {
-        console.warn('Speech recognizer not available on this Android device');
+      // Kiểm tra sơ bộ trạng thái khả dụng của Speech recognizer
+      let isAvailable = false;
+      try {
+        isAvailable = Boolean(await Voice.isAvailable());
+      } catch (checkErr) {
+        console.warn('[VoiceSearch] isAvailable check notice:', checkErr);
+      }
+      console.log('[VoiceSearch] Speech recognizer isAvailable:', isAvailable);
+
+      // Thử khởi động Voice (kể cả khi isAvailable trả về false do một số OEM Android ẩn intent)
+      try {
+        await Voice.start('vi-VN');
+      } catch (startErr: any) {
+        console.warn('[VoiceSearch] Voice.start failed:', startErr);
         setStatus('initial');
-        setTranscript('Thiết bị không hỗ trợ nhận diện giọng nói. Vui lòng dùng tìm kiếm văn bản.');
+        setTranscript('Thiết bị chưa kích hoạt Google Voice. Bạn có thể chọn món ăn gợi ý bên dưới hoặc bấm nút nhập chữ nhé!');
+        speak('Thiết bị chưa kích hoạt dịch vụ giọng nói Google. Bạn hãy chọn món ăn gợi ý bên dưới nhé!');
         return;
       }
-
-      await Voice.start('vi-VN');
     } catch (e) {
       console.error('Voice.start error:', e);
       setStatus('initial');
-      setTranscript('Không thể khởi động nhận diện giọng nói.');
+      setTranscript('Không thể khởi động nhận diện giọng nói. Hãy chọn món gợi ý bên dưới.');
     }
   };
 
@@ -519,6 +547,68 @@ export default function VoiceSearchScreen() {
               <Animated.View style={[styles.waveBar, barStyle5]} />
             </XStack>
           </XStack>
+
+          {/* AI Recipe Quick Picks */}
+          {status !== 'success' && (
+            <Animated.View entering={FadeInUp.delay(200).duration(400)} style={{ width: '100%', marginTop: 6 }}>
+              <YStack gap="$2.5" width="100%">
+                <XStack justifyContent="space-between" alignItems="center" paddingHorizontal="$1">
+                  <XStack gap="$1.5" alignItems="center">
+                    <Sparkles size={14} color="#D97706" />
+                    <Text fontSize={12} fontWeight="800" color="#92400E" letterSpacing={0.3}>
+                      GỢI Ý MÓN ĂN AI (CHẠM ĐỂ TÌM NHANH)
+                    </Text>
+                  </XStack>
+                  <Pressable
+                    onPress={() => {
+                      stop();
+                      router.replace('/member-search' as any);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                  >
+                    <Text fontSize={11} fontWeight="700" color="#059669">⌨️ Nhập chữ ➔</Text>
+                  </Pressable>
+                </XStack>
+
+                <XStack flexWrap="wrap" gap="$2" justifyContent="center">
+                  {POPULAR_DISHES.map((dish) => (
+                    <Pressable
+                      key={dish.name}
+                      onPress={() => {
+                        stop();
+                        const query = `Nấu món ${dish.name}`;
+                        setTranscript(query);
+                        speak(`Đang gợi ý nguyên liệu món ${dish.name} bằng AI...`);
+                        handleVoiceRecognition(query);
+                      }}
+                      style={({ pressed }) => ({
+                        backgroundColor: pressed ? '#FEF3C7' : '#FFFFFF',
+                        borderWidth: 1.5,
+                        borderColor: '#F59E0B',
+                        borderRadius: 20,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        shadowColor: '#F59E0B',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
+                        transform: [{ scale: pressed ? 0.95 : 1 }],
+                      })}
+                    >
+                      <Text fontSize={13}>{dish.icon}</Text>
+                      <Text fontSize={12} fontWeight="700" color="#78350F">
+                        {dish.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </XStack>
+              </YStack>
+            </Animated.View>
+          )}
 
           {/* Tips / Suggestions Box to fill bottom space nicely */}
           {status !== 'success' && (
